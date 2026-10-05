@@ -15,9 +15,10 @@ class FuseBorderPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    // 画布比胶囊每边大 4px（见搜索胶囊的 Positioned 外扩），
-    // 描边宽度 7，因此描边中心线需内缩半个线宽。
-    const strokeWidth = 7.0;
+    // 画布比胶囊每边大 2px（见搜索胶囊的 Positioned 外扩），
+    // 描边宽度 2.5：细线仅作状态提示，不抢视觉重点，
+    // 因此描边中心线需内缩半个线宽。
+    const strokeWidth = 2.5;
     final width = size.width;
     final height = size.height;
 

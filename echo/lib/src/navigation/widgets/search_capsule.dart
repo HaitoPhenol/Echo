@@ -71,10 +71,10 @@ class SearchCapsule extends StatelessWidget {
                   // 倒计时边框仅在 open 态（未输入）显示。
                   if (controller.searchState == SearchState.open)
                     Positioned(
-                      left: -4,
-                      top: -4,
-                      right: -4,
-                      bottom: -4,
+                      left: -2,
+                      top: -2,
+                      right: -2,
+                      bottom: -2,
                       child: CustomPaint(
                         painter: FuseBorderPainter(
                           progress: controller.fuseProgress,

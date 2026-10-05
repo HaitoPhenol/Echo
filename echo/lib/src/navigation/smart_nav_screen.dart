@@ -402,7 +402,6 @@ class _SmartNavScreenState extends State<SmartNavScreen>
   Widget build(BuildContext context) {
     final screenSize = MediaQuery.sizeOf(context);
     final safeBottom = MediaQuery.paddingOf(context).bottom;
-    final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
 
     return Scaffold(
       body: Listener(
@@ -477,14 +476,14 @@ class _SmartNavScreenState extends State<SmartNavScreen>
             ),
 
             // -------- 底部胶囊簇（历史 + 胶囊 + 倒计时边框） --------
+            //
+            // 键盘弹出时安卓端 adjustResize 会自动压缩窗口高度，
+            // 胶囊随之自然停在键盘上方，这里不再手动加键盘高度，
+            // 否则会双重补偿导致搜索框飞到过高位置。
             Positioned(
               left: 14,
               right: 14,
-              bottom: 16 +
-                  safeBottom +
-                  (_nav.searchState == SearchState.input
-                      ? keyboardInset
-                      : 0),
+              bottom: 16 + safeBottom,
               child: SearchCapsule(
                 key: _capsuleClusterKey,
                 controller: _nav,
