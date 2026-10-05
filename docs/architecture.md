@@ -48,9 +48,13 @@ echo/
 │               ├── search_capsule.dart    # 导航条 + 翻页圆点 + 搜索面板
 │               └── fuse_border_painter.dart # 倒计时边框
 ├── test/
-│   └── widget_test.dart                   # Widget 测试
+│   └── widget_test.dart                   # Widget 测试（当前 4 个用例）
+└── README.md                              # Flutter 默认工程说明
 docs/
-└── architecture.md                        # 本文档
+├── architecture.md                        # 本文档
+└── glossary.md                            # 组件命名称呼表
+ideas/
+└── smart_line.html                        # 原型：设计与手感基准
 ```
 
 带 ★ 的两个文件是日常扩展最常修改的地方。

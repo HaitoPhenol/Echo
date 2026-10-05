@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../../theme/app_colors.dart';
 import '../quick_action.dart';
 
-/// 竖直上甩胶囊时弹出的「快捷操作弧」。
+/// 竖直上甩导航条时弹出的「快捷操作弧」。
 ///
 /// 三个圆形操作项沿弧线排列（位置由父级根据屏幕几何计算后传入）。
 /// 横移手指可切换选中项，松手时触发并在选中项处显示涟漪，随后弧收起。

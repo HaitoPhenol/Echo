@@ -6,8 +6,8 @@ import '../nav_physics.dart';
 
 /// 滚筒指示器。
 ///
-/// 横滑翻页时浮现在胶囊上方，包含：
-/// - 顶部的页名标签 [_PageLabel]（模板阶段显示「第 n 页」，带翻转动画）；
+/// 横滑翻页时浮现在导航条上方，包含：
+/// - 顶部的页名标签 [_PageLabel]（显示当前页面名称，带翻转动画）；
 /// - 横向滚动的页标圆点条（当前用数字代替图标，后续替换为真实页面图标）；
 /// - 正中央的刻度线 [_CenterTick]。
 ///
@@ -26,7 +26,7 @@ class NavRoller extends StatelessWidget {
   /// 导航目的地配置（页名与图标来源）。
   final List<NavDestination> destinations;
 
-  /// 滚筒宽度（与胶囊常规态同宽，即半屏）。
+  /// 滚筒宽度（与导航条常规态整体同宽，即半屏）。
   final double width;
 
   @override

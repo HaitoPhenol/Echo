@@ -26,7 +26,7 @@
 |---|---|---|
 | **快捷操作弧 / 快捷弧** | 从导航条向上甩后弹出的弧形菜单，当前含 3 个操作 | `widgets/quick_action_arc.dart` |
 | **操作项** | 快捷弧上的单个圆形按钮（当前：应用 / 新建 / 语音，均为占位）；热区 = 按钮直径的 2 倍 | `navigation/quick_action.dart` |
-| **涟漪** | 松手触发时，操作项内向外扩散的圆形动画 | `quick_action_arc.dart` |
+| **涟漪** | 松手触发时，操作项处向外扩散的圆形动画 | `smart_nav_screen.dart`（`_RippleSpec` + 扩散涟漪） |
 
 ## 三、搜索
 
