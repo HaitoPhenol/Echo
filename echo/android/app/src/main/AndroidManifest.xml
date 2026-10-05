@@ -1,4 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- 直接驱动振动马达所需（系统触感开关关闭时仍可给出轻震反馈） -->
+    <uses-permission android:name="android.permission.VIBRATE"/>
     <application
         android:label="Echo"
         android:name="${applicationName}"

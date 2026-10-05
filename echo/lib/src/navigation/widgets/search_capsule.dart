@@ -19,7 +19,7 @@ class SearchCapsule extends StatelessWidget {
     required this.pressed,
     required this.focusNode,
     required this.textController,
-    required this.onGesturePointerDown,
+    required this.visualKey,
   });
 
   final NavPhysicsController controller;
@@ -33,8 +33,9 @@ class SearchCapsule extends StatelessWidget {
   final FocusNode focusNode;
   final TextEditingController textController;
 
-  /// 常规态在胶囊上按下时回调（父级开始手势判定）。
-  final ValueChanged<PointerDownEvent> onGesturePointerDown;
+  /// 胶囊可视本体的 key：父级据此取得真实几何，
+  /// 计算放大后的触控热区（避开系统底部手势区）。
+  final Key visualKey;
 
   /// 演示用最近搜索（模板数据，后续接入真实搜索历史）。
   static const List<String> demoRecentSearches = [
@@ -96,44 +97,36 @@ class SearchCapsule extends StatelessWidget {
   }
 
   /// 胶囊本体：常规态窄条 / 搜索态全宽框，尺寸由隐式动画过渡。
+  ///
+  /// 注意：这里不挂手势监听。常规态按下判定由父级用 [visualKey]
+  /// 取真实矩形后，在放大的热区内统一处理。
   Widget _buildCapsule(bool searching) {
-    return Listener(
-      onPointerDown: (event) {
-        if (searching) {
-          // 搜索 open 态点击胶囊空白处：直接聚焦进入输入态。
-          if (controller.searchState == SearchState.open) {
-            focusNode.requestFocus();
-          }
-        } else {
-          onGesturePointerDown(event);
-        }
-      },
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 350),
-        curve: Curves.easeOutCubic,
-        width: searching ? screenWidth - 28 : screenWidth / 2,
-        height: searching ? 44 : 10,
-        clipBehavior: Clip.antiAlias,
-        decoration: BoxDecoration(
-          color: searching
-              ? AppColors.searchBackground
-              : Colors.white.withValues(alpha: pressed ? 0.22 : 0.16),
-          borderRadius: BorderRadius.circular(searching ? 22 : 999),
-          border: searching
-              ? Border.all(color: Colors.white.withValues(alpha: 0.10))
-              : null,
-          boxShadow: searching
-              ? const [
-                  BoxShadow(
-                    color: Color(0x8C000000),
-                    blurRadius: 38,
-                    offset: Offset(0, 14),
-                  ),
-                ]
-              : null,
-        ),
-        child: searching ? _searchContent() : _thumb(),
+    return AnimatedContainer(
+      key: visualKey,
+      duration: const Duration(milliseconds: 350),
+      curve: Curves.easeOutCubic,
+      width: searching ? screenWidth - 28 : screenWidth / 2,
+      height: searching ? 44 : 10,
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: searching
+            ? AppColors.searchBackground
+            : Colors.white.withValues(alpha: pressed ? 0.22 : 0.16),
+        borderRadius: BorderRadius.circular(searching ? 22 : 999),
+        border: searching
+            ? Border.all(color: Colors.white.withValues(alpha: 0.10))
+            : null,
+        boxShadow: searching
+            ? const [
+                BoxShadow(
+                  color: Color(0x8C000000),
+                  blurRadius: 38,
+                  offset: Offset(0, 14),
+                ),
+              ]
+            : null,
       ),
+      child: searching ? _searchContent() : _thumb(),
     );
   }
 

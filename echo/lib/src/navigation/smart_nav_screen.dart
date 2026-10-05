@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../pages/template_page.dart';
+import '../services/haptics.dart';
 import 'nav_physics.dart';
 import 'widgets/nav_roller.dart';
 import 'widgets/quick_action_arc.dart';
@@ -34,6 +35,9 @@ class _SmartNavScreenState extends State<SmartNavScreen>
   /// 模板阶段的页面总数。
   static const int _pageCount = 10;
 
+  /// 双击判定窗口（秒）：300ms，与 AOSP ViewConfiguration 一致。
+  static const double _doubleTapWindow = 0.30;
+
   late final NavPhysicsController _nav;
 
   // 搜索输入相关
@@ -42,6 +46,9 @@ class _SmartNavScreenState extends State<SmartNavScreen>
 
   /// 底部胶囊簇的 key：用于「搜索态点击外部关闭」的命中判断。
   final GlobalKey _capsuleClusterKey = GlobalKey();
+
+  /// 胶囊可视本体的 key：取真实矩形以计算常规态的扩大触控热区。
+  final GlobalKey _capsuleVisualKey = GlobalKey();
 
   /// 快捷操作弧组件的 key：用于调用其收起方法。
   final GlobalKey<QuickActionArcState> _quickArcKey = GlobalKey();
@@ -89,7 +96,7 @@ class _SmartNavScreenState extends State<SmartNavScreen>
     _nav = NavPhysicsController(
       vsync: this,
       pageCount: _pageCount,
-      onActivePageChanged: (_) => HapticFeedback.selectionClick(),
+      onActivePageChanged: (_) => Haptics.tick(),
       // 用闭包延迟引用 _nav，避免初始化表达式中访问尚未赋值的字段。
       onSettled: () => _nav.scheduleRollerHide(),
     );
@@ -129,26 +136,55 @@ class _SmartNavScreenState extends State<SmartNavScreen>
   //  手势：按下
   // ================================================================
 
-  /// 根 Listener 的按下处理：当前仅用于「搜索态点击胶囊簇外部 → 关闭」。
+  /// 根 Listener 的按下处理（统管搜索态关闭与常规态抓取）。
   void _handleRootPointerDown(PointerDownEvent event) {
-    if (!_nav.isSearching) return;
-
-    final renderObject = _capsuleClusterKey.currentContext?.findRenderObject();
-    if (renderObject is RenderBox) {
-      final clusterRect =
-          renderObject.localToGlobal(Offset.zero) & renderObject.size;
-      if (!clusterRect.contains(event.position)) {
+    if (_nav.isSearching) {
+      // 搜索态：点击胶囊簇外部 → 关闭搜索。
+      final clusterRect = _rectOf(_capsuleClusterKey);
+      if (clusterRect != null && !clusterRect.contains(event.position)) {
         _searchFocusNode.unfocus();
         _nav.closeSearch();
+        return;
       }
+      // open 态点击可视胶囊本体 → 聚焦进入输入态。
+      if (_nav.searchState == SearchState.open) {
+        final capsuleRect = _rectOf(_capsuleVisualKey);
+        if (capsuleRect != null && capsuleRect.contains(event.position)) {
+          _searchFocusNode.requestFocus();
+        }
+      }
+      return;
+    }
+
+    // 常规态：胶囊视觉上只有 10px 高、难以按中，这里在不改变
+    // 外观和位置的前提下，把触控热区向上扩大为约 50px 高的隐形条，
+    // 手指落在胶囊上方空白处也能抓取。
+    final capsuleRect = _rectOf(_capsuleVisualKey);
+    if (capsuleRect == null) return;
+
+    final hitRect = Rect.fromLTRB(
+      capsuleRect.left - 24,
+      capsuleRect.top - 32,
+      capsuleRect.right + 8,
+      capsuleRect.bottom + 10,
+    );
+    if (hitRect.contains(event.position)) {
+      _beginCapsuleGrab(event);
     }
   }
 
+  /// 读取某 key 对应组件的全局矩形。
+  Rect? _rectOf(GlobalKey key) {
+    final box = key.currentContext?.findRenderObject();
+    if (box is! RenderBox || !box.hasSize) return null;
+    return box.localToGlobal(Offset.zero) & box.size;
+  }
+
   /// 胶囊常规态按下：开始一次手势的生命周期（方向待定）。
-  void _handleCapsulePointerDown(PointerDownEvent event) {
+  void _beginCapsuleGrab(PointerDownEvent event) {
     final now = _now;
     final isDoubleTap =
-        _lastTapTime != null && now - _lastTapTime! < 0.3;
+        _lastTapTime != null && now - _lastTapTime! < _doubleTapWindow;
     _lastTapTime = null;
 
     _nav.beginGrab();
@@ -168,7 +204,7 @@ class _SmartNavScreenState extends State<SmartNavScreen>
       if (gesture != null && !gesture.moved) {
         _gesture = null;
         setState(() => _capsulePressed = false);
-        HapticFeedback.mediumImpact();
+        Haptics.confirm();
         _nav.openSearch();
       }
     });
@@ -248,7 +284,7 @@ class _SmartNavScreenState extends State<SmartNavScreen>
             : 1;
 
     if (next != _quickSelection) {
-      HapticFeedback.selectionClick();
+      Haptics.tick();
       setState(() => _quickSelection = next);
     }
   }
@@ -306,6 +342,7 @@ class _SmartNavScreenState extends State<SmartNavScreen>
   ///
   /// 真实快捷操作后续在此接入（当前仅视觉反馈）。
   void _handleQuickFire(int index) {
+    Haptics.confirm();
     setState(() {
       _ripples.add(_RippleSpec(center: _quickPositions[index]));
     });
@@ -340,6 +377,7 @@ class _SmartNavScreenState extends State<SmartNavScreen>
 
     final capsuleWidth = size.width / 2;
     final centerX = size.width - 14 - capsuleWidth / 2;
+    // 胶囊位置保持原样（底边距 16）。
     final centerY = size.height - safeBottom - 21;
 
     const radius = 108.0;
@@ -454,7 +492,7 @@ class _SmartNavScreenState extends State<SmartNavScreen>
                 pressed: _capsulePressed,
                 focusNode: _searchFocusNode,
                 textController: _searchTextController,
-                onGesturePointerDown: _handleCapsulePointerDown,
+                visualKey: _capsuleVisualKey,
               ),
             ),
           ],

@@ -71,7 +71,10 @@ class NavRoller extends StatelessWidget {
           ),
         ],
       ),
-      child: ShaderMask(
+      // 圆角裁剪：页标条平移时数字不得画出滚筒胶囊之外。
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(29),
+        child: ShaderMask(
         // 左右两端 16% 渐隐，模拟原型的 mask。
         shaderCallback: (rect) {
           return const LinearGradient(
@@ -88,7 +91,7 @@ class NavRoller extends StatelessWidget {
         },
         blendMode: BlendMode.dstIn,
         child: Stack(
-          clipBehavior: Clip.none,
+          clipBehavior: Clip.hardEdge,
           children: [
             _buildStrip(),
             Positioned(
@@ -100,11 +103,12 @@ class NavRoller extends StatelessWidget {
             ),
           ],
         ),
+        ),
       ),
     );
   }
 
-  /// 页标条：整体随当前页位置平移，使激活页标对齐滚筒中心。
+  /// 页标条：整体随当前页位置平移，使激活页对齐滚筒中心。
   Widget _buildStrip() {
     final renderedPosition = controller.rubberized(controller.position);
     final count = controller.pageCount;
