@@ -1,0 +1,12 @@
+# ===== 操作系统杂项文件 =====
+# macOS
+.DS_Store
+# Windows
+Thumbs.db
+Desktop.ini
+# Linux
+*~
+
+# ===== 编辑器临时文件 =====
+*.swp
+*.tmp
