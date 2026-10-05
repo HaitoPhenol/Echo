@@ -33,7 +33,7 @@ echo/
 │       ├── theme/
 │       │   └── app_colors.dart            # 全局调色板
 │       ├── pages/
-│       │   └── template_page.dart         # 空白模板页（只显示数字）
+│       │   └── template_page.dart         # 空白占位页（只显示标题）
 │       ├── services/                      # 与界面无关的能力层
 │       │   ├── haptics.dart               # 触感反馈统一入口
 │       │   └── search_service.dart        # 搜索服务/数据源/历史接口
@@ -72,7 +72,8 @@ docs/
 | `icon` | `IconData?` | 页面图标；`null` 时滚筒显示数字序号 |
 | `pageBuilder` | `WidgetBuilder` | 页面本体构建器，按需构建 |
 
-默认配置由 `buildDefaultDestinations()` 构建。
+默认配置由 `buildDefaultDestinations()` 构建，当前为 4 页：
+控制台（console）、聊天（chat）、日志（notes）、我（me）。
 
 ### 3.2 快捷操作 `QuickAction`
 

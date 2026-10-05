@@ -32,34 +32,29 @@ class NavDestination {
   final WidgetBuilder pageBuilder;
 }
 
-/// 构建默认导航配置。
+/// 构建默认导航配置（当前 4 个页面，顺序即导航轨道顺序）。
 ///
-/// 名称顺序沿用原型（聊天/通讯录/…/文件），但页面本体暂时
-/// 全部是只显示数字的 [TemplatePage]，后续逐个替换为真实页面。
+/// 页面本体暂时全部是只显示标题的 [TemplatePage]，
+/// 后续逐个替换为真实页面。
 ///
 /// 新增页面的标准做法：在本列表末尾（或合适位置）增加一个
 /// [NavDestination]，导航线、滚筒、搜索会自动纳入，无需改动其他代码。
 List<NavDestination> buildDefaultDestinations() {
-  const labels = [
-    '聊天',
-    '通讯录',
-    '动态',
-    '收藏',
-    '设置',
-    '相机',
-    '游戏',
-    '钱包',
-    '音乐',
-    '文件',
+  /// (id, 标题) 列表。
+  const specs = <(String, String)>[
+    ('console', '控制台'),
+    ('chat', '聊天'),
+    ('notes', '日志'),
+    ('me', '我'),
   ];
 
   return [
-    for (var i = 0; i < labels.length; i++)
+    for (final (id, label) in specs)
       NavDestination(
-        id: 'page-${i + 1}',
-        label: labels[i],
+        id: id,
+        label: label,
         icon: null, // TODO: 各页面定型后在此填入图标
-        pageBuilder: (_) => TemplatePage(index: i),
+        pageBuilder: (_) => TemplatePage(title: label),
       ),
   ];
 }
