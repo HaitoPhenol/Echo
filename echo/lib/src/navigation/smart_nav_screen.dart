@@ -4,9 +4,11 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../pages/template_page.dart';
 import '../services/haptics.dart';
+import '../services/search_service.dart';
+import 'nav_destination.dart';
 import 'nav_physics.dart';
+import 'quick_action.dart';
 import 'widgets/nav_roller.dart';
 import 'widgets/quick_action_arc.dart';
 import 'widgets/search_capsule.dart';
@@ -32,11 +34,18 @@ class SmartNavScreen extends StatefulWidget {
 
 class _SmartNavScreenState extends State<SmartNavScreen>
     with TickerProviderStateMixin {
-  /// 模板阶段的页面总数。
-  static const int _pageCount = 10;
-
   /// 双击判定窗口（秒）：300ms，与 AOSP ViewConfiguration 一致。
   static const double _doubleTapWindow = 0.30;
+
+  /// 导航目的地配置（页面轨道、滚筒、页面搜索的唯一来源）。
+  late final List<NavDestination> _destinations;
+
+  /// 快捷操作配置。
+  late final List<QuickAction> _quickActions;
+
+  /// 搜索历史存储与搜索服务。
+  late final SearchHistoryStore _searchHistory;
+  late final SearchService _searchService;
 
   late final NavPhysicsController _nav;
 
@@ -55,6 +64,10 @@ class _SmartNavScreenState extends State<SmartNavScreen>
 
   /// 胶囊常规态是否按下（视觉）。
   bool _capsulePressed = false;
+
+  /// 搜索框当前文本与结果（由 SearchService 实时计算）。
+  String _searchQuery = '';
+  List<SearchResult> _searchResults = const [];
 
   /// 当前进行中的手势（无则为 null）。
   _DragGesture? _gesture;
@@ -93,9 +106,23 @@ class _SmartNavScreenState extends State<SmartNavScreen>
       ),
     );
 
+    // ---- 组装配置与服务（依赖关系：providers → searchService）----
+    _destinations = buildDefaultDestinations();
+    _quickActions = buildDefaultQuickActions();
+    _searchHistory = InMemorySearchHistoryStore();
+    _searchService = SearchService(
+      history: _searchHistory,
+      providers: [
+        NavDestinationSearchProvider(
+          destinations: _destinations,
+          onDestinationSelected: _jumpToDestination,
+        ),
+      ],
+    );
+
     _nav = NavPhysicsController(
       vsync: this,
-      pageCount: _pageCount,
+      pageCount: _destinations.length,
       onActivePageChanged: (_) => Haptics.tick(),
       // 用闭包延迟引用 _nav，避免初始化表达式中访问尚未赋值的字段。
       onSettled: () => _nav.scheduleRollerHide(),
@@ -127,9 +154,65 @@ class _SmartNavScreenState extends State<SmartNavScreen>
             !_searchFocusNode.hasFocus &&
             _nav.searchState == SearchState.input) {
           _nav.closeSearch();
+          _resetSearchPanel();
         }
       });
     }
+  }
+
+  // ================================================================
+  //  搜索面板：数据与交互
+  // ================================================================
+
+  /// 搜索结果数据源选中了某目的地：跳转到对应页面。
+  void _jumpToDestination(int index) {
+    _nav.snapTo(index);
+  }
+
+  /// 输入文本变化：实时查询并刷新结果。
+  void _handleQueryChanged(String value) {
+    setState(() {
+      _searchQuery = value;
+      _searchResults = _searchService.searchAll(value);
+    });
+  }
+
+  /// 键盘提交搜索：记录到历史（结果已实时展示，无需额外动作）。
+  void _handleSubmitted(String value) {
+    if (value.trim().isNotEmpty) {
+      _searchHistory.add(value);
+    }
+  }
+
+  /// 点击历史条目：带入输入框、定位光标到末尾并立即执行搜索。
+  void _handleHistoryTap(String text) {
+    _searchTextController.value = TextEditingValue(
+      text: text,
+      selection: TextSelection.collapsed(offset: text.length),
+    );
+    _searchFocusNode.requestFocus();
+    _handleQueryChanged(text);
+  }
+
+  /// 点击搜索结果：执行结果动作（跳页等）、记入历史并收起面板。
+  void _handleResultTap(SearchResult result) {
+    result.onSelect();
+    _searchHistory.add(result.title);
+    _exitSearch();
+  }
+
+  /// 收起搜索面板（失焦 + 关闭 + 清空临时状态）。
+  void _exitSearch() {
+    _searchFocusNode.unfocus();
+    _nav.closeSearch();
+    _resetSearchPanel();
+  }
+
+  /// 清空输入框与结果，为下次打开做准备。
+  void _resetSearchPanel() {
+    _searchTextController.clear();
+    _searchQuery = '';
+    _searchResults = const [];
   }
 
   // ================================================================
@@ -142,8 +225,7 @@ class _SmartNavScreenState extends State<SmartNavScreen>
       // 搜索态：点击胶囊簇外部 → 关闭搜索。
       final clusterRect = _rectOf(_capsuleClusterKey);
       if (clusterRect != null && !clusterRect.contains(event.position)) {
-        _searchFocusNode.unfocus();
-        _nav.closeSearch();
+        _exitSearch();
         return;
       }
       // open 态点击可视胶囊本体 → 聚焦进入输入态。
@@ -159,6 +241,9 @@ class _SmartNavScreenState extends State<SmartNavScreen>
     // 常规态：胶囊视觉上只有 10px 高、难以按中，这里在不改变
     // 外观和位置的前提下，把触控热区向上扩大为约 50px 高的隐形条，
     // 手指落在胶囊上方空白处也能抓取。
+    //
+    // 注意：下沿不向下扩——底部边缘是安卓全面屏手势区，
+    // 从过低处开始上甩会被系统识别为「回桌面」。
     final capsuleRect = _rectOf(_capsuleVisualKey);
     if (capsuleRect == null) return;
 
@@ -166,7 +251,7 @@ class _SmartNavScreenState extends State<SmartNavScreen>
       capsuleRect.left - 24,
       capsuleRect.top - 32,
       capsuleRect.right + 8,
-      capsuleRect.bottom + 10,
+      capsuleRect.bottom,
     );
     if (hitRect.contains(event.position)) {
       _beginCapsuleGrab(event);
@@ -205,6 +290,7 @@ class _SmartNavScreenState extends State<SmartNavScreen>
         _gesture = null;
         setState(() => _capsulePressed = false);
         Haptics.confirm();
+        _resetSearchPanel();
         _nav.openSearch();
       }
     });
@@ -343,10 +429,11 @@ class _SmartNavScreenState extends State<SmartNavScreen>
   /// 真实快捷操作后续在此接入（当前仅视觉反馈）。
   void _handleQuickFire(int index) {
     Haptics.confirm();
+    // 执行配置中该快捷操作的真实行为（当前为「开发中」占位反馈）。
+    _quickActions[index].onSelect(context);
     setState(() {
       _ripples.add(_RippleSpec(center: _quickPositions[index]));
     });
-    // TODO: 接入三个快捷操作的真实行为。
   }
 
   // ================================================================
@@ -364,7 +451,7 @@ class _SmartNavScreenState extends State<SmartNavScreen>
         .clamp(thumbWidth / 2, capsuleWidth - thumbWidth / 2);
     return (center - thumbWidth / 2) /
         (capsuleWidth - thumbWidth) *
-        (_pageCount - 1);
+        (_destinations.length - 1);
   }
 
   /// 计算快捷弧三个操作项的位置。
@@ -426,12 +513,19 @@ class _SmartNavScreenState extends State<SmartNavScreen>
                           left: -renderedPosition * screenSize.width,
                           top: 0,
                           bottom: 0,
-                          width: screenSize.width * _pageCount,
+                          width:
+                              screenSize.width * _destinations.length,
                           child: Row(
-                            children: List.generate(
-                              _pageCount,
-                              (i) => Expanded(child: TemplatePage(index: i)),
-                            ),
+                            // 页面由导航配置驱动：每个目的地的 pageBuilder
+                            // 经 Builder 注入上下文，全部 Expanded 等宽。
+                            children: [
+                              for (final destination in _destinations)
+                                Expanded(
+                                  child: Builder(
+                                    builder: destination.pageBuilder,
+                                  ),
+                                ),
+                            ],
                           ),
                         ),
                       ],
@@ -445,6 +539,7 @@ class _SmartNavScreenState extends State<SmartNavScreen>
             if (_quickArcShown)
               QuickActionArc(
                 key: _quickArcKey,
+                actions: _quickActions,
                 positions: List.of(_quickPositions),
                 selection: _quickSelection,
                 onFire: _handleQuickFire,
@@ -471,6 +566,7 @@ class _SmartNavScreenState extends State<SmartNavScreen>
               bottom: 52 + safeBottom,
               child: NavRoller(
                 controller: _nav,
+                destinations: _destinations,
                 width: screenSize.width / 2,
               ),
             ),
@@ -492,6 +588,13 @@ class _SmartNavScreenState extends State<SmartNavScreen>
                 focusNode: _searchFocusNode,
                 textController: _searchTextController,
                 visualKey: _capsuleVisualKey,
+                historyItems: _searchHistory.items,
+                results: _searchResults,
+                query: _searchQuery,
+                onHistoryTap: _handleHistoryTap,
+                onResultTap: _handleResultTap,
+                onQueryChanged: _handleQueryChanged,
+                onSubmitted: _handleSubmitted,
               ),
             ),
           ],

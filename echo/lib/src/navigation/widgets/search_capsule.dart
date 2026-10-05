@@ -2,15 +2,19 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../services/search_service.dart';
 import '../../theme/app_colors.dart';
 import '../nav_physics.dart';
 import 'fuse_border_painter.dart';
 
-/// 胶囊导航线在底部的整体簇：最近搜索历史 + 胶囊本体 + 倒计时边框。
+/// 胶囊导航线在底部的整体簇：搜索建议区 + 胶囊本体 + 倒计时边框。
 ///
-/// 常规态只显示胶囊；长按后展开为全宽搜索框，上方浮现最近搜索胶囊，
-/// 外围显示倒计时边框。本组件只负责外观与内部小交互，
-/// 手势识别（方向锁定、上甩等）由父级 [SmartNavScreen] 完成。
+/// 常规态只显示胶囊；长按后展开为全宽搜索框。搜索框上方区域：
+/// - 输入框为空：显示最近搜索历史；
+/// - 有关键词：显示实时搜索结果（无结果时显示空状态提示）。
+///
+/// 本组件只负责外观与内部小交互，数据与回调全部由父级注入，
+/// 手势识别（方向锁定、上甩等）也由父级 [SmartNavScreen] 完成。
 class SearchCapsule extends StatelessWidget {
   const SearchCapsule({
     super.key,
@@ -20,6 +24,13 @@ class SearchCapsule extends StatelessWidget {
     required this.focusNode,
     required this.textController,
     required this.visualKey,
+    required this.historyItems,
+    required this.results,
+    required this.query,
+    required this.onHistoryTap,
+    required this.onResultTap,
+    required this.onQueryChanged,
+    required this.onSubmitted,
   });
 
   final NavPhysicsController controller;
@@ -34,19 +45,29 @@ class SearchCapsule extends StatelessWidget {
   final TextEditingController textController;
 
   /// 胶囊可视本体的 key：父级据此取得真实几何，
-  /// 计算放大后的触控热区（避开系统底部手势区）。
+  /// 计算放大后的触控热区。
   final Key visualKey;
 
-  /// 演示用最近搜索（模板数据，后续接入真实搜索历史）。
-  static const List<String> demoRecentSearches = [
-    '周报模板',
-    '会议室预订',
-    '报销流程',
-    '张伟',
-    '五月的旅行照片',
-    '跨部门项目同步会议纪要归档',
-    '密码生成器推荐',
-  ];
+  /// 最近搜索历史条目。
+  final List<String> historyItems;
+
+  /// 当前关键词的搜索结果。
+  final List<SearchResult> results;
+
+  /// 输入框当前文本。
+  final String query;
+
+  /// 点击历史条目。
+  final ValueChanged<String> onHistoryTap;
+
+  /// 点击搜索结果。
+  final ValueChanged<SearchResult> onResultTap;
+
+  /// 输入文本变化。
+  final ValueChanged<String> onQueryChanged;
+
+  /// 提交搜索（键盘搜索键）。
+  final ValueChanged<String> onSubmitted;
 
   @override
   Widget build(BuildContext context) {
@@ -54,13 +75,30 @@ class SearchCapsule extends StatelessWidget {
       animation: controller,
       builder: (context, _) {
         final searching = controller.isSearching;
+        final hasQuery = query.trim().isNotEmpty;
         return Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _HistoryChips(
-              visible: searching,
-              onChipTap: _selectHistory,
+            // 搜索建议区（仅搜索态展开）
+            AnimatedSize(
+              duration: const Duration(milliseconds: 320),
+              curve: Curves.easeOutCubic,
+              alignment: Alignment.bottomCenter,
+              child: searching
+                  ? Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: hasQuery
+                          ? _ResultsView(
+                              results: results,
+                              onTap: onResultTap,
+                            )
+                          : _HistoryChips(
+                              items: historyItems,
+                              onTap: onHistoryTap,
+                            ),
+                    )
+                  : const SizedBox(width: double.infinity),
             ),
             Align(
               alignment: Alignment.centerRight,
@@ -88,12 +126,6 @@ class SearchCapsule extends StatelessWidget {
         );
       },
     );
-  }
-
-  /// 点击某条历史：直接带入输入框并进入输入态。
-  void _selectHistory(String text) {
-    textController.text = text;
-    focusNode.requestFocus();
   }
 
   /// 胶囊本体：常规态窄条 / 搜索态全宽框，尺寸由隐式动画过渡。
@@ -180,6 +212,8 @@ class SearchCapsule extends StatelessWidget {
             child: TextField(
               controller: textController,
               focusNode: focusNode,
+              onChanged: onQueryChanged,
+              onSubmitted: onSubmitted,
               style: const TextStyle(
                 color: AppColors.textPrimary,
                 fontSize: 16,
@@ -200,34 +234,137 @@ class SearchCapsule extends StatelessWidget {
   }
 }
 
-/// 搜索框上方的最近搜索胶囊流。
-///
-/// 随搜索态展开/收起（高度动画），每个胶囊点击后短暂闪白作为反馈。
-class _HistoryChips extends StatelessWidget {
-  const _HistoryChips({required this.visible, required this.onChipTap});
+/// 实时搜索结果列表。
+class _ResultsView extends StatelessWidget {
+  const _ResultsView({required this.results, required this.onTap});
 
-  final bool visible;
-  final ValueChanged<String> onChipTap;
+  final List<SearchResult> results;
+  final ValueChanged<SearchResult> onTap;
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedSize(
-      duration: const Duration(milliseconds: 320),
-      curve: Curves.easeOutCubic,
-      alignment: Alignment.bottomCenter,
-      child: visible
-          ? Padding(
-              padding: const EdgeInsets.only(left: 2, right: 2, bottom: 12),
-              child: Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  for (final text in SearchCapsule.demoRecentSearches)
-                    _HistoryChip(text: text, onTap: () => onChipTap(text)),
-                ],
+    if (results.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 18),
+        child: Text(
+          '无匹配结果',
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 13, color: AppColors.textMuted),
+        ),
+      );
+    }
+
+    // 限制最大高度，避免结果过多时顶满整个屏幕。
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxHeight: 300),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: ListView(
+          shrinkWrap: true,
+          padding: EdgeInsets.zero,
+          children: [
+            for (final result in results)
+              _ResultTile(result: result, onTap: () => onTap(result)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 单条搜索结果行。
+class _ResultTile extends StatefulWidget {
+  const _ResultTile({required this.result, required this.onTap});
+
+  final SearchResult result;
+  final VoidCallback onTap;
+
+  @override
+  State<_ResultTile> createState() => _ResultTileState();
+}
+
+class _ResultTileState extends State<_ResultTile> {
+  bool _pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final result = widget.result;
+    return GestureDetector(
+      onTapDown: (_) => setState(() => _pressed = true),
+      onTapUp: (_) => setState(() => _pressed = false),
+      onTapCancel: () => setState(() => _pressed = false),
+      onTap: widget.onTap,
+      child: Container(
+        height: 46,
+        padding: const EdgeInsets.symmetric(horizontal: 14),
+        decoration: BoxDecoration(
+          color: _pressed
+              ? Colors.white.withValues(alpha: 0.08)
+              : Colors.white.withValues(alpha: 0.04),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        margin: const EdgeInsets.only(bottom: 6),
+        child: Row(
+          children: [
+            Icon(
+              result.icon ?? Icons.search,
+              size: 18,
+              color: AppColors.pageLabel,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                result.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 15,
+                  color: AppColors.textPrimary,
+                ),
               ),
-            )
-          : const SizedBox(width: double.infinity),
+            ),
+            if (result.subtitle != null)
+              Text(
+                result.subtitle!,
+                style: const TextStyle(
+                  fontSize: 11,
+                  color: AppColors.textMuted,
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 搜索框为空时显示的最近搜索胶囊流。
+class _HistoryChips extends StatelessWidget {
+  const _HistoryChips({required this.items, required this.onTap});
+
+  final List<String> items;
+  final ValueChanged<String> onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    if (items.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 18),
+        child: Text(
+          '暂无最近搜索',
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 13, color: AppColors.textMuted),
+        ),
+      );
+    }
+
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        for (final text in items)
+          _HistoryChip(text: text, onTap: () => onTap(text)),
+      ],
     );
   }
 }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../theme/app_colors.dart';
+import '../nav_destination.dart';
 import '../nav_physics.dart';
 
 /// 滚筒指示器。
@@ -16,10 +17,14 @@ class NavRoller extends StatelessWidget {
   const NavRoller({
     super.key,
     required this.controller,
+    required this.destinations,
     required this.width,
   });
 
   final NavPhysicsController controller;
+
+  /// 导航目的地配置（页名与图标来源）。
+  final List<NavDestination> destinations;
 
   /// 滚筒宽度（与胶囊常规态同宽，即半屏）。
   final double width;
@@ -42,7 +47,10 @@ class NavRoller extends StatelessWidget {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  _PageLabel(visible: visible, page: controller.activePage + 1),
+                  _PageLabel(
+                    visible: visible,
+                    text: destinations[controller.activePage].label,
+                  ),
                   const SizedBox(height: 18),
                   _rollerBody(),
                 ],
@@ -129,6 +137,7 @@ class NavRoller extends StatelessWidget {
             height: 40,
             child: _RollerDot(
               label: '${i + 1}',
+              icon: destinations[i].icon,
               active: i == controller.activePage,
             ),
           );
@@ -143,9 +152,18 @@ class NavRoller extends StatelessWidget {
 /// 未选中：透明底、暗灰色数字；选中：白色圆底、深色数字并带辉光，
 /// 同时播放一次弹性放大动画。
 class _RollerDot extends StatefulWidget {
-  const _RollerDot({required this.label, required this.active});
+  const _RollerDot({
+    required this.label,
+    required this.active,
+    this.icon,
+  });
 
+  /// 无图标时显示的数字序号文本。
   final String label;
+
+  /// 页面图标。非 null 时显示图标代替数字。
+  final IconData? icon;
+
   final bool active;
 
   @override
@@ -198,14 +216,21 @@ class _RollerDotState extends State<_RollerDot>
               : null,
         ),
         alignment: Alignment.center,
-        child: Text(
-          widget.label,
-          style: TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w700,
-            color: widget.active ? AppColors.inverse : AppColors.textMuted,
-          ),
-        ),
+        child: widget.icon != null
+            ? Icon(
+                widget.icon,
+                size: 19,
+                color: widget.active ? AppColors.inverse : AppColors.textMuted,
+              )
+            : Text(
+                widget.label,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  color:
+                      widget.active ? AppColors.inverse : AppColors.textMuted,
+                ),
+              ),
       ),
     );
   }
@@ -274,12 +299,14 @@ class _CenterTickState extends State<_CenterTick>
   }
 }
 
-/// 页名标签：显示「第 n 页」，页面切换时播放上翻隐入的翻转动画。
+/// 页名标签：显示当前页面名称，页面切换时播放上翻隐入的翻转动画。
 class _PageLabel extends StatefulWidget {
-  const _PageLabel({required this.visible, required this.page});
+  const _PageLabel({required this.visible, required this.text});
 
   final bool visible;
-  final int page;
+
+  /// 当前页名称。
+  final String text;
 
   @override
   State<_PageLabel> createState() => _PageLabelState();
@@ -296,7 +323,7 @@ class _PageLabelState extends State<_PageLabel>
   @override
   void didUpdateWidget(_PageLabel oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.page != oldWidget.page) {
+    if (widget.text != oldWidget.text) {
       _flipController.forward(from: 0);
     }
   }
@@ -329,7 +356,7 @@ class _PageLabelState extends State<_PageLabel>
           );
         },
         child: Text(
-          '第 ${widget.page} 页',
+          widget.text,
           textAlign: TextAlign.center,
           style: const TextStyle(
             fontSize: 12,

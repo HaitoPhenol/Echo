@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../theme/app_colors.dart';
+import '../quick_action.dart';
 
 /// 竖直上甩胶囊时弹出的「快捷操作弧」。
 ///
@@ -11,16 +12,20 @@ import '../../theme/app_colors.dart';
 class QuickActionArc extends StatefulWidget {
   const QuickActionArc({
     super.key,
+    required this.actions,
     required this.positions,
     required this.selection,
     required this.onFire,
     required this.onDismissed,
   });
 
-  /// 三个操作项圆心的屏幕坐标。
+  /// 弧上的操作配置（与 [positions] 一一对应）。
+  final List<QuickAction> actions;
+
+  /// 操作项圆心的屏幕坐标。
   final List<Offset> positions;
 
-  /// 当前选中项序号（0~2）。
+  /// 当前选中项序号。
   final int selection;
 
   /// 触发（松手）时回调，参数为被选中项序号。
@@ -43,13 +48,6 @@ class QuickActionArcState extends State<QuickActionArc>
         widget.onDismissed();
       }
     });
-
-  /// 快捷操作占位图标（后续替换并接入真实行为）。
-  static const List<IconData> _placeholderIcons = [
-    Icons.apps,
-    Icons.add,
-    Icons.mic_none,
-  ];
 
   @override
   void initState() {
@@ -83,7 +81,7 @@ class QuickActionArcState extends State<QuickActionArc>
     return IgnorePointer(
       // 选择过程由父级的移动回调驱动，本组件自身不接收手势。
       child: Stack(
-        children: List.generate(widget.positions.length, (i) {
+        children: List.generate(widget.actions.length, (i) {
           final selected = i == widget.selection;
           return Positioned(
             left: widget.positions[i].dx - 20,
@@ -122,7 +120,7 @@ class QuickActionArcState extends State<QuickActionArc>
                         : null,
                   ),
                   child: Icon(
-                    _placeholderIcons[i],
+                    widget.actions[i].icon,
                     size: 19,
                     color: selected
                         ? AppColors.inverse
