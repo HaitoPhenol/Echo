@@ -118,7 +118,9 @@ class NavRoller extends StatelessWidget {
 
   /// 页标条：整体随当前页位置平移，使激活页对齐滚筒中心。
   Widget _buildStrip() {
-    final renderedPosition = controller.rubberized(controller.position);
+    // 与页面轨道同一份显示位置（橡胶带 + 磁力曲线），
+    // 页标在中央刻度旁同样呈现粘滞→滑落的吸附节奏。
+    final renderedPosition = controller.displayPosition;
     final count = controller.pageCount;
 
     return Positioned(

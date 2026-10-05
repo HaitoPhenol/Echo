@@ -505,8 +505,8 @@ class _SmartNavScreenState extends State<SmartNavScreen>
                 child: AnimatedBuilder(
                   animation: _nav,
                   builder: (context, _) {
-                    final renderedPosition =
-                        _nav.rubberized(_nav.position);
+                    // 显示位置含橡胶带与磁力吸附曲线。
+                    final renderedPosition = _nav.displayPosition;
                     return Stack(
                       children: [
                         Positioned(

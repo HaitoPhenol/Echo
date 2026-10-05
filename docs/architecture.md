@@ -121,10 +121,14 @@ Android 端走原生 `Vibrator` 服务（通道 `echo/haptics`，见
 
 文件：`lib/src/navigation/nav_physics.dart`
 
-持有页面位置 `position`、速度、搜索状态（`closed/open/input`）、
-倒计时进度 `fuseProgress`、滚筒可见性。继承 `ChangeNotifier`，
-组件通过 `AnimatedBuilder` 监听刷新。物理参数（fling 衰减、snap 弹簧、
-越界橡胶带、速度增益）均为已验收取值，非必要不调整。
+持有页面位置 `position`（线性物理位置）、速度、搜索状态
+（`closed/open/input`）、倒计时进度 `fuseProgress`、滚筒可见性。
+继承 `ChangeNotifier`，组件通过 `AnimatedBuilder` 监听刷新。
+
+渲染一律使用 `displayPosition`（橡胶带 + 页内磁力曲线）：靠近整页
+粘滞、两页之间滑落，整数位置严格不变；物理层始终保持线性，两层分离。
+物理参数（fling 衰减、snap 弹簧、越界橡胶带、速度增益、磁力曲线）
+均为已验收取值，非必要不调整。页面数量变化时需重新评估增益范围。
 
 ---
 

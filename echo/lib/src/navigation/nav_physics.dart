@@ -35,11 +35,16 @@ enum _MoveMode {
 ///
 /// 职责：
 /// - 维护当前页位置 [position]（拖动期间允许短暂越界）与速度 [velocity]；
-/// - 横滑时的「速度自适应增益」——慢拖接近 1:1 精调，快甩最高约 4.5 倍穿越；
+/// - 横滑时的「速度自适应增益」——慢拖精调、快甩穿越，增益取值
+///   按当前页面数量（4 页）整体压低，保证跟手；
 /// - 松手后的指数摩擦惯性滑动（fling）与弹簧吸附（snap）；
-/// - 两端越界时的橡胶带压缩（渲染层使用 [rubberized]）；
+/// - 两端越界时的橡胶带压缩（[rubberized]）+ 页内非线性磁力曲线
+///   （[displayPosition]）：靠近整页粘滞、两页之间滑落，形成吸附感；
 /// - 长按搜索态：0.65s 宽限 + 2s 倒计时边框，烧完自动收起；
 /// - 滚筒与页名标签的显示、延时隐藏。
+///
+/// 注意：[position] 始终是线性物理位置，所有吸附/橡胶带效果只在
+/// [displayPosition] 这一层做，物理模拟保持简单稳定。
 ///
 /// UI 层通过 [AnimatedBuilder] 监听本控制器（它是一个 [ChangeNotifier]）。
 class NavPhysicsController extends ChangeNotifier {
@@ -176,7 +181,8 @@ class NavPhysicsController extends ChangeNotifier {
     _dragSmoothVelocity +=
         (dx / dt - _dragSmoothVelocity) * (1 - math.exp(-dt / 0.09));
 
-    // 速度自适应增益：慢拖接近 1:1，快甩最高约 4.5 倍。
+    // 速度自适应增益：慢拖低增益精调，快甩高增益穿越（取值已按
+    // 4 页场景整体压低，避免轻轻一滑就飞过太多页）。
     final gain = _gainOf(_dragSmoothVelocity);
 
     // 向左滑（dx < 0）页码增大，故取负；54px 的拖动对应一个页标间距。
@@ -195,12 +201,50 @@ class NavPhysicsController extends ChangeNotifier {
   /// 松手时取出的最终速度（页/秒）。
   double get dragReleaseVelocity => _dragReportVelocity;
 
-  /// 根据指针速度（px/s）计算位移增益（曲线已在原型中验收，照搬）。
+  /// 根据指针速度（px/s）计算位移增益。
+  ///
+  /// 页面精简为 4 个后整体压低：慢拖 0.25（约 216px 翻过一页，
+  /// 便于精调），快甩最高 0.60（一次甩动通常越过 2~3 页）。
   double _gainOf(double pointerVelocity) {
-    final t = math.min(pointerVelocity.abs() / 1500, 1);
+    final t = math.min(pointerVelocity.abs() / 1200, 1);
     final smooth = t * t * (3 - 2 * t); // smoothstep
-    return 0.38 + 4.12 * smooth;
+    return 0.25 + 0.35 * smooth;
   }
+
+  // ****************************************************************
+  //  渲染位置：橡胶带 + 非线性磁力曲线
+  // ****************************************************************
+
+  /// 供界面使用的最终显示位置。
+  ///
+  /// 处理顺序：先对越界做 [rubberized] 橡胶带压缩；在合法区间内
+  /// 再套用页内磁力曲线 [_magneticFraction]——靠近整页时位移被压缩
+  /// （粘滞、不容易离开当前页），两页中间位移被放大（自然滑落），
+  /// 且 f(0)=0、f(0.5)=0.5、f(1)=1，整数位置严格不变。
+  double get displayPosition {
+    final r = rubberized(position);
+    // 越界的橡胶带区域保持线性，不再叠加磁力曲线。
+    if (r <= 0) return r;
+    if (r >= pageCount - 1) return r;
+
+    final n = r.floorToDouble();
+    return n + _magneticFraction(r - n);
+  }
+
+  /// 页内磁力曲线：端点处斜率 [_magneticEndSlope]（<1，粘滞），
+  /// 中点处斜率 >1（滑落加速）；曲线关于 (0.5, 0.5) 中心对称。
+  ///
+  /// 三次 Hermite 形式：
+  /// f(x) = (-2x³+3x²) + m·(2x³-3x²+x)
+  static double _magneticFraction(double x) {
+    const m = _magneticEndSlope;
+    return (-2 * x * x * x + 3 * x * x) +
+        m * (2 * x * x * x - 3 * x * x + x);
+  }
+
+  /// 磁力曲线在整页处（x=0/1）的斜率。
+  /// 越小越"粘"：取 0.75，即靠近整页时移动速度降到 75%。
+  static const double _magneticEndSlope = 0.75;
 
   // ****************************************************************
   //  松手后的运动：惯性滑动 / 弹簧吸附

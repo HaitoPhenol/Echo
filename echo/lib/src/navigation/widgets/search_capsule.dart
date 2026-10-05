@@ -164,8 +164,10 @@ class SearchCapsule extends StatelessWidget {
 
   /// 常规态胶囊里的位置滑块。
   Widget _thumb() {
-    // 滑块位置：页码 0 在最左、末页在最右（位置夹在合法区间）。
-    final clampedP = controller.position.clamp(0, controller.pageCount - 1);
+    // 滑块位置：页码 0 在最左、末页在最右（显示位置夹在合法区间），
+    // 与页面轨道/滚筒同步呈现吸附节奏。
+    final clampedP =
+        controller.displayPosition.clamp(0, controller.pageCount - 1);
     final travel = screenWidth / 2 - screenWidth / 2 * 0.24;
     final left = clampedP / (controller.pageCount - 1) * travel;
 
