@@ -53,17 +53,15 @@ class _SmartNavScreenState extends State<SmartNavScreen>
   final FocusNode _searchFocusNode = FocusNode();
   final TextEditingController _searchTextController = TextEditingController();
 
-  /// 底部胶囊簇的 key：用于「搜索态点击外部关闭」的命中判断。
-  final GlobalKey _capsuleClusterKey = GlobalKey();
-
-  /// 胶囊可视本体的 key：取真实矩形以计算常规态的扩大触控热区。
-  final GlobalKey _capsuleVisualKey = GlobalKey();
-
-  /// 快捷操作弧组件的 key：用于调用其收起方法。
+  /// 快捷操作弧组件的 key：用于调用其收起方法（仅快捷弧出现时存在，
+  /// 不在冷启动首帧路径上）。
   final GlobalKey<QuickActionArcState> _quickArcKey = GlobalKey();
 
   /// 胶囊常规态是否按下（视觉）。
   bool _capsulePressed = false;
+
+  /// 当前按下色态的圆点：-1 左 / 1 右。
+  int? _pressedDot;
 
   /// 搜索框当前文本与结果（由 SearchService 实时计算）。
   String _searchQuery = '';
@@ -219,50 +217,69 @@ class _SmartNavScreenState extends State<SmartNavScreen>
   //  手势：按下
   // ================================================================
 
-  /// 根 Listener 的按下处理（统管搜索态关闭与常规态抓取）。
+  /// 根 Listener 的按下处理。
+  ///
+  /// 搜索态的「点击外部关闭」不在此处理：由 build 中铺在胶囊之下的
+  /// 全屏 scrim 负责（结果/历史/胶囊在 scrim 之上，互不干扰）。
   void _handleRootPointerDown(PointerDownEvent event) {
     if (_nav.isSearching) {
-      // 搜索态：点击胶囊簇外部 → 关闭搜索。
-      final clusterRect = _rectOf(_capsuleClusterKey);
-      if (clusterRect != null && !clusterRect.contains(event.position)) {
-        _exitSearch();
-        return;
-      }
-      // open 态点击可视胶囊本体 → 聚焦进入输入态。
-      if (_nav.searchState == SearchState.open) {
-        final capsuleRect = _rectOf(_capsuleVisualKey);
-        if (capsuleRect != null && capsuleRect.contains(event.position)) {
-          _searchFocusNode.requestFocus();
-        }
+      // open 态点击可视胶囊本体 → 聚焦进入输入态（TextField 自身
+      // 也能获得焦点，这里只补 icon 等非输入区的覆盖）。
+      if (_nav.searchState == SearchState.open &&
+          _searchCapsuleRect().contains(event.position)) {
+        _searchFocusNode.requestFocus();
       }
       return;
     }
 
-    // 常规态：胶囊视觉上只有 10px 高、难以按中，这里在不改变
-    // 外观和位置的前提下，把触控热区向上扩大为约 50px 高的隐形条，
-    // 手指落在胶囊上方空白处也能抓取。
-    //
-    // 下沿向下扩 10px：这部分可能与系统全面屏手势区重叠，
-    // 但触控是否命中应由手指落点决定，不能砍掉可扩展区域。
-    final capsuleRect = _rectOf(_capsuleVisualKey);
-    if (capsuleRect == null) return;
+    // 常规态：视觉上导航条与圆点只有 10px 高、难以按中，因此
+    // 在不改变外观和位置的前提下，上下方向共用同一条扩大的隐形
+    // 触控区（向上 32、向下 10）；横向则分别划定：
+    //   · 导航条：热区 = 自身长度，不横向扩展；
+    //   · 圆  点：热区 = 自身直径的 2 倍（以圆点为中心）。
+    final geometry = _navGeometry();
 
-    final hitRect = Rect.fromLTRB(
-      capsuleRect.left - 24,
-      capsuleRect.top - 32,
-      capsuleRect.right + 8,
-      capsuleRect.bottom + 10,
+    // 纵向共用的上下边界。
+    final zoneTop = geometry.bar.top - 32;
+    final zoneBottom = geometry.bar.bottom + 10;
+
+    Rect dotZone(Rect dot) => Rect.fromCenter(
+          center: dot.center,
+          width: dot.width * 2,
+          height: zoneBottom - zoneTop,
+        );
+
+    // 圆点优先（其热区与导航条热区仅相接、不重叠）。
+    if (dotZone(geometry.leftDot).contains(event.position)) {
+      _fireNavDot(-1);
+      return;
+    }
+    if (dotZone(geometry.rightDot).contains(event.position)) {
+      _fireNavDot(1);
+      return;
+    }
+
+    final barHitRect = Rect.fromLTRB(
+      geometry.bar.left,
+      zoneTop,
+      geometry.bar.right,
+      zoneBottom,
     );
-    if (hitRect.contains(event.position)) {
+    if (barHitRect.contains(event.position)) {
       _beginCapsuleGrab(event);
     }
   }
 
-  /// 读取某 key 对应组件的全局矩形。
-  Rect? _rectOf(GlobalKey key) {
-    final box = key.currentContext?.findRenderObject();
-    if (box is! RenderBox || !box.hasSize) return null;
-    return box.localToGlobal(Offset.zero) & box.size;
+  /// 端点圆点按下：立即翻一页并振动，圆点短暂呈按下色。
+  void _fireNavDot(int direction) {
+    Haptics.tick();
+    _nav.stepPage(direction);
+    setState(() => _pressedDot = direction);
+    Timer(const Duration(milliseconds: 200), () {
+      if (mounted && _pressedDot == direction) {
+        setState(() => _pressedDot = null);
+      }
+    });
   }
 
   /// 胶囊常规态按下：开始一次手势的生命周期（方向待定）。
@@ -330,7 +347,7 @@ class _SmartNavScreenState extends State<SmartNavScreen>
     }
 
     if (gesture.isQuick) {
-      _updateQuickSelection(event.position.dx);
+      _updateQuickSelection(event.position);
       return;
     }
 
@@ -361,18 +378,30 @@ class _SmartNavScreenState extends State<SmartNavScreen>
     });
   }
 
-  /// 快捷弧上根据手指横坐标更新选中项。
-  void _updateQuickSelection(double globalX) {
-    final threshold0 = (_quickPositions[0].dx + _quickPositions[1].dx) / 2;
-    final threshold1 = (_quickPositions[1].dx + _quickPositions[2].dx) / 2;
-    final next = globalX < threshold0
-        ? 0
-        : globalX > threshold1
-            ? 2
-            : 1;
+  /// 快捷操作按钮直径（与 QuickActionArc 中 40×40 保持一致）。
+  static const double _quickButtonDiameter = 40;
+
+  /// 按钮热区半径：热区直径 = 按钮直径的 2 倍，故半径 = 按钮直径。
+  static const double _quickHotRadius = _quickButtonDiameter;
+
+  /// 快捷弧上根据手指位置更新选中项。
+  ///
+  /// 取距离最近的按钮：在热区半径内则选中，否则选中项为 -1
+  /// （无高亮）——让用户看到自己可以「反悔」。
+  void _updateQuickSelection(Offset position) {
+    var nearest = -1;
+    var nearestDistance = double.infinity;
+    for (var i = 0; i < _quickPositions.length; i++) {
+      final distance = (position - _quickPositions[i]).distance;
+      if (distance < nearestDistance) {
+        nearestDistance = distance;
+        nearest = i;
+      }
+    }
+    final next = nearestDistance <= _quickHotRadius ? nearest : -1;
 
     if (next != _quickSelection) {
-      Haptics.tick();
+      if (next >= 0) Haptics.tick();
       setState(() => _quickSelection = next);
     }
   }
@@ -382,7 +411,11 @@ class _SmartNavScreenState extends State<SmartNavScreen>
   // ================================================================
 
   void _handleRootPointerUp(PointerUpEvent event) {
-    _releaseGesture(event.pointer, cancelled: false, globalX: event.position.dx);
+    _releaseGesture(
+      event.pointer,
+      cancelled: false,
+      globalPosition: event.position,
+    );
   }
 
   void _handleRootPointerCancel(PointerCancelEvent event) {
@@ -393,8 +426,9 @@ class _SmartNavScreenState extends State<SmartNavScreen>
   void _releaseGesture(
     int pointer, {
     required bool cancelled,
-    double? globalX,
+    Offset? globalPosition,
   }) {
+    final globalX = globalPosition?.dx;
     final gesture = _gesture;
     if (gesture == null || pointer != gesture.pointer) return;
 
@@ -404,7 +438,14 @@ class _SmartNavScreenState extends State<SmartNavScreen>
 
     // 快捷操作弧：触发或直接收起。
     if (gesture.isQuick) {
-      _quickArcKey.currentState?.dismiss(fire: !cancelled);
+      // 仅当松手时手指仍停在某按钮热区内才触发，
+      // 否则直接收起（用户反悔）。
+      final fire = !cancelled &&
+          globalPosition != null &&
+          _quickSelection >= 0 &&
+          (globalPosition - _quickPositions[_quickSelection]).distance <=
+              _quickHotRadius;
+      _quickArcKey.currentState?.dismiss(fire: fire);
       return;
     }
 
@@ -439,20 +480,77 @@ class _SmartNavScreenState extends State<SmartNavScreen>
   }
 
   // ================================================================
-  //  几何计算
+  //  几何计算（全部由 MediaQuery + SearchCapsule 静态常量推算）
   // ================================================================
 
-  /// 屏幕横坐标 → 页位置（双击直达用，滑块行程 = 半屏 - 滑块宽）。
-  double _pageAtX(double globalX) {
-    final screenWidth = MediaQuery.sizeOf(context).width;
-    final capsuleWidth = screenWidth / 2;
-    final thumbWidth = capsuleWidth * 0.24;
-    final capsuleLeft = screenWidth - 14 - capsuleWidth;
+  /// 常规态导航组件的三个可视矩形：导航条、左圆点、右圆点。
+  ///
+  /// 整体右对齐（右边距 14）、底边距 16；圆点与导航条等高 10，
+  /// 圆点与导航条间距 5。
+  ({Rect bar, Rect leftDot, Rect rightDot}) _navGeometry() {
+    final size = MediaQuery.sizeOf(context);
+    final safeBottom = MediaQuery.paddingOf(context).bottom;
 
-    final center = (globalX - capsuleLeft)
-        .clamp(thumbWidth / 2, capsuleWidth - thumbWidth / 2);
+    final assemblyWidth = SearchCapsule.assemblyWidthFor(size.width);
+    final barWidth = SearchCapsule.barWidthFor(size.width);
+
+    final top = size.height -
+        safeBottom -
+        SearchCapsule.bottomMargin -
+        SearchCapsule.barHeight;
+    final right = size.width - SearchCapsule.sideMargin;
+
+    final leftDot = Rect.fromLTWH(
+      right - assemblyWidth,
+      top,
+      SearchCapsule.dotDiameter,
+      SearchCapsule.barHeight,
+    );
+    final rightDot = Rect.fromLTWH(
+      right - SearchCapsule.dotDiameter,
+      top,
+      SearchCapsule.dotDiameter,
+      SearchCapsule.barHeight,
+    );
+    final barRight = right -
+        SearchCapsule.dotDiameter -
+        SearchCapsule.dotGap;
+    final bar = Rect.fromLTWH(
+      barRight - barWidth,
+      top,
+      barWidth,
+      SearchCapsule.barHeight,
+    );
+    return (bar: bar, leftDot: leftDot, rightDot: rightDot);
+  }
+
+  /// 搜索态全宽胶囊的可视矩形（高 44，底边距 16）。
+  Rect _searchCapsuleRect() {
+    final size = MediaQuery.sizeOf(context);
+    final safeBottom = MediaQuery.paddingOf(context).bottom;
+
+    final bottom =
+        size.height - safeBottom - SearchCapsule.bottomMargin;
+    return Rect.fromLTRB(
+      SearchCapsule.sideMargin,
+      bottom - SearchCapsule.searchHeight,
+      size.width - SearchCapsule.sideMargin,
+      bottom,
+    );
+  }
+
+  /// 屏幕横坐标 → 页位置（双击直达用，以缩短后的导航条为行程）。
+  double _pageAtX(double globalX) {
+    final barRect = _navGeometry().bar;
+
+    final barWidth = barRect.width;
+    // 与 _thumb 的滑块宽度保持同一规则：导航条长度 / 页面数。
+    final thumbWidth = barWidth / _destinations.length;
+
+    final center = (globalX - barRect.left)
+        .clamp(thumbWidth / 2, barWidth - thumbWidth / 2);
     return (center - thumbWidth / 2) /
-        (capsuleWidth - thumbWidth) *
+        (barWidth - thumbWidth) *
         (_destinations.length - 1);
   }
 
@@ -464,10 +562,11 @@ class _SmartNavScreenState extends State<SmartNavScreen>
     final size = MediaQuery.sizeOf(context);
     final safeBottom = MediaQuery.paddingOf(context).bottom;
 
-    final capsuleWidth = size.width / 2;
-    final centerX = size.width - 14 - capsuleWidth / 2;
-    // 胶囊位置保持原样（底边距 16）。
-    final centerY = size.height - safeBottom - 21;
+    final assemblyWidth = SearchCapsule.assemblyWidthFor(size.width);
+    final centerX =
+        size.width - SearchCapsule.sideMargin - assemblyWidth / 2;
+    final centerY =
+        size.height - safeBottom - SearchCapsule.bottomMargin - 5;
 
     const radius = 108.0;
     const anglesDeg = [205.0, 258.0, 311.0];
@@ -537,6 +636,17 @@ class _SmartNavScreenState extends State<SmartNavScreen>
               ),
             ),
 
+            // -------- 搜索态：全屏隐形 scrim（点外部关闭搜索）--------
+            // 位于胶囊/结果/历史之下：点空白区命中 scrim 即关闭；
+            // 点结果等上层组件时事件不会落到 scrim。
+            if (_nav.isSearching)
+              Positioned.fill(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: _exitSearch,
+                ),
+              ),
+
             // -------- 快捷操作弧 --------
             if (_quickArcShown)
               QuickActionArc(
@@ -583,13 +693,12 @@ class _SmartNavScreenState extends State<SmartNavScreen>
               right: 14,
               bottom: 16 + safeBottom,
               child: SearchCapsule(
-                key: _capsuleClusterKey,
                 controller: _nav,
                 screenWidth: screenSize.width,
                 pressed: _capsulePressed,
+                pressedDot: _pressedDot,
                 focusNode: _searchFocusNode,
                 textController: _searchTextController,
-                visualKey: _capsuleVisualKey,
                 historyItems: _searchHistory.items,
                 results: _searchResults,
                 query: _searchQuery,

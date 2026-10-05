@@ -21,9 +21,9 @@ class SearchCapsule extends StatelessWidget {
     required this.controller,
     required this.screenWidth,
     required this.pressed,
+    required this.pressedDot,
     required this.focusNode,
     required this.textController,
-    required this.visualKey,
     required this.historyItems,
     required this.results,
     required this.query,
@@ -38,15 +38,14 @@ class SearchCapsule extends StatelessWidget {
   /// 屏幕宽度（搜索态宽度 = screenWidth - 28）。
   final double screenWidth;
 
-  /// 常规态胶囊是否处于按下态。
+  /// 常规态导航条是否处于按下态。
   final bool pressed;
+
+  /// 当前处于按下色态的端点圆点：-1 左 / 1 右 / null 无。
+  final int? pressedDot;
 
   final FocusNode focusNode;
   final TextEditingController textController;
-
-  /// 胶囊可视本体的 key：父级据此取得真实几何，
-  /// 计算放大后的触控热区。
-  final Key visualKey;
 
   /// 最近搜索历史条目。
   final List<String> historyItems;
@@ -68,6 +67,31 @@ class SearchCapsule extends StatelessWidget {
 
   /// 提交搜索（键盘搜索键）。
   final ValueChanged<String> onSubmitted;
+
+  // 几何常量（逻辑像素）：父级计算隐形热区时共用同一来源，
+  // 不再通过 GlobalKey 实时取矩形。
+  //
+  // 常规态整体 = 圆点(10) + 间距(5) + 导航条(W-30) + 间距(5) + 圆点(10)，
+  // 整体宽度为半屏宽；搜索态为全宽（screenWidth - 28）、高 44。
+  static const double sideMargin = 14;
+  static const double bottomMargin = 16;
+  static const double barHeight = 10;
+  static const double dotDiameter = 10;
+  static const double dotGap = dotDiameter / 2;
+  static const double searchHeight = 44;
+
+  /// 常规态圆点 + 导航条整体的宽度（半屏宽）。
+  static double assemblyWidthFor(double screenWidth) => screenWidth / 2;
+
+  /// 缩短后的导航条宽度。
+  static double barWidthFor(double screenWidth) =>
+      screenWidth / 2 - 2 * dotDiameter - 2 * dotGap;
+
+  /// 圆点 + 导航条整体的宽度。
+  double get _assemblyWidth => screenWidth / 2;
+
+  /// 缩短后的导航条宽度。
+  double get _barWidth => barWidthFor(screenWidth);
 
   @override
   Widget build(BuildContext context) {
@@ -102,24 +126,52 @@ class SearchCapsule extends StatelessWidget {
             ),
             Align(
               alignment: Alignment.centerRight,
-              child: Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  _buildCapsule(searching),
-                  // 倒计时边框仅在 open 态（未输入）显示。
-                  if (controller.searchState == SearchState.open)
-                    Positioned(
-                      left: -2,
-                      top: -2,
-                      right: -2,
-                      bottom: -2,
-                      child: CustomPaint(
-                        painter: FuseBorderPainter(
-                          progress: controller.fuseProgress,
-                        ),
+              // 常规态与搜索态共用同一棵子树（胶囊始终是 Row 里的
+              // Expanded），几何全部由静态常量推算，不使用 GlobalKey。
+              // 尺寸变化交给外层 AnimatedSize 做平滑生长。
+              child: AnimatedSize(
+                duration: const Duration(milliseconds: 350),
+                curve: Curves.easeOutCubic,
+                // 右、下边缘固定：展开时向左上方生长。
+                alignment: Alignment.bottomRight,
+                child: SizedBox(
+                  width: searching ? screenWidth - 28 : _assemblyWidth,
+                  height: searching ? searchHeight : barHeight,
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      Row(
+                        children: [
+                          // 圆点仅常规态存在（搜索态随空位一并移除）。
+                          if (!searching)
+                            _NavDot(pressed: pressedDot == -1),
+                          if (!searching)
+                            const SizedBox(width: dotGap),
+                          Expanded(child: _buildCapsule(searching)),
+                          if (!searching)
+                            const SizedBox(width: dotGap),
+                          if (!searching)
+                            _NavDot(pressed: pressedDot == 1),
+                        ],
                       ),
-                    ),
-                ],
+                      // 倒计时边框仅 open 态（未输入）显示，
+                      // 贴住生长中的胶囊外沿。
+                      if (searching &&
+                          controller.searchState == SearchState.open)
+                        Positioned(
+                          left: -2,
+                          top: -2,
+                          right: -2,
+                          bottom: -2,
+                          child: CustomPaint(
+                            painter: FuseBorderPainter(
+                              progress: controller.fuseProgress,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
               ),
             ),
           ],
@@ -128,17 +180,16 @@ class SearchCapsule extends StatelessWidget {
     );
   }
 
-  /// 胶囊本体：常规态窄条 / 搜索态全宽框，尺寸由隐式动画过渡。
+  /// 胶囊本体：常规态窄条 / 搜索态全宽框。
   ///
-  /// 注意：这里不挂手势监听。常规态按下判定由父级用 [visualKey]
-  /// 取真实矩形后，在放大的热区内统一处理。
+  /// 这里不挂手势监听，也不挂 key：常规态按下判定由父级按
+  /// 静态几何常量推算出的隐形热区统一处理。
   Widget _buildCapsule(bool searching) {
     return AnimatedContainer(
-      key: visualKey,
       duration: const Duration(milliseconds: 350),
       curve: Curves.easeOutCubic,
-      width: searching ? screenWidth - 28 : screenWidth / 2,
-      height: searching ? 44 : 10,
+      width: searching ? screenWidth - 28 : _barWidth,
+      height: searching ? searchHeight : barHeight,
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         color: searching
@@ -162,13 +213,16 @@ class SearchCapsule extends StatelessWidget {
     );
   }
 
-  /// 常规态胶囊里的位置滑块。
+  /// 常规态导航条里的位置滑块（行程以缩短后的导航条为准）。
   Widget _thumb() {
     // 滑块位置：页码 0 在最左、末页在最右（显示位置夹在合法区间），
     // 与页面轨道/滚筒同步呈现吸附节奏。
     final clampedP =
         controller.displayPosition.clamp(0, controller.pageCount - 1);
-    final travel = screenWidth / 2 - screenWidth / 2 * 0.24;
+    // 滑块宽度 = 导航条长度 / 页面数：除了当前位置，也能大致反映
+    // 页面总数（今后支持用户自定义页面时会随之自动变化）。
+    final thumbWidth = _barWidth / controller.pageCount;
+    final travel = _barWidth - thumbWidth;
     final left = clampedP / (controller.pageCount - 1) * travel;
 
     return Stack(
@@ -177,7 +231,7 @@ class SearchCapsule extends StatelessWidget {
           left: left,
           top: 0,
           bottom: 0,
-          width: screenWidth / 2 * 0.24,
+          width: thumbWidth,
           child: DecoratedBox(
             decoration: BoxDecoration(
               color: pressed
@@ -423,6 +477,30 @@ class _HistoryChipState extends State<_HistoryChip> {
                 : Colors.white.withValues(alpha: 0.52),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// 导航条两端的翻页圆点。
+///
+/// 视觉为直径 10 的实心圆：默认色 = 导航条颜色（白 α0.16），
+/// 按下色 = 拇指滑块颜色（白 α0.42）。
+/// 自身不响应手势，热区与触发由父级 [SmartNavScreen] 统一处理。
+class _NavDot extends StatelessWidget {
+  const _NavDot({required this.pressed});
+
+  /// 是否处于按下色态。
+  final bool pressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: SearchCapsule.dotDiameter,
+      height: SearchCapsule.dotDiameter,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: Colors.white.withValues(alpha: pressed ? 0.42 : 0.16),
       ),
     );
   }

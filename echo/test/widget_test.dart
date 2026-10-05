@@ -50,7 +50,7 @@ void main() {
     expect(find.text('暂无最近搜索'), findsOneWidget);
 
     // 点击搜索框聚焦（倒计时取消），输入「聊天」
-    await tester.tapAt(const Offset(400, 560));
+    await tester.tapAt(const Offset(500, 560));
     await tester.pump(const Duration(milliseconds: 200));
     await tester.enterText(find.byType(TextField), '聊天');
     await tester.pump();
@@ -129,5 +129,29 @@ void main() {
       0,
       reason: '上甩时滚筒应立即关闭',
     );
+  });
+
+  testWidgets('点击右端圆点：按下即翻到聊天页', (tester) async {
+    // 表面 800×600：整体导航位于 x 400..800、y 574..584。
+    await tester.pumpWidget(const EchoApp());
+    await tester.pump();
+
+    final chatPageText = find.descendant(
+      of: find.byType(TemplatePage).at(1),
+      matching: find.byType(Text),
+    );
+    expect(tester.getCenter(chatPageText).dx, greaterThan(800));
+
+    // 右圆点中心≈(781, 579)，热区 20 宽；点其热区（按下即触发）
+    await tester.tapAt(const Offset(781, 560));
+
+    // 等待吸附落位
+    double pageCenterX() => tester.getCenter(chatPageText).dx;
+    var settled = false;
+    for (var i = 0; i < 300 && !settled; i++) {
+      await tester.pump(const Duration(milliseconds: 16));
+      settled = (pageCenterX() - 400).abs() < 0.5;
+    }
+    expect(pageCenterX(), closeTo(400, 0.5));
   });
 }

@@ -105,6 +105,10 @@ class NavPhysicsController extends ChangeNotifier {
   /// 当前激活页（四舍五入后的页号）。
   int activePage = 0;
 
+  /// 程序化翻页（端点圆点）期间静音激活页变化回调：
+  /// 触感由调用方自行负责，避免一次点击产生两次震动。
+  bool _muteActivePageCallback = false;
+
   // ==================== 滚筒显隐 ====================
 
   /// 滚筒（及页名标签）是否可见。
@@ -271,6 +275,17 @@ class NavPhysicsController extends ChangeNotifier {
   int nearestPage(double value) =>
       value.clamp(0, pageCount - 1).round();
 
+  /// 端点圆点按下：向 [delta]（-1 左 / +1 右）切换一页。
+  ///
+  /// 已在边界时保持不动；本次运动期间静音激活页回调，
+  /// 触感由调用方（圆点）负责。
+  void stepPage(int delta) {
+    final destination = (activePage + delta).clamp(0, pageCount - 1);
+    if (destination == activePage) return;
+    _muteActivePageCallback = true;
+    snapTo(destination);
+  }
+
   /// 渲染用橡胶带：越界部分压缩 70%，最多溢出 0.35 页。
   double rubberized(double value) {
     if (value < 0) {
@@ -358,12 +373,16 @@ class NavPhysicsController extends ChangeNotifier {
     }
   }
 
-  /// 根据当前位置更新激活页，变化时触发回调。
+  /// 根据当前位置更新激活页，变化时触发回调
+  /// （程序化翻页时静音，见 [_muteActivePageCallback]）。
   void _updateActivePage() {
     final next = nearestPage(position);
     if (next != activePage) {
       activePage = next;
-      onActivePageChanged?.call(next);
+      if (!_muteActivePageCallback) {
+        onActivePageChanged?.call(next);
+      }
+      _muteActivePageCallback = false;
     }
   }
 

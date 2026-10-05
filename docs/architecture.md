@@ -45,7 +45,7 @@ echo/
 │           └── widgets/
 │               ├── nav_roller.dart        # 滚筒指示器 + 页名标签
 │               ├── quick_action_arc.dart  # 快捷操作弧
-│               ├── search_capsule.dart    # 胶囊本体 + 搜索面板
+│               ├── search_capsule.dart    # 导航条 + 翻页圆点 + 搜索面板
 │               └── fuse_border_painter.dart # 倒计时边框
 ├── test/
 │   └── widget_test.dart                   # Widget 测试
@@ -122,13 +122,39 @@ Android 端走原生 `Vibrator` 服务（通道 `echo/haptics`，见
 文件：`lib/src/navigation/nav_physics.dart`
 
 持有页面位置 `position`（线性物理位置）、速度、搜索状态
-（`closed/open/input`）、倒计时进度 `fuseProgress`、滚筒可见性。
+（`off/open/input`）、倒计时进度 `fuseProgress`、滚筒可见性。
 继承 `ChangeNotifier`，组件通过 `AnimatedBuilder` 监听刷新。
 
 渲染一律使用 `displayPosition`（橡胶带 + 页内磁力曲线）：靠近整页
 粘滞、两页之间滑落，整数位置严格不变；物理层始终保持线性，两层分离。
 物理参数（fling 衰减、snap 弹簧、越界橡胶带、速度增益、磁力曲线）
 均为已验收取值，非必要不调整。页面数量变化时需重新评估增益范围。
+
+程序化翻页接口：`stepPage(delta)` 供两端翻页圆点调用（-1 / +1），
+边界页不动；调用期间以 `_muteActivePageCallback` 静音激活页回调，
+触感由调用方负责，避免一次点击双震。
+
+### 3.6 几何与热区规则
+
+常规态组件几何不在运行时用 GlobalKey 测量（冷启动首帧负载高时
+GlobalKey 重挂载曾触发框架断言），而是由 `SearchCapsule` 的静态
+常量与 `MediaQuery` 推算（见 `smart_nav_screen.dart` 的
+`_navGeometry()` / `_searchCapsuleRect()`），视觉与命中共用同一
+事实来源：
+
+- **尺寸**：圆点直径 = 导航条高度 = 10；导航条与圆点间距 = 5
+  （一个半径）；常规态整体宽 = 半屏宽（两端加圆点后导航条相应
+  缩短，总长度不变）；圆点默认色 = 导航条色（白 α0.16），按下色 =
+  拇指滑块色（白 α0.42）。
+- **纵向热区**：导航条与圆点共用，向上 32、向下 10。
+- **横向热区**：导航条 = 自身长度（不扩展）；圆点 = 自身直径的
+  2 倍（以圆点为中心），圆点优先判定。
+- **拇指滑块**：宽度 = 导航条长度 / 页面数——除当前位置外也大致
+  反映总页数；双击直达的 `_pageAtX()` 遵循同一宽度规则。
+- **快捷弧**：每个操作项热区 = 按钮直径的 2 倍；手指不在任何热区
+  内时选中项为 -1（无高亮），松手不触发、直接收起（可反悔）。
+- **搜索态点外部关闭**：由铺在底层的全屏隐形 scrim 处理，
+  不再需要包围整簇的 GlobalKey。
 
 ---
 
