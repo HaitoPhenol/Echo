@@ -380,6 +380,16 @@ class NavPhysicsController extends ChangeNotifier {
     }
   }
 
+  /// 立即隐藏滚筒与页名标签（手势中途切换为上甩时调用，
+  /// 避免快捷操作弧直接叠在滚筒上）。
+  void hideRoller() {
+    _rollerHideTimer?.cancel();
+    if (rollerVisible) {
+      rollerVisible = false;
+      notifyListeners();
+    }
+  }
+
   /// 落位后延时隐藏滚筒（原型延时 650ms）。
   void scheduleRollerHide() {
     _rollerHideTimer?.cancel();

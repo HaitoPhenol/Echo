@@ -12,7 +12,7 @@
 | **智能导航线 / 导航线** | 整套底部手势导航体系的总称 | `navigation/` |
 | **胶囊** | 屏幕右下角的圆角小条，导航线的本体；常规态视觉上仅 10px 高 | `widgets/search_capsule.dart` |
 | **拇指滑块** | 胶囊内部的白色小块，位置代表当前页，随手指移动 | `search_capsule.dart` 的 `_thumb()` |
-| **隐形触控区** | 胶囊上方约 50px 高的不可见热区，视觉不变但更好按中；下沿不超出胶囊以免撞系统手势 | `smart_nav_screen.dart` 的 `_capsuleHitRect` |
+| **隐形触控区** | 胶囊上方约 50px、下方约 10px 的不可见热区，视觉不变但更好按中；下方可能与系统手势区重叠，但保留完整命中区域 | `smart_nav_screen.dart` 的 `_capsuleHitRect` |
 | **滚筒 / 滚筒指示器** | 拖动时在胶囊上方浮现的圆角胶囊，内含各页页标 | `widgets/nav_roller.dart` |
 | **页标** | 滚筒内每一页的小圆标，当前显示数字；有图标后显示图标 | `nav_roller.dart` 的 `_RollerDot` |
 | **中央刻度** | 滚筒正中央的固定标记，页标对齐它即表示选中该页 | `nav_roller.dart` |

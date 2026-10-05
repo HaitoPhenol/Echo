@@ -242,8 +242,8 @@ class _SmartNavScreenState extends State<SmartNavScreen>
     // 外观和位置的前提下，把触控热区向上扩大为约 50px 高的隐形条，
     // 手指落在胶囊上方空白处也能抓取。
     //
-    // 注意：下沿不向下扩——底部边缘是安卓全面屏手势区，
-    // 从过低处开始上甩会被系统识别为「回桌面」。
+    // 下沿向下扩 10px：这部分可能与系统全面屏手势区重叠，
+    // 但触控是否命中应由手指落点决定，不能砍掉可扩展区域。
     final capsuleRect = _rectOf(_capsuleVisualKey);
     if (capsuleRect == null) return;
 
@@ -251,7 +251,7 @@ class _SmartNavScreenState extends State<SmartNavScreen>
       capsuleRect.left - 24,
       capsuleRect.top - 32,
       capsuleRect.right + 8,
-      capsuleRect.bottom,
+      capsuleRect.bottom + 10,
     );
     if (hitRect.contains(event.position)) {
       _beginCapsuleGrab(event);
@@ -351,6 +351,8 @@ class _SmartNavScreenState extends State<SmartNavScreen>
     gesture.moved = true;
     gesture.isQuick = true;
     _holdTimer?.cancel();
+    // 横滑中途改上甩时，滚筒可能正显示着，立即关闭以免与快捷弧重叠。
+    _nav.hideRoller();
     setState(() {
       _capsulePressed = false;
       _computeQuickPositions();

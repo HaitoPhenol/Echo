@@ -3,6 +3,8 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:echo/src/app/echo_app.dart';
 import 'package:echo/src/navigation/smart_nav_screen.dart';
+import 'package:echo/src/navigation/widgets/nav_roller.dart';
+import 'package:echo/src/navigation/widgets/quick_action_arc.dart';
 import 'package:echo/src/pages/template_page.dart';
 
 void main() {
@@ -68,5 +70,64 @@ void main() {
       settled = (pageCenterX() - 400).abs() < 0.5;
     }
     expect(pageCenterX(), closeTo(400, 0.5));
+  });
+
+  testWidgets('横滑松手后立即上甩：滚筒先关闭，快捷弧不叠加',
+      (tester) async {
+    await tester.pumpWidget(const EchoApp());
+    await tester.pump();
+
+    // 滚筒整体显隐用的最外层 AnimatedOpacity
+    Finder rollerOpacity() => find
+        .descendant(
+          of: find.byType(NavRoller),
+          matching: find.byType(AnimatedOpacity),
+        )
+        .first;
+
+    // ---- 第一次手势：横滑（滚筒出现）后松手 ----
+    final g1 = await tester.createGesture();
+    await g1.down(const Offset(600, 560));
+    await tester.pump();
+    // 分段左移（触发横滑方向锁定，累计约 120px）
+    await g1.moveTo(const Offset(590, 560));
+    await g1.moveTo(const Offset(560, 560));
+    await g1.moveTo(const Offset(530, 560));
+    await g1.moveTo(const Offset(500, 560));
+    await g1.moveTo(const Offset(480, 560));
+    await tester.pump();
+    expect(
+      tester.widget<AnimatedOpacity>(rollerOpacity()).opacity,
+      1,
+      reason: '横滑中滚筒应可见',
+    );
+
+    await g1.up();
+    // 等待吸附落位（弹簧约 0.4s 内完成）
+    for (var i = 0; i < 30; i++) {
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    // 落位后 650ms 内滚筒仍显示
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(
+      tester.widget<AnimatedOpacity>(rollerOpacity()).opacity,
+      1,
+      reason: '落位后短时间内滚筒仍应可见',
+    );
+
+    // ---- 第二次手势：立即上甩 ----
+    final g2 = await tester.createGesture();
+    await g2.down(const Offset(600, 560));
+    await tester.pump();
+    await g2.moveTo(const Offset(600, 528));
+    await tester.pump();
+
+    // 快捷弧显示，且滚筒已被立即关闭
+    expect(find.byType(QuickActionArc), findsOneWidget);
+    expect(
+      tester.widget<AnimatedOpacity>(rollerOpacity()).opacity,
+      0,
+      reason: '上甩时滚筒应立即关闭',
+    );
   });
 }
