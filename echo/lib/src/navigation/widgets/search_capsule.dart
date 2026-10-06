@@ -8,9 +8,6 @@ import '../../theme/app_colors.dart';
 import '../nav_physics.dart';
 import 'fuse_border_painter.dart';
 
-/// 按下态（按住圆点翻页）颜色：近黑（inverse α.94）。
-final Color _pressedChrome = AppColors.inverse.withValues(alpha: 0.94);
-
 /// 滑块常态填充色：**不透明灰** 0xFF838383（131/255≈.514），视觉
 /// 与旧的「tone1 条底（白 α.16）上叠 tone2 滑块（白 α.42）」合成
 /// 结果一致——合成白量 = 0.16 + (1−0.16)×0.42 ≈ 0.513。
@@ -1115,7 +1112,7 @@ class _NavAnchorState extends State<_NavAnchor>
 /// 导航条两端的翻页圆点。
 ///
 /// 视觉为直径 10 的实心圆：默认色 = 导航条颜色（白 α0.16），
-/// 按下色 = 统一按压色（近白 α0.94）。
+/// 按下色 = 滑块常态颜色 tone2（白 α0.42）。
 /// 自身不响应手势，热区与触发由父级 [SmartNavScreen] 统一处理。
 class _NavDot extends StatelessWidget {
   const _NavDot({required this.pressed});
@@ -1130,7 +1127,7 @@ class _NavDot extends StatelessWidget {
       height: SearchCapsule.dotDiameter,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        color: pressed ? _pressedChrome : AppColors.tone1,
+        color: pressed ? AppColors.tone2 : AppColors.tone1,
       ),
     );
   }
