@@ -11,7 +11,7 @@ import '../dock_geometry.dart';
 /// AnimationController 吸附），本组件只负责呈现：
 /// - 全屏遮罩：黑 α.44 随进度淡入，点按关闭抽屉；
 /// - 抽屉面板：宽 min(78vw,340)，右侧 22px 圆角、深色表面叠 18px
-///   毛玻璃、右缘细描边，内容**留空**（本阶段不承载任何东西）。
+///   毛玻璃，内容**留空**（本阶段不承载任何东西）。
 ///
 /// 面板整体 [IgnorePointer]：内部无交互物，点按穿透到遮罩 → 关闭。
 /// 把手条自身（在本组件之上）始终可拖，是关闭抽屉的主手势。
@@ -76,14 +76,12 @@ class SideDrawer extends StatelessWidget {
                               child: const SizedBox.expand(),
                             ),
                           ),
-                          // 深色表面 + 右缘描边。
-                          Positioned.fill(
+                          // 深色表面（不画右缘描边：圆角侧的 1px 线在
+                          // 深色背景上呈现为突兀的竖线，圆角本身已足够分界）。
+                          const Positioned.fill(
                             child: DecoratedBox(
-                              decoration: const BoxDecoration(
+                              decoration: BoxDecoration(
                                 color: AppColors.drawerSurface,
-                                border: Border(
-                                  right: BorderSide(color: AppColors.tone1),
-                                ),
                               ),
                             ),
                           ),
