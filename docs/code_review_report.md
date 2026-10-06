@@ -6,6 +6,13 @@
 > 的改动（胶囊边框/圆角、锚点物理遮挡、按压链路回退）只影响本报告 P1-01
 > 与 P2-11 两处，已就地标注；其余 P0/P1/P2 条目涉及的代码在这四版中未变动，
 > 结论继续有效。
+> **v0.5.0 复核**：git `1ecec32`（v0.5.0+23，底部三条/AI 对话框/侧边抽屉，
+> +2835/-283 行）。门禁通过：analyze 零问题、test 11/11。两个 P0 已在
+> v0.4.11/12 解决（见下）；P1-03 部分改善（弧按钮按 actions.length 生成，
+> 但 `_computeQuickPositions` 角度仍写死 3 个，数量联动仍不完整）；
+> P1-02、P1-04、P1-05 经代码核对仍然成立。v0.5.0 新增约 1800 行
+> （含 807 行 smart_nav_screen 增量）的完整例行审查待安排，
+> 本次仅做门禁与旧条目复核。
 > **审查范围**：`echo/lib` 全部 Dart 源码（14 个文件，约 2 700 行）、`test/`、
 > Android 原生侧、`docs/`、工程配置。`ideas/smart_line.html` 为设计基准，不在审查范围。
 > **审查方法**：逐文件人工阅读 + `flutter analyze`（零问题）+ `flutter test`（5/5 通过）+
@@ -125,6 +132,12 @@ v0.4.10 圆点按压色回退为 tone1→tone2（白 α.42），近黑常量 `_p
 
 ### P1-02 多指触控存在竞态：第二指可劫持/穿越当前手势 —— 置信度：确定
 
+> **v0.5.0 复核**：仍开放。唯一手势槽 `_DragGesture? _gesture`
+> 仍只有一个（[smart_nav_screen.dart:133](file:///home/phenol/Documents/GitHub/Echo/echo/lib/src/navigation/smart_nav_screen.dart#L133)），
+> 未见第二指针忽略逻辑。v0.5.0 新增的只是**浮层互斥**（竖单打开时长按
+> AI 条不弹对话框，已有测试），与本条的"横滑中点圆点/多指抢导航条"
+> 是不同路径。
+
 **位置**：
 [smart_nav_screen.dart:84](file:///home/phenol/Documents/GitHub/Echo/echo/lib/src/navigation/smart_nav_screen.dart#L84)
 （只有一个 `_gesture` 槽）、
@@ -154,9 +167,17 @@ v0.4.10 圆点按压色回退为 tone1→tone2（白 α.42），近黑常量 `_p
 
 ---
 
-### P1-03 快捷弧"操作数量 = 3"被三处隐式写死，无断言保护 —— 置信度：确定
+### P1-03 快捷弧"操作数量 = 3"仍有硬编码（v0.5.0 部分改善） —— 置信度：确定
 
-**位置/证据**：
+> **v0.5.0 复核**：弧按钮渲染已改为 `List.generate(widget.actions.length, i)`
+> （[quick_action_arc.dart:84](file:///home/phenol/Documents/GitHub/Echo/echo/lib/src/navigation/widgets/quick_action_arc.dart#L84)），
+> "组件层画死 3 个"已消除；但位置几何仍恒定生成 3 个——
+> `_computeQuickPositions()` 的角度 `[205, 258, 311]` 写死
+> （[smart_nav_screen.dart:972-984](file:///home/phenol/Documents/GitHub/Echo/echo/lib/src/navigation/smart_nav_screen.dart#L972-L984)），
+> 与 actions 数量无联动、也无 `actions.length == positions.length` 断言。
+> 改成 2/4 项时仍是越界/空位置的老问题，条目保持开放，范围缩小为几何层。
+
+**原始位置/证据**：
 
 - 弧位置只生成 3 个：[smart_nav_screen.dart:596-597](file:///home/phenol/Documents/GitHub/Echo/echo/lib/src/navigation/smart_nav_screen.dart#L596-L597)
   硬编码半径 108、角度 `[205, 258, 311]`；
@@ -185,6 +206,11 @@ v0.4.10 圆点按压色回退为 tone1→tone2（白 α.42），近黑常量 `_p
 
 ### P1-04 涟漪节点无 Key，连发两次会继承错误动画状态且永久泄漏 —— 置信度：确定
 
+> **v0.5.0 复核**：仍开放。涟漪渲染依旧是
+> `for (final spec in _ripples) Positioned(child: _Ripple(...))`，
+> 无 Key（[smart_nav_screen.dart:1085-1094](file:///home/phenol/Documents/GitHub/Echo/echo/lib/src/navigation/smart_nav_screen.dart#L1085-L1094)）；
+> v0.5.0 竖单复用同一涟漪机制（触发点更多），泄漏面反而扩大。
+
 **位置**：[smart_nav_screen.dart:692-701](file:///home/phenol/Documents/GitHub/Echo/echo/lib/src/navigation/smart_nav_screen.dart#L692-L701)。
 
 **机理**：`for (final spec in _ripples) Positioned(child: _Ripple(...))` 无 key。
@@ -205,6 +231,11 @@ v0.4.10 圆点按压色回退为 tone1→tone2（白 α.42），近黑常量 `_p
 ---
 
 ### P1-05 `SearchCapsule` 中滑块/双击行程在单页时除零产生 NaN —— 置信度：确定
+
+> **v0.5.0 复核**：仍开放。除零式仍在
+> （[search_capsule.dart:338-340](file:///home/phenol/Documents/GitHub/Echo/echo/lib/src/navigation/widgets/search_capsule.dart#L338-L340)，
+> `left = clampedP / (pageCount - 1) * travel` 无 `n <= 1` 防御），
+> `_pageAtX` 同样未见守卫。
 
 **位置**：
 [search_capsule.dart:344-346](file:///home/phenol/Documents/GitHub/Echo/echo/lib/src/navigation/widgets/search_capsule.dart#L344-L346)

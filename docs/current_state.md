@@ -1,6 +1,6 @@
 # Echo 当前实现现状
 
-> 本文件是 **v0.5.0+23（分支 `feat/handle-ai-bars`，已提交未发版）
+> 本文件是 **v0.5.0+23（git `1ecec32`，已合入 main，v0.5.0 tag 待补）
 > 时点的现状快照**——新增把手条 / AI 条 / 侧边抽屉，
 > 记录"今天代码实际是怎么实现的"。这些都不是规定——工具与手段可以换，
 > 但更换时必须满足 [engineering_standards.md](engineering_standards.md) 的原则、
