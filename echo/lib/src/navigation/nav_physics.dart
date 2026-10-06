@@ -54,7 +54,6 @@ class NavPhysicsController extends ChangeNotifier {
     this.onActivePageChanged,
     this.onSettled,
   }) {
-    _clock.start();
     // Ticker 的帧回调指向实例方法，只能在构造函数体中创建。
     _ticker = vsync.createTicker(_handleTick);
   }
@@ -73,20 +72,24 @@ class NavPhysicsController extends ChangeNotifier {
   /// 滚筒中相邻两个页标的间距（逻辑像素）。
   static const double rollerPitch = 54;
 
-  // ==================== 内部时钟与帧回调 ====================
+  // ==================== 帧时间 ====================
 
-  /// 手势速度与倒计时共用的单调时钟。
-  final Stopwatch _clock = Stopwatch();
+  /// 最近一次帧回调的帧时间戳（帧外保持上一帧的值）。
+  Duration _frameStamp = Duration.zero;
 
-  /// 物理循环帧驱动器。
-  late final Ticker _ticker;
-
-  /// 当前时间（秒）。
+  /// 当前时间（秒），取自调度器帧时间戳。
+  ///
+  /// 真机上它与真实时间一致；测试环境中随 `pump` 推进，使速度、
+  /// 倒计时等时间相关行为可以被确定性地测试（真实 Stopwatch 在
+  /// 假异步时钟下反而不可测）。
   double get _now =>
-      _clock.elapsedMicroseconds / Duration.microsecondsPerSecond;
+      _frameStamp.inMicroseconds / Duration.microsecondsPerSecond;
 
   /// 上一物理帧时间，用于计算 dt。
   double _lastTickTime = 0;
+
+  /// 物理循环帧驱动器。
+  late final Ticker _ticker;
 
   // ==================== 页面位置状态 ====================
 
@@ -124,7 +127,10 @@ class NavPhysicsController extends ChangeNotifier {
   /// 倒计时边框剩余进度（1 = 完整，0 = 烧完）。
   double fuseProgress = 1;
 
-  /// 倒计时开始烧蚀的时钟时刻（比展开时刻晚 0.65s 宽限）。
+  /// 倒计时开始烧蚀的帧时刻（比展开时刻晚 0.65s 宽限）。
+  ///
+  /// 惰性初始化于展开后的首个物理帧：[openSearch] 在帧外被调用，
+  /// 此时读到的帧时间戳是过期值（首帧前甚至为 0）。
   double? _fuseBurnStart;
 
   /// 是否处于搜索态（open 或 input）。
@@ -194,7 +200,8 @@ class NavPhysicsController extends ChangeNotifier {
     position = _dragStartPosition + _dragAccumulation;
 
     // 上报速度（页/秒），供松手时判断是否进入惯性滑动。
-    _dragReportVelocity = 0.72 * _dragReportVelocity +
+    _dragReportVelocity =
+        0.72 * _dragReportVelocity +
         0.28 * ((position - _dragLastPosition) / dt);
     _dragLastPosition = position;
 
@@ -242,8 +249,7 @@ class NavPhysicsController extends ChangeNotifier {
   /// f(x) = (-2x³+3x²) + m·(2x³-3x²+x)
   static double _magneticFraction(double x) {
     const m = _magneticEndSlope;
-    return (-2 * x * x * x + 3 * x * x) +
-        m * (2 * x * x * x - 3 * x * x + x);
+    return (-2 * x * x * x + 3 * x * x) + m * (2 * x * x * x - 3 * x * x + x);
   }
 
   /// 磁力曲线在整页处（x=0/1）的斜率。
@@ -272,8 +278,7 @@ class NavPhysicsController extends ChangeNotifier {
   }
 
   /// 把任意位置四舍五入到最近的合法页号。
-  int nearestPage(double value) =>
-      value.clamp(0, pageCount - 1).round();
+  int nearestPage(double value) => value.clamp(0, pageCount - 1).round();
 
   /// 端点圆点按下：向 [delta]（-1 左 / +1 右）切换一页。
   ///
@@ -292,14 +297,14 @@ class NavPhysicsController extends ChangeNotifier {
       return -math.min(-value * 0.3, 0.35);
     }
     if (value > pageCount - 1) {
-      return (pageCount - 1) +
-          math.min((value - (pageCount - 1)) * 0.3, 0.35);
+      return (pageCount - 1) + math.min((value - (pageCount - 1)) * 0.3, 0.35);
     }
     return value;
   }
 
   /// 物理循环：每帧推进位置/速度，并驱动搜索倒计时。
   void _handleTick(Duration elapsed) {
+    _frameStamp = SchedulerBinding.instance.currentFrameTimeStamp;
     final now = _now;
     final dt = (now - _lastTickTime).clamp(0.001, 0.05);
     _lastTickTime = now;
@@ -344,8 +349,10 @@ class NavPhysicsController extends ChangeNotifier {
     }
 
     // 搜索倒计时边框：0.65s 宽限后开始烧，2s 烧完自动收起。
-    if (searchState == SearchState.open && _fuseBurnStart != null) {
-      final burned = now - _fuseBurnStart!;
+    if (searchState == SearchState.open) {
+      // 以首个物理帧的时间为基准惰性记录，避免帧外的过期时间戳。
+      final burnStart = _fuseBurnStart ??= now + 0.65;
+      final burned = now - burnStart;
       if (burned >= 0) {
         final percent = math.max(0.0, 100 - burned * 50);
         fuseProgress = percent / 100;
@@ -430,8 +437,8 @@ class NavPhysicsController extends ChangeNotifier {
     _rollerHideTimer?.cancel();
     rollerVisible = false;
     fuseProgress = 1;
-    // 边框先完整展示 0.65s，再开始 2s 烧蚀。
-    _fuseBurnStart = _now + 0.65;
+    // 烧蚀基准在首个物理帧惰性记录（帧时间戳 + 0.65s 宽限）。
+    _fuseBurnStart = null;
     _ensureTicking();
     notifyListeners();
   }

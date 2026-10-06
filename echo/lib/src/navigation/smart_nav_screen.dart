@@ -38,8 +38,11 @@ class SmartNavScreen extends StatefulWidget {
 
 class _SmartNavScreenState extends State<SmartNavScreen>
     with TickerProviderStateMixin {
-  /// 双击判定窗口（秒）：300ms，与 AOSP ViewConfiguration 一致。
-  static const double _doubleTapWindow = 0.30;
+  /// 双击判定窗口：300ms，与 AOSP ViewConfiguration 一致。
+  static const Duration _doubleTapWindow = Duration(milliseconds: 300);
+
+  /// 已读停留阈值：在同一页连续停留超过该时间才算“查看”。
+  static const Duration _readDwell = Duration(milliseconds: 700);
 
   /// 导航目的地配置（页面轨道、滚筒、页面搜索的唯一来源）。
   late final List<NavDestination> _destinations;
@@ -53,6 +56,9 @@ class _SmartNavScreenState extends State<SmartNavScreen>
 
   /// 导航锚点状态服务（通知/异常上报接口）。
   late final NavBadgeService _badges;
+
+  /// 当前页停留满阈值后标为已读的延迟计时器（离开页面即取消）。
+  Timer? _readTimer;
 
   late final NavPhysicsController _nav;
 
@@ -81,10 +87,7 @@ class _SmartNavScreenState extends State<SmartNavScreen>
   Timer? _holdTimer;
 
   /// 上一次单击（短按）时刻，用于 300ms 内判定双击。
-  double? _lastTapTime;
-
-  /// 单调时钟（手势判定用）。
-  final Stopwatch _clock = Stopwatch()..start();
+  Duration? _lastTapTime;
 
   // 快捷操作弧状态
   bool _quickArcShown = false;
@@ -93,9 +96,6 @@ class _SmartNavScreenState extends State<SmartNavScreen>
 
   /// 当前正在播放的涟漪列表。
   final List<_RippleSpec> _ripples = [];
-
-  double get _now =>
-      _clock.elapsedMicroseconds / Duration.microsecondsPerSecond;
 
   @override
   void initState() {
@@ -135,14 +135,16 @@ class _SmartNavScreenState extends State<SmartNavScreen>
       onSettled: () => _nav.scheduleRollerHide(),
     );
 
-    // 激活页变化即表示该页被查看：通知态自动标为已读（异常态不动）。
-    // 独立监听而非复用 onActivePageChanged——后者在圆点翻页期间会被静音。
+    // 激活页停留超过阈值才表示该页被查看：快速扫过、双击跳转途中
+    // 经过的页面不应标为已读。独立监听而非复用 onActivePageChanged
+    // ——后者在圆点翻页期间会被静音。
     int? lastViewedPage;
     _nav.addListener(() {
       final page = _nav.activePage;
       if (page != lastViewedPage) {
         lastViewedPage = page;
-        _badges.markViewed(page);
+        _readTimer?.cancel();
+        _readTimer = Timer(_readDwell, () => _badges.markViewed(page));
       }
     });
 
@@ -152,6 +154,7 @@ class _SmartNavScreenState extends State<SmartNavScreen>
   @override
   void dispose() {
     _holdTimer?.cancel();
+    _readTimer?.cancel();
     _nav.dispose();
     _badges.dispose();
     _searchFocusNode.dispose();
@@ -265,10 +268,10 @@ class _SmartNavScreenState extends State<SmartNavScreen>
     final zoneBottom = geometry.bar.bottom + 10;
 
     Rect dotZone(Rect dot) => Rect.fromCenter(
-          center: dot.center,
-          width: dot.width * 2,
-          height: zoneBottom - zoneTop,
-        );
+      center: dot.center,
+      width: dot.width * 2,
+      height: zoneBottom - zoneTop,
+    );
 
     // 圆点优先（其热区与导航条热区仅相接、不重叠）。
     if (dotZone(geometry.leftDot).contains(event.position)) {
@@ -305,7 +308,7 @@ class _SmartNavScreenState extends State<SmartNavScreen>
 
   /// 胶囊常规态按下：开始一次手势的生命周期（方向待定）。
   void _beginCapsuleGrab(PointerDownEvent event) {
-    final now = _now;
+    final now = event.timeStamp;
     final isDoubleTap =
         _lastTapTime != null && now - _lastTapTime! < _doubleTapWindow;
     _lastTapTime = null;
@@ -436,6 +439,7 @@ class _SmartNavScreenState extends State<SmartNavScreen>
       event.pointer,
       cancelled: false,
       globalPosition: event.position,
+      timestamp: event.timeStamp,
     );
   }
 
@@ -448,6 +452,7 @@ class _SmartNavScreenState extends State<SmartNavScreen>
     int pointer, {
     required bool cancelled,
     Offset? globalPosition,
+    Duration? timestamp,
   }) {
     final globalX = globalPosition?.dx;
     final gesture = _gesture;
@@ -461,7 +466,8 @@ class _SmartNavScreenState extends State<SmartNavScreen>
     if (gesture.isQuick) {
       // 仅当松手时手指仍停在某按钮热区内才触发，
       // 否则直接收起（用户反悔）。
-      final fire = !cancelled &&
+      final fire =
+          !cancelled &&
           globalPosition != null &&
           _quickSelection >= 0 &&
           (globalPosition - _quickPositions[_quickSelection]).distance <=
@@ -475,7 +481,7 @@ class _SmartNavScreenState extends State<SmartNavScreen>
       if (!cancelled && gesture.doubleTap && globalX != null) {
         _nav.snapTo(_pageAtX(globalX).round());
       } else if (!cancelled) {
-        _lastTapTime = _now;
+        _lastTapTime = timestamp;
       }
       return;
     }
@@ -515,7 +521,8 @@ class _SmartNavScreenState extends State<SmartNavScreen>
     final assemblyWidth = SearchCapsule.assemblyWidthFor(size.width);
     final barWidth = SearchCapsule.barWidthFor(size.width);
 
-    final top = size.height -
+    final top =
+        size.height -
         safeBottom -
         SearchCapsule.bottomMargin -
         SearchCapsule.barHeight;
@@ -533,9 +540,7 @@ class _SmartNavScreenState extends State<SmartNavScreen>
       SearchCapsule.dotDiameter,
       SearchCapsule.barHeight,
     );
-    final barRight = right -
-        SearchCapsule.dotDiameter -
-        SearchCapsule.dotGap;
+    final barRight = right - SearchCapsule.dotDiameter - SearchCapsule.dotGap;
     final bar = Rect.fromLTWH(
       barRight - barWidth,
       top,
@@ -550,8 +555,7 @@ class _SmartNavScreenState extends State<SmartNavScreen>
     final size = MediaQuery.sizeOf(context);
     final safeBottom = MediaQuery.paddingOf(context).bottom;
 
-    final bottom =
-        size.height - safeBottom - SearchCapsule.bottomMargin;
+    final bottom = size.height - safeBottom - SearchCapsule.bottomMargin;
     return Rect.fromLTRB(
       SearchCapsule.sideMargin,
       bottom - SearchCapsule.searchHeight,
@@ -568,8 +572,10 @@ class _SmartNavScreenState extends State<SmartNavScreen>
     // 与 _thumb 的滑块宽度保持同一规则：导航条长度 / 页面数。
     final thumbWidth = barWidth / _destinations.length;
 
-    final center = (globalX - barRect.left)
-        .clamp(thumbWidth / 2, barWidth - thumbWidth / 2);
+    final center = (globalX - barRect.left).clamp(
+      thumbWidth / 2,
+      barWidth - thumbWidth / 2,
+    );
     return (center - thumbWidth / 2) /
         (barWidth - thumbWidth) *
         (_destinations.length - 1);
@@ -584,23 +590,23 @@ class _SmartNavScreenState extends State<SmartNavScreen>
     final safeBottom = MediaQuery.paddingOf(context).bottom;
 
     final assemblyWidth = SearchCapsule.assemblyWidthFor(size.width);
-    final centerX =
-        size.width - SearchCapsule.sideMargin - assemblyWidth / 2;
-    final centerY =
-        size.height - safeBottom - SearchCapsule.bottomMargin - 5;
+    final centerX = size.width - SearchCapsule.sideMargin - assemblyWidth / 2;
+    final centerY = size.height - safeBottom - SearchCapsule.bottomMargin - 5;
 
     const radius = 108.0;
     const anglesDeg = [205.0, 258.0, 311.0];
 
     _quickPositions
       ..clear()
-      ..addAll(anglesDeg.map((angle) {
-        final rad = angle * math.pi / 180;
-        return Offset(
-          centerX + radius * math.cos(rad),
-          centerY + radius * math.sin(rad),
-        );
-      }));
+      ..addAll(
+        anglesDeg.map((angle) {
+          final rad = angle * math.pi / 180;
+          return Offset(
+            centerX + radius * math.cos(rad),
+            centerY + radius * math.sin(rad),
+          );
+        }),
+      );
   }
 
   // ================================================================
@@ -635,8 +641,7 @@ class _SmartNavScreenState extends State<SmartNavScreen>
                           left: -renderedPosition * screenSize.width,
                           top: 0,
                           bottom: 0,
-                          width:
-                              screenSize.width * _destinations.length,
+                          width: screenSize.width * _destinations.length,
                           child: Row(
                             // 页面由导航配置驱动：每个目的地的 pageBuilder
                             // 经 Builder 注入上下文，全部 Expanded 等宽。
@@ -720,7 +725,9 @@ class _SmartNavScreenState extends State<SmartNavScreen>
                 pressedDot: _pressedDot,
                 focusNode: _searchFocusNode,
                 textController: _searchTextController,
-                historyItems: _searchHistory.items,
+                historyItems: _searchHistory.items.toSet().toList(
+                  growable: false,
+                ),
                 results: _searchResults,
                 query: _searchQuery,
                 onHistoryTap: _handleHistoryTap,
@@ -784,24 +791,26 @@ class _Ripple extends StatefulWidget {
   State<_Ripple> createState() => _RippleState();
 }
 
-class _RippleState extends State<_Ripple>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _controller = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 650),
-  )..addStatusListener((status) {
-      if (status == AnimationStatus.completed) {
-        widget.onEnded();
-      }
-    });
+class _RippleState extends State<_Ripple> with SingleTickerProviderStateMixin {
+  late final AnimationController _controller =
+      AnimationController(
+        vsync: this,
+        duration: const Duration(milliseconds: 650),
+      )..addStatusListener((status) {
+        if (status == AnimationStatus.completed) {
+          widget.onEnded();
+        }
+      });
 
   late final Animation<double> _scale = CurvedAnimation(
     parent: _controller,
     curve: const Cubic(0.2, 0.7, 0.3, 1),
   ).drive(Tween(begin: 0.45, end: 2.5));
 
-  late final Animation<double> _opacity =
-      Tween(begin: 1.0, end: 0.0).animate(_controller);
+  late final Animation<double> _opacity = Tween(
+    begin: 1.0,
+    end: 0.0,
+  ).animate(_controller);
 
   @override
   void initState() {
@@ -827,15 +836,9 @@ class _RippleState extends State<_Ripple>
             height: 60,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              border: Border.all(
-                color: AppColors.tone4,
-                width: 2,
-              ),
+              border: Border.all(color: AppColors.tone4, width: 2),
               boxShadow: const [
-                BoxShadow(
-                  color: AppColors.tone2,
-                  blurRadius: 16,
-                ),
+                BoxShadow(color: AppColors.tone2, blurRadius: 16),
               ],
             ),
           ),

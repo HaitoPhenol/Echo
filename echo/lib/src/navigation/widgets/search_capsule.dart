@@ -114,10 +114,7 @@ class SearchCapsule extends StatelessWidget {
                   ? Padding(
                       padding: const EdgeInsets.only(bottom: 12),
                       child: hasQuery
-                          ? _ResultsView(
-                              results: results,
-                              onTap: onResultTap,
-                            )
+                          ? _ResultsView(results: results, onTap: onResultTap)
                           : _HistoryChips(
                               items: historyItems,
                               onTap: onHistoryTap,
@@ -144,15 +141,11 @@ class SearchCapsule extends StatelessWidget {
                       Row(
                         children: [
                           // 圆点仅常规态存在（搜索态随空位一并移除）。
-                          if (!searching)
-                            _NavDot(pressed: pressedDot == -1),
-                          if (!searching)
-                            const SizedBox(width: dotGap),
+                          if (!searching) _NavDot(pressed: pressedDot == -1),
+                          if (!searching) const SizedBox(width: dotGap),
                           Expanded(child: _buildCapsule(context, searching)),
-                          if (!searching)
-                            const SizedBox(width: dotGap),
-                          if (!searching)
-                            _NavDot(pressed: pressedDot == 1),
+                          if (!searching) const SizedBox(width: dotGap),
+                          if (!searching) _NavDot(pressed: pressedDot == 1),
                         ],
                       ),
                       // 倒计时边框仅 open 态（未输入）显示，
@@ -218,8 +211,10 @@ class SearchCapsule extends StatelessWidget {
   Widget _thumb() {
     // 滑块位置：页码 0 在最左、末页在最右（显示位置夹在合法区间），
     // 与页面轨道/滚筒同步呈现吸附节奏。
-    final clampedP =
-        controller.displayPosition.clamp(0, controller.pageCount - 1);
+    final clampedP = controller.displayPosition.clamp(
+      0,
+      controller.pageCount - 1,
+    );
     // 滑块宽度 = 导航条长度 / 页面数：除了当前位置，也能大致反映
     // 页面总数（今后支持用户自定义页面时会随之自动变化）。
     final thumbWidth = _barWidth / controller.pageCount;
@@ -240,10 +235,7 @@ class SearchCapsule extends StatelessWidget {
                   : AppColors.tone2,
               borderRadius: BorderRadius.circular(999),
               border: pressed
-                  ? Border.all(
-                      color: AppColors.tone2,
-                      width: 1.25,
-                    )
+                  ? Border.all(color: AppColors.tone2, width: 1.25)
                   : null,
             ),
           ),
@@ -474,12 +466,12 @@ class _HistoryChipState extends State<_HistoryChip> {
         duration: const Duration(milliseconds: 150),
         constraints: const BoxConstraints(maxWidth: 220),
         height: 28,
+        alignment: Alignment.center,
         padding: const EdgeInsets.symmetric(horizontal: 13),
-        decoration: BoxDecoration(
-          color: _hit ? AppColors.tone4 : AppColors.tone1,
-          borderRadius: BorderRadius.circular(999),
-          border: Border.all(
-            color: _hit ? Colors.transparent : AppColors.tone1,
+        // 历史项不设底色：仅保留胶囊描边；按下时描边、文字提亮。
+        decoration: ShapeDecoration(
+          shape: StadiumBorder(
+            side: BorderSide(color: _hit ? AppColors.tone2 : AppColors.tone1),
           ),
         ),
         child: Text(
@@ -488,7 +480,7 @@ class _HistoryChipState extends State<_HistoryChip> {
           overflow: TextOverflow.ellipsis,
           style: TextStyle(
             fontSize: 12,
-            color: _hit ? AppColors.inverse : AppColors.tone2,
+            color: _hit ? AppColors.tone4 : AppColors.tone2,
           ),
         ),
       ),

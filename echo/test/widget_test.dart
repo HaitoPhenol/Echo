@@ -29,8 +29,7 @@ void main() {
     expect(firstPageText.data, '控制台');
   });
 
-  testWidgets('搜索真实闭环：长按展开 → 输入页面名 → 点结果跳转',
-      (tester) async {
+  testWidgets('搜索真实闭环：长按展开 → 输入页面名 → 点结果跳转', (tester) async {
     // 测试表面 800×600；胶囊隐形热区约 x:362~794, y:542~585。
     await tester.pumpWidget(const EchoApp());
     await tester.pump();
@@ -72,10 +71,15 @@ void main() {
       settled = (pageCenterX() - 400).abs() < 0.5;
     }
     expect(pageCenterX(), closeTo(400, 0.5));
+
+    // 再次长按展开搜索：结果点击已记入历史。
+    await tester.longPressAt(const Offset(600, 560));
+    await tester.pump(const Duration(milliseconds: 500));
+    // 「聊天」= 当前页标题 + 恰好一个历史胶囊（重复搜索不重复显示）。
+    expect(find.text('聊天'), findsNWidgets(2));
   });
 
-  testWidgets('横滑松手后立即上甩：滚筒先关闭，快捷弧不叠加',
-      (tester) async {
+  testWidgets('横滑松手后立即上甩：滚筒先关闭，快捷弧不叠加', (tester) async {
     await tester.pumpWidget(const EchoApp());
     await tester.pump();
 
@@ -157,8 +161,8 @@ void main() {
     expect(pageCenterX(), closeTo(400, 0.5));
   });
 
-  testWidgets('导航锚点：消息查看即已读；异常须处理完成才恢复',
-      (tester) async {
+  testWidgets('导航锚点：停留才算已读，快速扫过/双击跳转不读中转页；'
+      '异常须处理完成才恢复', (tester) async {
     await tester.pumpWidget(const EchoApp());
     await tester.pump();
 
@@ -216,38 +220,72 @@ void main() {
       }
     }
 
-    // ---- 翻到聊天页：消息被查看 → 锚点恢复；日志异常不受影响 ----
-    // 先收起两个模拟按钮弹出的 SnackBar——它覆盖在底部会挡住圆点热区。
-    ScaffoldMessenger.of(
-      tester.element(find.byType(Scaffold).first),
-    ).clearSnackBars();
-    for (var i = 0;
-        i < 30 && find.byType(SnackBar).evaluate().isNotEmpty;
-        i++) {
+    // 先收起模拟按钮弹出的 SnackBar——它覆盖在底部会挡住导航条热区。
+    ScaffoldMessenger.of(tester.element(find.byType(Scaffold).first))
+        .clearSnackBars();
+    for (
+      var i = 0;
+      i < 30 && find.byType(SnackBar).evaluate().isNotEmpty;
+      i++
+    ) {
       await tester.pump(const Duration(milliseconds: 16));
     }
-    await tester.tapAt(const Offset(781, 560));
-    final chatPageText = find
+
+    /// 第 i 页 TemplatePage 内的标题 Text。
+    Finder pageTitle(int i) => find
         .descendant(
-          of: find.byType(TemplatePage).at(1),
+          of: find.byType(TemplatePage).at(i),
           matching: find.byType(Text),
         )
         .first;
-    await settlePage(chatPageText);
-    expect(tester.getCenter(chatPageText).dx, closeTo(400, 0.5));
+
+    // ---- 双击导航条直达末页：途中经过的页面不算已读 ----
+    await tester.tapAt(const Offset(700, 580));
+    await tester.tapAt(const Offset(700, 580));
+    await settlePage(pageTitle(3));
+    expect(tester.getCenter(pageTitle(3)).dx, closeTo(400, 0.5));
+    expect(
+      anchorLevel(1),
+      NavBadgeLevel.notification,
+      reason: '双击直达途中经过聊天页，不应判定已读',
+    );
+    expect(anchorLevel(2), NavBadgeLevel.exception);
+
+    /// 点左圆点，并只推进到激活页切换（越过 destination 中点，
+    /// 该页标题中心越过屏幕左缘 0）——模拟快速连点：每"页"停留
+    /// 远不到已读阈值。
+    Future<void> fastStepLeft(int destination) async {
+      await tester.tapAt(const Offset(391, 560));
+      for (
+        var i = 0;
+        i < 60 && tester.getCenter(pageTitle(destination)).dx < 0;
+        i++
+      ) {
+        await tester.pump(const Duration(milliseconds: 8));
+      }
+    }
+
+    // ---- 连点左圆点快速扫回首页：经过聊天页也不算已读 ----
+    await fastStepLeft(2);
+    await fastStepLeft(1);
+    await fastStepLeft(0);
+    await settlePage(pageTitle(0));
+    await tester.pump(const Duration(milliseconds: 750));
+    expect(anchorLevel(1), NavBadgeLevel.notification, reason: '快速扫过不应判定已读');
+    expect(anchorLevel(2), NavBadgeLevel.exception);
+
+    // ---- 真正翻到聊天页并停留：落位时仍未读，停留够久才已读 ----
+    await tester.tapAt(const Offset(781, 560));
+    await settlePage(pageTitle(1));
+    expect(anchorLevel(1), NavBadgeLevel.notification, reason: '刚落位、停留未达阈值');
+    await tester.pump(const Duration(milliseconds: 750));
     expect(anchorLevel(1), NavBadgeLevel.normal);
     expect(anchorLevel(2), NavBadgeLevel.exception);
 
     // ---- 再翻到日志页：仅查看不解除异常，按钮可处理 ----
-    final notesPageText = find
-        .descendant(
-          of: find.byType(TemplatePage).at(2),
-          matching: find.byType(Text),
-        )
-        .first;
     await tester.tapAt(const Offset(781, 560));
-    await settlePage(notesPageText);
-    expect(tester.getCenter(notesPageText).dx, closeTo(400, 0.5));
+    await settlePage(pageTitle(2));
+    await tester.pump(const Duration(milliseconds: 750));
     expect(
       anchorLevel(2),
       NavBadgeLevel.exception,

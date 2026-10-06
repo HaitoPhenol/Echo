@@ -178,10 +178,20 @@ GlobalKey 重挂载曾触发框架断言），而是由 `SearchCapsule` 的静�
   | `levelOf(page)` | 读取某页当前锚点状态 |
   | `postNotification(page)` | 置为通知态（绿色呼吸） |
   | `reportException(page)` | 置为异常态（红色急闪） |
-  | `markViewed(page)` | 仅 `notification → normal`：翻到该页即已读 |
+  | `markViewed(page)` | 仅 `notification → normal`：在该页连续停留 700ms 才已读 |
   | `resolveException(page)` | 仅 `exception → normal`：显式处理完成才恢复 |
 
   异常优先级高于通知：异常未处理时查看页面不会改变状态。
+- **已读判定：停留而非经过**。`SmartNavScreen` 以独立监听器观察
+  `NavPhysicsController`：激活页每次变化都取消旧计时并重新启动
+  `Timer(_readDwell = 700ms)`，只有连续停留满 700ms 才调
+  `markViewed(page)`。快速扫过（按住圆点连续翻页）、双击导航条
+  直达末页时途经的中转页不会被标为已读。
+- **帧时钟**：导航物理不使用墙钟（`Stopwatch`），而以物理帧的
+  `currentFrameTimeStamp` 为时间源（在 tick 回调内缓存）。真机上与
+  真实时间一致；测试中随 `pump` 推进，停留/倒计时逻辑可确定性验证。
+  搜索倒计时边框的烧蚀基准同样惰性记录于展开后的首个物理帧，避免
+  帧外的过期时间戳（首帧前为 0）导致倒计时瞬间烧完。
 - **`InMemoryNavBadgeService`**：当前实现，内存保存每页状态，
   变化时 `notifyListeners()`。
 - **`NavBadgeScope`**（`InheritedNotifier`）：向子树提供服务，
@@ -202,8 +212,8 @@ GlobalKey 重挂载曾触发框架断言），而是由 `SearchCapsule` 的静�
 1.00），四个锚定元素分别对号：**导航条 = tone1、拇指滑块 = tone2、
 锚点 = tone3、快捷弧选中按钮 = tone4**。其余元素就近取阶：
 
-- **tone1**：圆点默认、滚筒/搜索胶囊/弧按钮描边、搜索结果行底；
-- **tone2**：圆点按下、滑块、静态光晕、未选中图标/次级文字；
+- **tone1**：圆点默认、滚筒/搜索胶囊/历史胶囊/弧按钮描边、搜索结果行底；
+- **tone2**：圆点按下、滑块、静态光晕、历史胶囊文字、未选中图标/次级文字；
 - **tone3**：锚点本体、页名标签、次级按钮文字；
 - **tone4**：主文字、滚筒选中页标、快捷弧选中项本体。
 
@@ -247,7 +257,7 @@ GlobalKey 重挂载曾触发框架断言），而是由 `SearchCapsule` 的静�
 取得 `NavBadgeService`（经 `NavBadgeScope.of(context)` 或由上层注入）：
 消息到达时调 `postNotification(页索引)`，日志监控捕获错误时调
 `reportException(页索引)`，问题修复流程完成时调 `resolveException(页索引)`。
-「查看即已读」与锚点动画无需接入方处理。需要持久化时，新建一个
+「停留 700ms 即已读」与锚点动画无需接入方处理。需要持久化时，新建一个
 `NavBadgeService` 实现替换 `InMemoryNavBadgeService`，并移除
 `debug_badge_controls.dart` 测试脚手架。
 
