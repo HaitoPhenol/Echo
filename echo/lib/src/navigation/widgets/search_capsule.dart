@@ -173,8 +173,15 @@ class SearchCapsule extends StatelessWidget {
   /// 由 [_CapsuleMorph] 隐藏，这里重建一个 pill）。
   ///
   /// 起始帧与常规导航条完全一致（圆点 + tone1 圆角条 + 滑块/锚点），
-  /// 随后条本体变色/长高、圆点与滑块淡出、宽度向左生长；关闭时反向
+  /// 随后形状变色/长高、圆点与滑块淡出、宽度向左生长；关闭时反向
   /// 收回——滑块/锚点在收回途中不出现，只在最后由真实导航条揭示。
+  ///
+  /// **性能结构（逐帧动画期间不做文本重布局）**：
+  /// - 形状层是无子女的轻量色块，每帧重布局成本极低；
+  /// - 滑块/锚点、输入内容都放在**固定尺寸**的 Positioned 层里，只动
+  ///   不透明度；内容超出 pill 当前尺寸的部分由 [ClipRRect] 裁掉。
+  ///   TextField/RenderParagraph 每帧约束不变，布局直接命中缓存；
+  /// - 投影与 fuse 画在裁剪区外（阴影不会被裁）。
   ///
   /// 参数：
   /// - [chrome]：装饰进度（0=常规态外观，1=搜索态外观），180ms；
@@ -199,84 +206,120 @@ class SearchCapsule extends StatelessWidget {
       chrome,
     )!;
     final radius = 999 + (22 - 999) * chrome;
+    // 搜索框落定后的固定目标宽（与 morph 的 searchWidth 一致）。
+    final targetWidth = MediaQuery.sizeOf(context).width - 28;
+    final borderColor = AppColors.tone1.withValues(
+      alpha: AppColors.tone1.a * chrome,
+    );
     return Stack(
       clipBehavior: Clip.none,
       children: [
-        // 圆点：开合头 180ms 快速淡变（置于底层）。
-        if (dotOpacity > 0)
+        // 投影层：画在裁剪区之外，模糊阴影不会被 ClipRRect 切掉。
+        if (chrome > 0.02)
           Positioned(
-            left: 0,
+            left: inset,
+            right: inset,
+            top: 0,
             bottom: 0,
-            child: Opacity(
-              opacity: dotOpacity,
-              child: const _NavDot(pressed: false),
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0x8C000000).withValues(
+                      alpha: (0x8C / 255) * chrome,
+                    ),
+                    blurRadius: 38,
+                    offset: const Offset(0, 14),
+                  ),
+                ],
+              ),
             ),
           ),
-        if (dotOpacity > 0)
-          Positioned(
-            right: 0,
-            bottom: 0,
-            child: Opacity(
-              opacity: dotOpacity,
-              child: const _NavDot(pressed: false),
-            ),
-          ),
-        // 条本体：颜色/圆角/描边/投影随 chrome 过渡；内部滑块与锚点淡出。
-        Positioned(
-          left: inset,
-          right: inset,
-          top: 0,
-          bottom: 0,
-          child: Container(
-            clipBehavior: Clip.antiAlias,
-            decoration: BoxDecoration(
-              color: barColor,
-              borderRadius: BorderRadius.circular(radius),
-              border: chrome > 0.02
-                  ? Border.all(
-                      color: AppColors.tone1.withValues(
-                        alpha: AppColors.tone1.a * chrome,
+        // 主体：统一按当前圆角裁剪。
+        Positioned.fill(
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(radius),
+            child: Stack(
+              children: [
+                // 形状层（无子女）：颜色随 chrome 过渡。
+                Positioned(
+                  left: inset,
+                  right: inset,
+                  top: 0,
+                  bottom: 0,
+                  child: ColoredBox(color: barColor),
+                ),
+                // 形状描边：与形状同区域的透明盒，只画边。
+                if (chrome > 0.02)
+                  Positioned(
+                    left: inset,
+                    right: inset,
+                    top: 0,
+                    bottom: 0,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        border: Border.all(color: borderColor),
                       ),
-                    )
-                  : null,
-              boxShadow: chrome > 0.02
-                  ? [
-                      BoxShadow(
-                        color: const Color(0x8C000000).withValues(
-                          alpha: (0x8C / 255) * chrome,
-                        ),
-                        blurRadius: 38,
-                        offset: const Offset(0, 14),
-                      ),
-                    ]
-                  : null,
+                    ),
+                  ),
+                // 圆点：开合头快速淡变；置于形状之上。
+                if (dotOpacity > 0)
+                  Positioned(
+                    left: 0,
+                    bottom: 0,
+                    child: Opacity(
+                      opacity: dotOpacity,
+                      child: const _NavDot(pressed: false),
+                    ),
+                  ),
+                if (dotOpacity > 0)
+                  Positioned(
+                    right: 0,
+                    bottom: 0,
+                    child: Opacity(
+                      opacity: dotOpacity,
+                      child: const _NavDot(pressed: false),
+                    ),
+                  ),
+                // 滑块/锚点：几何固定不动（相对右下锚点），只做淡出，
+                // 因此每帧约束不变、无重布局。
+                if (navChrome > 0.01)
+                  Positioned(
+                    right: 15,
+                    bottom: 0,
+                    width: _barWidth,
+                    height: barHeight,
+                    child: Opacity(
+                      opacity: navChrome,
+                      child: Stack(children: [_thumb(), _anchors(context)]),
+                    ),
+                  ),
+                // 输入内容：固定为落定后的目标尺寸，只做延迟淡入；
+                // 生长途中超出 pill 左边界的部分被外层 ClipRRect 裁掉。
+                Positioned(
+                  right: 0,
+                  bottom: 0,
+                  width: targetWidth,
+                  height: searchHeight,
+                  child: IgnorePointer(
+                    ignoring: contentOpacity < 0.05,
+                    child: Opacity(
+                      opacity: contentOpacity,
+                      child: _searchContent(),
+                    ),
+                  ),
+                ),
+              ],
             ),
-            child: navChrome > 0.01
-                ? Opacity(
-                    opacity: navChrome,
-                    child: Stack(children: [_thumb(), _anchors(context)]),
-                  )
-                : null,
           ),
         ),
-        // 输入内容延迟淡入：框体生长初期不可见，避免文字在窄框中挤压。
-        Positioned(
-          left: inset,
-          right: inset,
-          top: 0,
-          bottom: 0,
-          child: IgnorePointer(
-            ignoring: contentOpacity < 0.05,
-            child: Opacity(opacity: contentOpacity, child: _searchContent()),
-          ),
-        ),
-        // 倒计时边框仅 open 态（未输入）显示；框体落定后才淡入。
+        // 倒计时边框：仅 open 态（未输入）且框体落定后才淡入。
         if (controller.searchState == SearchState.open && fuseOpacity > 0)
           Positioned(
-            left: inset - 2,
-            right: inset - 2,
-            top: -2,
+            right: -2,
             bottom: -2,
+            width: targetWidth + 4,
+            height: searchHeight + 4,
             child: Opacity(
               opacity: fuseOpacity,
               child: CustomPaint(
@@ -668,14 +711,25 @@ class _CapsuleMorphState extends State<_CapsuleMorph>
                   child: widget.navAssembly,
                 ),
               // 独立搜索 pill：右下锚点缩放到目标状态。
+              // RepaintBoundary：开合期间的重绘只发生在这一层，
+              // 不向上污染页面轨道/滚筒的绘制。
               if (_keepPill)
                 Positioned(
                   right: 0,
                   bottom: 0,
-                  child: SizedBox(
-                    width: w,
-                    height: areaHeight,
-                    child: widget.pill(context, chrome, navChrome, content, dot, fuse),
+                  child: RepaintBoundary(
+                    child: SizedBox(
+                      width: w,
+                      height: areaHeight,
+                      child: widget.pill(
+                        context,
+                        chrome,
+                        navChrome,
+                        content,
+                        dot,
+                        fuse,
+                      ),
+                    ),
                   ),
                 ),
             ],
@@ -1002,8 +1056,9 @@ class _NavAnchorState extends State<_NavAnchor>
       builder: (context, _) {
         switch (widget.level) {
           case NavBadgeLevel.normal:
-            // 本体即色板 tone3（白 α0.72）。
-            return _tick(base: Colors.white, fill: 0.72, glow: 0.30);
+            // 本体色与滑块完全一致（tone2，白 α0.42）、不发光：
+            // 滑块滑过锚点时同色叠加，锚点像“融入”滑块而不是浮在其上。
+            return _tick(base: Colors.white, fill: 0.42, glow: 0);
           case NavBadgeLevel.notification:
             final t = _curve.value;
             return _tick(
@@ -1051,7 +1106,7 @@ class _NavAnchorState extends State<_NavAnchor>
 /// 导航条两端的翻页圆点。
 ///
 /// 视觉为直径 10 的实心圆：默认色 = 导航条颜色（白 α0.16），
-/// 按下色 = 拇指滑块颜色（白 α0.42）。
+/// 按下色 = 统一按压色（近白 α0.94）。
 /// 自身不响应手势，热区与触发由父级 [SmartNavScreen] 统一处理。
 class _NavDot extends StatelessWidget {
   const _NavDot({required this.pressed});

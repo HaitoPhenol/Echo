@@ -315,3 +315,11 @@ GlobalKey 重挂载曾触发框架断言），而是由 `SearchCapsule` 的静�
 - 按压反馈颜色全组件统一：圆点按压色与滑块按压色共用同一常量
   （`search_capsule.dart` 的 `_pressedChrome`，近白 α.94），避免
   两种交互的亮度不一致。
+- **逐帧动画期间消除重布局**（本项目曾出现"低帧率慢速"观感）：
+  形状层用无子女的轻量色块；文本等复杂内容放在**固定为目标尺寸**
+  的 Positioned 层里只动 opacity，超出部分由 ClipRRect 裁掉——约束
+  逐帧不变，布局命中缓存；整块外包 RepaintBoundary 隔离重绘；阴影/
+  外描边画在 ClipRRect 之外。验证用
+  `dumpsys gfxinfo <包名>` 的 Janky frames / Missed Vsync。
+- 需要重叠"融入"的元素用同一颜色：锚点默认色与滑块同为 tone2、
+  锚点不发光，滑块滑过时像融入而非浮在其上。
