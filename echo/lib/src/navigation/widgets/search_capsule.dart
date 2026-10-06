@@ -466,7 +466,6 @@ class _HistoryChipState extends State<_HistoryChip> {
         duration: const Duration(milliseconds: 150),
         constraints: const BoxConstraints(maxWidth: 220),
         height: 28,
-        alignment: Alignment.center,
         padding: const EdgeInsets.symmetric(horizontal: 13),
         // 历史项不设底色：仅保留胶囊描边；按下时描边、文字提亮。
         decoration: ShapeDecoration(
@@ -474,13 +473,18 @@ class _HistoryChipState extends State<_HistoryChip> {
             side: BorderSide(color: _hit ? AppColors.tone2 : AppColors.tone1),
           ),
         ),
-        child: Text(
-          widget.text,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            fontSize: 12,
-            color: _hit ? AppColors.tone4 : AppColors.tone2,
+        // 不能用容器自身 alignment（会使容器撑满可用宽度、失去自适应）；
+        // widthFactor:1 让 Center 仅包裹文字宽度，同时在固定高度内居中。
+        child: Center(
+          widthFactor: 1,
+          child: Text(
+            widget.text,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 12,
+              color: _hit ? AppColors.tone4 : AppColors.tone2,
+            ),
           ),
         ),
       ),
