@@ -94,6 +94,12 @@ class _SmartNavScreenState extends State<SmartNavScreen>
 
   // ---------------- 把手条 / 抽屉 / 竖单 / AI 条状态 ----------------
 
+  /// 抽屉吸附到全开的时长（从容展开）。
+  static const Duration _drawerOpenDuration = Duration(milliseconds: 420);
+
+  /// 抽屉吸附到全关的时长（关闭要干脆，约为开启的 0.62 倍）。
+  static const Duration _drawerCloseDuration = Duration(milliseconds: 260);
+
   /// 侧边抽屉开合进度（跟手拖动写值、松手后吸附到 0/1）。
   late final AnimationController _drawerAnim;
 
@@ -193,7 +199,7 @@ class _SmartNavScreenState extends State<SmartNavScreen>
     // 抽屉开合：跟手时直接写值、松手吸附时 forward/reverse。
     _drawerAnim = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 420),
+      duration: _drawerOpenDuration,
     )..addListener(_handleDrawerTick);
 
     // 激活页停留超过阈值才表示该页被查看：快速扫过、双击跳转途中
@@ -606,8 +612,13 @@ class _SmartNavScreenState extends State<SmartNavScreen>
   }
 
   /// 抽屉吸附到全开或全关。
+  ///
+  /// 跟手阶段直接写 [_drawerAnim].value、不经过时长；这里只切换
+  /// 吸附时长——开启 420ms 保持从容，关闭 260ms 更快收起。
   void _settleDrawer({required bool open, bool haptic = true}) {
     if (haptic) Haptics.confirm();
+    _drawerAnim.duration =
+        open ? _drawerOpenDuration : _drawerCloseDuration;
     if (open) {
       _drawerAnim.forward();
     } else {
