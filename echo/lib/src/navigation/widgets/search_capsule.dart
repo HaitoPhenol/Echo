@@ -8,6 +8,10 @@ import '../../theme/app_colors.dart';
 import '../nav_physics.dart';
 import 'fuse_border_painter.dart';
 
+/// 按下态（抓住滑块 / 按住圆点）的统一颜色：近白。
+/// 滑块与圆点共用，保证两种按压反馈亮度一致。
+final Color _pressedChrome = AppColors.inverse.withValues(alpha: 0.94);
+
 /// 胶囊导航线在底部的整体簇：搜索建议区 + 胶囊本体 + 倒计时边框。
 ///
 /// 常规态只显示胶囊；长按后展开为全宽搜索框。搜索框上方区域：
@@ -119,19 +123,17 @@ class SearchCapsule extends StatelessWidget {
                       ),
               ),
             ),
-            // 胶囊本体形变：宽 380ms / 高 320ms，各自带弹性曲线，
-            // 右下锚点固定，向左上方生长。
-            Align(
-              alignment: Alignment.centerRight,
-              child: _CapsuleMorph(
-                nav: controller,
-                searching: searching,
-                assemblyWidth: _assemblyWidth,
-                searchWidth: screenWidth - 28,
-                barHeight: barHeight,
-                searchHeight: searchHeight,
-                interior: (c, d, f) => _capsuleInterior(context, c, d, f),
-              ),
+            // 胶囊区域：导航条始终静止（圆点/滑块/锚点不参与动画），
+            // 搜索框作为独立覆盖层在其上方做缩放过渡，盖住导航条。
+            _CapsuleMorph(
+              nav: controller,
+              searching: searching,
+              assemblyWidth: _assemblyWidth,
+              searchWidth: screenWidth - 28,
+              barHeight: barHeight,
+              searchHeight: searchHeight,
+              navAssembly: _navAssembly(context),
+              pill: _searchPill,
             ),
           ],
         );
@@ -139,45 +141,141 @@ class SearchCapsule extends StatelessWidget {
     );
   }
 
-  /// 形变胶囊的内部内容（由 [_CapsuleMorph] 每帧调用，注入各部分
-  /// 的不透明度，使内容/圆点/fuse 的淡入淡出与形变同一条时间轴）。
-  Widget _capsuleInterior(
+  /// 静止导航条整体：圆点 + 窄条（含滑块与锚点）。
+  ///
+  /// 永远是常规态外观，搜索开合期间也不变——搜索框覆盖层会盖住它。
+  Widget _navAssembly(BuildContext context) {
+    return Row(
+      children: [
+        _NavDot(pressed: pressedDot == -1),
+        const SizedBox(width: dotGap),
+        Expanded(child: _navBar(context)),
+        const SizedBox(width: dotGap),
+        _NavDot(pressed: pressedDot == 1),
+      ],
+    );
+  }
+
+  /// 静止导航条本体：tone1 底色，内部铺滑块与锚点。
+  Widget _navBar(BuildContext context) {
+    return Container(
+      clipBehavior: Clip.antiAlias,
+      decoration: const BoxDecoration(
+        color: AppColors.tone1,
+        borderRadius: BorderRadius.all(Radius.circular(999)),
+      ),
+      // 锚点铺在滑块之上；容器已开裁剪，锚点发光不会超出导航条。
+      child: Stack(children: [_thumb(), _anchors(context)]),
+    );
+  }
+
+  /// 独立搜索 pill 的内容（与真实导航条组件解耦：真实组件在搜索期间
+  /// 由 [_CapsuleMorph] 隐藏，这里重建一个 pill）。
+  ///
+  /// 起始帧与常规导航条完全一致（圆点 + tone1 圆角条 + 滑块/锚点），
+  /// 随后条本体变色/长高、圆点与滑块淡出、宽度向左生长；关闭时反向
+  /// 收回——滑块/锚点在收回途中不出现，只在最后由真实导航条揭示。
+  ///
+  /// 参数：
+  /// - [chrome]：装饰进度（0=常规态外观，1=搜索态外观），180ms；
+  /// - [navChrome]：滑块/锚点不透明度（开——随 chrome 淡出；关——恒 0）；
+  /// - [contentOpacity]：输入内容不透明度；
+  /// - [dotOpacity]：圆点不透明度；
+  /// - [fuseOpacity]：倒计时边框不透明度。
+  Widget _searchPill(
     BuildContext context,
+    double chrome,
+    double navChrome,
     double contentOpacity,
     double dotOpacity,
     double fuseOpacity,
   ) {
-    final searching = controller.isSearching;
+    // 条本体相对 pill 外框的内缩：常规态给两端圆点留位（15px），
+    // 搜索态填满外框（与全宽搜索框一致）。
+    final inset = 15.0 * (1 - chrome);
+    final barColor = Color.lerp(
+      AppColors.tone1,
+      const Color(0xFF0F141A),
+      chrome,
+    )!;
+    final radius = 999 + (22 - 999) * chrome;
     return Stack(
       clipBehavior: Clip.none,
       children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // 圆点仅常规态存在；开合瞬间快速淡入淡出（180ms）。
-            if (dotOpacity > 0)
-              Opacity(
-                opacity: dotOpacity,
-                child: _NavDot(pressed: pressedDot == -1),
-              ),
-            if (dotOpacity > 0) const SizedBox(width: dotGap),
-            Expanded(child: _buildCapsule(context, searching)),
-            if (dotOpacity > 0) const SizedBox(width: dotGap),
-            if (dotOpacity > 0)
-              Opacity(
-                opacity: dotOpacity,
-                child: _NavDot(pressed: pressedDot == 1),
-              ),
-          ],
+        // 圆点：开合头 180ms 快速淡变（置于底层）。
+        if (dotOpacity > 0)
+          Positioned(
+            left: 0,
+            bottom: 0,
+            child: Opacity(
+              opacity: dotOpacity,
+              child: const _NavDot(pressed: false),
+            ),
+          ),
+        if (dotOpacity > 0)
+          Positioned(
+            right: 0,
+            bottom: 0,
+            child: Opacity(
+              opacity: dotOpacity,
+              child: const _NavDot(pressed: false),
+            ),
+          ),
+        // 条本体：颜色/圆角/描边/投影随 chrome 过渡；内部滑块与锚点淡出。
+        Positioned(
+          left: inset,
+          right: inset,
+          top: 0,
+          bottom: 0,
+          child: Container(
+            clipBehavior: Clip.antiAlias,
+            decoration: BoxDecoration(
+              color: barColor,
+              borderRadius: BorderRadius.circular(radius),
+              border: chrome > 0.02
+                  ? Border.all(
+                      color: AppColors.tone1.withValues(
+                        alpha: AppColors.tone1.a * chrome,
+                      ),
+                    )
+                  : null,
+              boxShadow: chrome > 0.02
+                  ? [
+                      BoxShadow(
+                        color: const Color(0x8C000000).withValues(
+                          alpha: (0x8C / 255) * chrome,
+                        ),
+                        blurRadius: 38,
+                        offset: const Offset(0, 14),
+                      ),
+                    ]
+                  : null,
+            ),
+            child: navChrome > 0.01
+                ? Opacity(
+                    opacity: navChrome,
+                    child: Stack(children: [_thumb(), _anchors(context)]),
+                  )
+                : null,
+          ),
+        ),
+        // 输入内容延迟淡入：框体生长初期不可见，避免文字在窄框中挤压。
+        Positioned(
+          left: inset,
+          right: inset,
+          top: 0,
+          bottom: 0,
+          child: IgnorePointer(
+            ignoring: contentOpacity < 0.05,
+            child: Opacity(opacity: contentOpacity, child: _searchContent()),
+          ),
         ),
         // 倒计时边框仅 open 态（未输入）显示；框体落定后才淡入。
-        if (searching &&
-            controller.searchState == SearchState.open &&
-            fuseOpacity > 0)
+        if (controller.searchState == SearchState.open && fuseOpacity > 0)
           Positioned(
-            left: -2,
+            left: inset - 2,
+            right: inset - 2,
             top: -2,
-            right: -2,
             bottom: -2,
             child: Opacity(
               opacity: fuseOpacity,
@@ -186,51 +284,7 @@ class SearchCapsule extends StatelessWidget {
               ),
             ),
           ),
-        // 搜索内容延迟淡入：框体生长初期不可见，避免文字在窄框中挤压。
-        if (contentOpacity > 0)
-          Positioned.fill(
-            child: IgnorePointer(
-              ignoring: contentOpacity < 0.05,
-              child: Opacity(opacity: contentOpacity, child: _searchContent()),
-            ),
-          ),
       ],
-    );
-  }
-
-  /// 胶囊本体：常规态窄条 / 搜索态全宽框。
-  ///
-  /// 这里不挂手势监听，也不挂 key：常规态按下判定由父级按
-  /// 静态几何常量推算出的隐形热区统一处理。
-  /// 宽高由外层 [_CapsuleMorph] 统一驱动（Expanded 横向拉满、
-  /// stretch 纵向拉满），这里只做颜色/边框/阴影等装饰过渡，避免
-  /// 内外两层尺寸动画相互打架。
-  Widget _buildCapsule(BuildContext context, bool searching) {
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 280),
-      curve: Curves.easeOutCubic,
-      clipBehavior: Clip.antiAlias,
-      decoration: BoxDecoration(
-        color: searching ? AppColors.searchBackground : AppColors.tone1,
-        borderRadius: BorderRadius.circular(searching ? 22 : 999),
-        border: searching ? Border.all(color: AppColors.tone1) : null,
-        boxShadow: searching
-            ? const [
-                BoxShadow(
-                  color: Color(0x8C000000),
-                  blurRadius: 38,
-                  offset: Offset(0, 14),
-                ),
-              ]
-            : null,
-      ),
-      // 搜索内容由 _capsuleInterior 的 Positioned.fill 覆盖层统一构建
-      // （便于延迟淡入）；这里搜索态不挂子节点，避免重复。
-      child: searching
-          ? null
-          // 锚点铺在滑块之上；外层 AnimatedContainer 已开裁剪，
-          // 锚点发光不会超出导航条。
-          : Stack(children: [_thumb(), _anchors(context)]),
     );
   }
 
@@ -258,7 +312,7 @@ class SearchCapsule extends StatelessWidget {
           child: DecoratedBox(
             decoration: BoxDecoration(
               color: pressed
-                  ? AppColors.inverse.withValues(alpha: 0.94)
+                  ? _pressedChrome
                   : AppColors.tone2,
               borderRadius: BorderRadius.circular(999),
               border: pressed
@@ -434,11 +488,17 @@ class _PanelEntranceState extends State<_PanelEntrance>
   }
 }
 
-/// 胶囊本体的形变器：宽、高沿各自的时长与弹性曲线过渡，
-/// 同时在同一条时间轴上驱动搜索内容、圆点、fuse 的淡入淡出。
+/// 胶囊区域的动画器（真实导航条与搜索 pill 完全解耦）。
 ///
-/// 用持久的 [State] + [AnimationController] 驱动 [SizedBox]，渲染对象
-/// 跨帧保持稳定（条件插入导致重建会让动画被跳过——本项目曾踩过此坑）。
+/// - 常规态：只显示真实导航条 [navAssembly]（静止于右下锚点）。
+/// - 唤起：同一帧隐藏真实导航条、挂载独立搜索 [pill]——pill 起始帧与
+///   导航条外观完全一致，因此切换不可察觉；随后 pill 沿宽/高时间轴
+///   缩放到全宽搜索框。
+/// - 收回：pill 反向缩回（途中不含滑块/锚点），播完的同一帧隐藏
+///   pill、重新显示真实导航条。
+///
+/// 用持久的 [State] + [AnimationController] 驱动尺寸，渲染对象跨帧
+/// 稳定（条件插入导致重建会让动画被跳过——本项目曾踩过此坑）。
 class _CapsuleMorph extends StatefulWidget {
   const _CapsuleMorph({
     required this.nav,
@@ -447,7 +507,8 @@ class _CapsuleMorph extends StatefulWidget {
     required this.searchWidth,
     required this.barHeight,
     required this.searchHeight,
-    required this.interior,
+    required this.navAssembly,
+    required this.pill,
   });
 
   final NavPhysicsController nav;
@@ -461,13 +522,20 @@ class _CapsuleMorph extends StatefulWidget {
   final double barHeight;
   final double searchHeight;
 
-  /// 内部内容构建，参数依次为：搜索内容/圆点/fuse 的不透明度。
+  /// 真实导航条整体（圆点 + 窄条 + 滑块 + 锚点）。
+  final Widget navAssembly;
+
+  /// 独立搜索 pill 构建，参数依次为：context、chrome（装饰进度）、
+  /// navChrome（滑块/锚点不透明度）、输入内容/圆点/fuse 不透明度。
   final Widget Function(
+    BuildContext context,
+    double chrome,
+    double navChrome,
     double contentOpacity,
     double dotOpacity,
     double fuseOpacity,
   )
-  interior;
+  pill;
 
   @override
   State<_CapsuleMorph> createState() => _CapsuleMorphState();
@@ -483,7 +551,7 @@ class _CapsuleMorphState extends State<_CapsuleMorph>
     vsync: this,
     duration: const Duration(milliseconds: 320),
   );
-  // 圆点：开合头 180ms 快速淡入淡出。
+  // 装饰（颜色/圆角/描边/圆点）：开合头 180ms 快速过渡。
   late final AnimationController _chrome = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 180),
@@ -497,12 +565,33 @@ class _CapsuleMorphState extends State<_CapsuleMorph>
   static const Cubic _widthCurve = Cubic(0.3, 1.1, 0.3, 1);
   static const Cubic _heightCurve = Cubic(0.3, 1.2, 0.4, 1);
 
+  /// 搜索 pill 是否挂载（开——立即挂载；关——播完才卸载）。
+  bool _keepPill = false;
+
+  /// 真实导航条是否显示（开——立即隐藏；关——pill 播完同一帧再显示）。
+  bool _showNav = true;
+
+  /// 当前开合方向（决定 pill 内滑块/锚点是否参与：关——不参与）。
+  bool _opening = false;
+
   @override
   void initState() {
     super.initState();
     final searching = widget.searching;
+    _keepPill = searching;
+    _showNav = !searching;
     _width.value = _height.value = _chrome.value = searching ? 1 : 0;
     _fuse.value = searching ? 1 : 0;
+    _width.addStatusListener((status) {
+      if (status == AnimationStatus.dismissed &&
+          !widget.searching &&
+          mounted) {
+        setState(() {
+          _keepPill = false;
+          _showNav = true;
+        });
+      }
+    });
   }
 
   @override
@@ -510,11 +599,17 @@ class _CapsuleMorphState extends State<_CapsuleMorph>
     super.didUpdateWidget(oldWidget);
     if (widget.searching != oldWidget.searching) {
       if (widget.searching) {
+        _opening = true;
+        setState(() {
+          _showNav = false;
+          _keepPill = true;
+        });
         _width.forward();
         _height.forward();
         _chrome.forward();
         _fuse.forward(from: 0);
       } else {
+        _opening = false;
         _width.reverse();
         _height.reverse();
         _chrome.reverse();
@@ -536,21 +631,55 @@ class _CapsuleMorphState extends State<_CapsuleMorph>
       builder: (context, _) {
         final wt = _widthCurve.transform(_width.value);
         final ht = _heightCurve.transform(_height.value);
+        final areaHeight =
+            widget.barHeight +
+            (widget.searchHeight - widget.barHeight) * ht;
         final w =
             widget.assemblyWidth +
             (widget.searchWidth - widget.assemblyWidth) * wt;
-        final h =
-            widget.barHeight + (widget.searchHeight - widget.barHeight) * ht;
-        // 搜索内容：延迟 100ms 淡入、320ms 淡完（相对宽度 380ms 时间轴）。
-        final content = Curves.easeOut.transform(
-          const Interval(100 / 380, 320 / 380).transform(_width.value),
-        );
-        final dot = 1 - Curves.easeIn.transform(_chrome.value);
-        final fuse = const Interval(320 / 620, 1).transform(_fuse.value);
+
+        final chrome = _chrome.value.clamp(0.0, 1.0);
+        // 滑块/锚点：唤起时随 chrome 淡出；收回时恒不显示（只由
+        // 最后揭示的真实导航条呈现，避免收缩途中穿帮）。
+        final navChrome = (_opening ? 1 - chrome : 0.0).clamp(0.0, 1.0);
+        final dot = (1 - chrome).clamp(0.0, 1.0);
+        // 输入内容：延迟 100ms 淡入、320ms 淡完（相对宽度时间轴）。
+        final content = Interval(
+          100 / 380,
+          320 / 380,
+          curve: Curves.easeOut,
+        ).transform(_width.value).clamp(0.0, 1.0);
+        final fuse = Interval(320 / 620, 1)
+            .transform(_fuse.value)
+            .clamp(0.0, 1.0);
+
         return SizedBox(
-          width: w,
-          height: h,
-          child: widget.interior(content, dot, fuse),
+          height: areaHeight,
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              // 真实导航条：仅非搜索态显示，完全不参与动画。
+              if (_showNav)
+                Positioned(
+                  right: 0,
+                  bottom: 0,
+                  width: widget.assemblyWidth,
+                  height: widget.barHeight,
+                  child: widget.navAssembly,
+                ),
+              // 独立搜索 pill：右下锚点缩放到目标状态。
+              if (_keepPill)
+                Positioned(
+                  right: 0,
+                  bottom: 0,
+                  child: SizedBox(
+                    width: w,
+                    height: areaHeight,
+                    child: widget.pill(context, chrome, navChrome, content, dot, fuse),
+                  ),
+                ),
+            ],
+          ),
         );
       },
     );
@@ -937,7 +1066,7 @@ class _NavDot extends StatelessWidget {
       height: SearchCapsule.dotDiameter,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        color: pressed ? AppColors.tone2 : AppColors.tone1,
+        color: pressed ? _pressedChrome : AppColors.tone1,
       ),
     );
   }
