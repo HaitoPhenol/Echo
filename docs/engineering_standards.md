@@ -24,16 +24,49 @@
 > **【约定】** 1.7、1.9、1.10、1.11、1.13、1.14；
 > 新增规则必须自带级别标注；条文中的"参考做法"类表述属【参考】。
 
-### 1.1 版本与提交纪律
+### 1.1 版本、分支与提交纪律
 
-- 版本号 `0.MINOR.PATCH+BUILD`（见 `echo/pubspec.yaml`）：
-  - MINOR 在功能更新时 +1；PATCH 在 bug 修复时 +1，MINOR 增加时 PATCH 清零；
-    首位 0 保持到正式发布，正式发布时升 1.0.0；
-  - `+N`（Android versionCode）**永远只增不减**，即使版本名回退；
-  - 每个版本节点打 git tag（如 `v0.5.0`）。
-- 提交信息用 Conventional Commits：`feat:` 新功能 · `fix:` 修复 ·
-  `refactor:` 重构 · `docs:` 文档 · `chore:` 杂项；标题简述，正文说明原因。
-- 不主动 commit / push / 打 tag，除非用户明确要求；不 amend、不 force push。
+**版本号**（见 `echo/pubspec.yaml`）：
+
+- `0.MINOR.PATCH+BUILD`：MINOR 在功能更新时 +1；PATCH 在 bug 修复时 +1，
+  MINOR 增加时 PATCH 清零；首位 0 保持到正式发布，正式发布时升 1.0.0；
+- `+N`（Android versionCode）**永远只增不减**，即使版本名回退；
+- 每个版本节点打 git tag（如 `v0.5.0`，本地轻量 tag）。
+
+**提交信息**：用 Conventional Commits —— `feat:` 新功能 · `fix:` 修复 ·
+`refactor:` 重构 · `docs:` 文档 · `chore:` 杂项；标题简述，正文说明原因。
+不 amend、不 force push。
+
+**分支纪律**：
+
+- main 只接收合并，**不在 main 上直接做功能开发**。
+- 接到新任务时先看 `git branch --show-current`：若在 main 或别的任务分支上，
+  **主动向用户提议创建本任务分支**（`feat/xxx` / `fix/xxx`），确认后开工；
+  用户已明确授权时可直接创建。
+- **每次提交前再次确认当前分支是自己的任务分支**；不是就先停下切换，
+  不得把代码提交进别人的分支或 main。带着未提交改动切换前必须确认不会污染
+  目标分支，拿不准则问用户。
+- 任务完成并验收后，可顺手把任务分支**快进合并**到 main；发现已分叉
+  （不能 ff-only）则不自动合并，交用户决定。**任何情况下不删除分支**，
+  除非用户明确要求。
+- **每次把代码合并到 main 之后，立即构建并安装到手机**做一次冒烟验证
+  （当前命令：`cd echo && flutter build apk --debug` →
+  `adb install -r build/app/outputs/flutter-apk/app-debug.apk` → 启动主 Activity）；
+  纯 docs 合并无代码变更可跳过但要说明，发版节点按用户要求改用 release 包。
+  无设备连接 / adb 不可用时报告原因并跳过，不得假装已验证。
+- 例外：主维护助手（审查/文档职责）的**纯文档改动不单独开分支**，
+  跟随当前最新的工作分支以 `docs:` 提交即可。
+
+**哪些事可以自主、哪些必须问**（2026-10-07 负责人授权）：
+
+- 可自主，不必每次问：修完一个**可独立验证的最小修复单元**（小 bug / 小优化，
+  含回归测试与门禁）后，PATCH +1、`+N` +1，`fix:`（或 `chore:`）提交并打
+  本地 tag，完成后汇报。最小颗粒 = 不相关的 bug 不共用一个 patch，
+  一个修复也不拆成多个 patch。
+- 必须先问用户：MINOR 功能版本（`0.x.0`）升号与发版、1.0.0、`git push`
+  （含 `--tags`）、删除/重置分支等破坏性操作；改动拿不准算 MINOR 还是 PATCH
+  时也问。
+- 纯文档改动（`docs:`）不升版本号。
 
 ### 1.2 文档与代码保持一致
 
