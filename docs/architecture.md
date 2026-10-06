@@ -33,9 +33,11 @@ echo/
 │       ├── theme/
 │       │   └── app_colors.dart            # 全局调色板
 │       ├── pages/
-│       │   └── template_page.dart         # 空白占位页（只显示标题）
+│       │   ├── template_page.dart         # 空白占位页（只显示标题，可挂 footer）
+│       │   └── debug_badge_controls.dart  # 锚点通知/异常的测试按钮（脚手架）
 │       ├── services/                      # 与界面无关的能力层
 │       │   ├── haptics.dart               # 触感反馈统一入口
+│       │   ├── nav_badge_service.dart     # 导航锚点状态：通知/异常接口
 │       │   └── search_service.dart        # 搜索服务/数据源/历史接口
 │       └── navigation/                    # 智能导航线
 │           ├── nav_destination.dart       # ★ 导航目的地配置（页面）
@@ -48,7 +50,7 @@ echo/
 │               ├── search_capsule.dart    # 导航条 + 翻页圆点 + 搜索面板
 │               └── fuse_border_painter.dart # 倒计时边框
 ├── test/
-│   └── widget_test.dart                   # Widget 测试（当前 4 个用例）
+│   └── widget_test.dart                   # Widget 测试（当前 5 个用例）
 └── README.md                              # Flutter 默认工程说明
 docs/
 ├── architecture.md                        # 本文档
@@ -160,6 +162,38 @@ GlobalKey 重挂载曾触发框架断言），而是由 `SearchCapsule` 的静�
 - **搜索态点外部关闭**：由铺在底层的全屏隐形 scrim 处理，
   不再需要包围整簇的 GlobalKey。
 
+### 3.7 导航锚点 `NavBadgeService`
+
+文件：`lib/src/services/nav_badge_service.dart`
+
+导航条内每一页有一个锚点短条，其状态由此服务管理。这是预留的
+**通知接口**：任何模块（消息、日志监控等）只依赖抽象接口，不关心 UI。
+
+- **`NavBadgeLevel`**：`normal`（白色静止）/ `notification`
+  （绿色呼吸，1.7s 缓动往返）/ `exception`（红色急闪，0.62s 往返）。
+- **`NavBadgeService`**（抽象，继承 `ChangeNotifier`）：
+
+  | 方法 | 含义 |
+  |---|---|
+  | `levelOf(page)` | 读取某页当前锚点状态 |
+  | `postNotification(page)` | 置为通知态（绿色呼吸） |
+  | `reportException(page)` | 置为异常态（红色急闪） |
+  | `markViewed(page)` | 仅 `notification → normal`：翻到该页即已读 |
+  | `resolveException(page)` | 仅 `exception → normal`：显式处理完成才恢复 |
+
+  异常优先级高于通知：异常未处理时查看页面不会改变状态。
+- **`InMemoryNavBadgeService`**：当前实现，内存保存每页状态，
+  变化时 `notifyListeners()`。
+- **`NavBadgeScope`**（`InheritedNotifier`）：向子树提供服务，
+  锚点通过 `NavBadgeScope.of(context)` 获取并随通知自动重建；
+  `SmartNavScreen` 创建实例并包在最外层。
+- 锚点渲染在 `search_capsule.dart` 的 `_NavAnchor`：竖短条 + 同色
+  发光，光晕由导航条外层裁剪，不超出条外。动画期间以 `AnimatedBuilder`
+  逐帧重建（无逐帧重建会导致光效冻结）。
+- `pages/debug_badge_controls.dart` 为测试脚手架：控制台页可模拟
+  「聊天新消息」「日志报错」，日志页有「处理异常」按钮。接入真实
+  通知源后此脚手架应移除。
+
 ---
 
 ## 4. 常见扩展操作
@@ -185,6 +219,14 @@ GlobalKey 重挂载曾触发框架断言），而是由 `SearchCapsule` 的静�
 ### 让搜索历史持久化
 新建一个类实现 `SearchHistoryStore`（如基于 shared_preferences 或数据库），
 替换 `initState` 中的 `InMemorySearchHistoryStore()` 即可。
+
+### 接入真实通知 / 异常源
+取得 `NavBadgeService`（经 `NavBadgeScope.of(context)` 或由上层注入）：
+消息到达时调 `postNotification(页索引)`，日志监控捕获错误时调
+`reportException(页索引)`，问题修复流程完成时调 `resolveException(页索引)`。
+「查看即已读」与锚点动画无需接入方处理。需要持久化时，新建一个
+`NavBadgeService` 实现替换 `InMemoryNavBadgeService`，并移除
+`debug_badge_controls.dart` 测试脚手架。
 
 ---
 

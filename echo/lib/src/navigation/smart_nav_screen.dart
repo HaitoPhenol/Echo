@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../services/haptics.dart';
+import '../services/nav_badge_service.dart';
 import '../services/search_service.dart';
 import 'nav_destination.dart';
 import 'nav_physics.dart';
@@ -48,6 +49,9 @@ class _SmartNavScreenState extends State<SmartNavScreen>
   /// 搜索历史存储与搜索服务。
   late final SearchHistoryStore _searchHistory;
   late final SearchService _searchService;
+
+  /// 导航锚点状态服务（通知/异常上报接口）。
+  late final NavBadgeService _badges;
 
   late final NavPhysicsController _nav;
 
@@ -120,6 +124,8 @@ class _SmartNavScreenState extends State<SmartNavScreen>
       ],
     );
 
+    _badges = InMemoryNavBadgeService(pageCount: _destinations.length);
+
     _nav = NavPhysicsController(
       vsync: this,
       pageCount: _destinations.length,
@@ -128,6 +134,17 @@ class _SmartNavScreenState extends State<SmartNavScreen>
       onSettled: () => _nav.scheduleRollerHide(),
     );
 
+    // 激活页变化即表示该页被查看：通知态自动标为已读（异常态不动）。
+    // 独立监听而非复用 onActivePageChanged——后者在圆点翻页期间会被静音。
+    int? lastViewedPage;
+    _nav.addListener(() {
+      final page = _nav.activePage;
+      if (page != lastViewedPage) {
+        lastViewedPage = page;
+        _badges.markViewed(page);
+      }
+    });
+
     _searchFocusNode.addListener(_handleFocusChange);
   }
 
@@ -135,6 +152,7 @@ class _SmartNavScreenState extends State<SmartNavScreen>
   void dispose() {
     _holdTimer?.cancel();
     _nav.dispose();
+    _badges.dispose();
     _searchFocusNode.dispose();
     _searchTextController.dispose();
     super.dispose();
@@ -593,7 +611,7 @@ class _SmartNavScreenState extends State<SmartNavScreen>
     final screenSize = MediaQuery.sizeOf(context);
     final safeBottom = MediaQuery.paddingOf(context).bottom;
 
-    return Scaffold(
+    final scaffold = Scaffold(
       body: Listener(
         behavior: HitTestBehavior.translucent,
         onPointerDown: _handleRootPointerDown,
@@ -714,6 +732,7 @@ class _SmartNavScreenState extends State<SmartNavScreen>
         ),
       ),
     );
+    return NavBadgeScope(service: _badges, child: scaffold);
   }
 }
 

@@ -6,6 +6,7 @@ import 'package:echo/src/navigation/smart_nav_screen.dart';
 import 'package:echo/src/navigation/widgets/nav_roller.dart';
 import 'package:echo/src/navigation/widgets/quick_action_arc.dart';
 import 'package:echo/src/pages/template_page.dart';
+import 'package:echo/src/services/nav_badge_service.dart';
 
 void main() {
   testWidgets('初始展示 4 个占位页，且首页标题为「控制台」', (tester) async {
@@ -17,11 +18,12 @@ void main() {
     expect(find.byType(SmartNavScreen), findsOneWidget);
     expect(find.byType(TemplatePage), findsNWidgets(4));
 
-    // 首个占位页内的标题文本为「控制台」
+    // 首个占位页内的标题文本为「控制台」（页内另有测试按钮文字，
+    // 故按标题精确匹配）
     final firstPageText = tester.widget<Text>(
       find.descendant(
         of: find.byType(TemplatePage).first,
-        matching: find.byType(Text),
+        matching: find.text('控制台'),
       ),
     );
     expect(firstPageText.data, '控制台');
@@ -153,5 +155,110 @@ void main() {
       settled = (pageCenterX() - 400).abs() < 0.5;
     }
     expect(pageCenterX(), closeTo(400, 0.5));
+  });
+
+  testWidgets('导航锚点：消息查看即已读；异常须处理完成才恢复',
+      (tester) async {
+    await tester.pumpWidget(const EchoApp());
+    await tester.pump();
+
+    // 读取第 i 页锚点的当前状态。
+    NavBadgeLevel anchorLevel(int i) {
+      final widget = tester.widget(
+        find.byKey(ValueKey<String>('nav-anchor-$i')),
+      );
+      return (widget as dynamic).level as NavBadgeLevel;
+    }
+
+    /// 锚点短条当前绘制颜色（随动画每帧变化）。
+    Color anchorColor(int i) {
+      final box = tester.widget<DecoratedBox>(
+        find
+            .descendant(
+              of: find.byKey(ValueKey<String>('nav-anchor-$i')),
+              matching: find.byType(DecoratedBox),
+            )
+            .first,
+      );
+      return (box.decoration as BoxDecoration).color!;
+    }
+
+    // 初始全部为正常白色锚点
+    for (var i = 0; i < 4; i++) {
+      expect(anchorLevel(i), NavBadgeLevel.normal);
+    }
+
+    // ---- 控制台模拟：聊天新消息 + 日志报错 ----
+    await tester.tap(find.text('模拟：聊天新消息'));
+    await tester.pump();
+    expect(anchorLevel(1), NavBadgeLevel.notification);
+
+    // 回归：呼吸动画必须随时间自行推进，不能依赖触控才刷新——
+    // 只推进时间、不触发任何其他重建，颜色就应发生变化。
+    final colorAtTap = anchorColor(1);
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(
+      anchorColor(1),
+      isNot(equals(colorAtTap)),
+      reason: '锚点光效应自动推进，无触控时不能冻结',
+    );
+
+    await tester.tap(find.text('模拟：日志报错'));
+    await tester.pump();
+    expect(anchorLevel(2), NavBadgeLevel.exception);
+
+    /// 等待页面吸附落位（圆点翻页为弹簧动画，最长约 5 秒）。
+    Future<void> settlePage(Finder pageText) async {
+      var settled = false;
+      for (var i = 0; i < 300 && !settled; i++) {
+        await tester.pump(const Duration(milliseconds: 16));
+        settled = (tester.getCenter(pageText).dx - 400).abs() < 0.5;
+      }
+    }
+
+    // ---- 翻到聊天页：消息被查看 → 锚点恢复；日志异常不受影响 ----
+    // 先收起两个模拟按钮弹出的 SnackBar——它覆盖在底部会挡住圆点热区。
+    ScaffoldMessenger.of(
+      tester.element(find.byType(Scaffold).first),
+    ).clearSnackBars();
+    for (var i = 0;
+        i < 30 && find.byType(SnackBar).evaluate().isNotEmpty;
+        i++) {
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    await tester.tapAt(const Offset(781, 560));
+    final chatPageText = find
+        .descendant(
+          of: find.byType(TemplatePage).at(1),
+          matching: find.byType(Text),
+        )
+        .first;
+    await settlePage(chatPageText);
+    expect(tester.getCenter(chatPageText).dx, closeTo(400, 0.5));
+    expect(anchorLevel(1), NavBadgeLevel.normal);
+    expect(anchorLevel(2), NavBadgeLevel.exception);
+
+    // ---- 再翻到日志页：仅查看不解除异常，按钮可处理 ----
+    final notesPageText = find
+        .descendant(
+          of: find.byType(TemplatePage).at(2),
+          matching: find.byType(Text),
+        )
+        .first;
+    await tester.tapAt(const Offset(781, 560));
+    await settlePage(notesPageText);
+    expect(tester.getCenter(notesPageText).dx, closeTo(400, 0.5));
+    expect(
+      anchorLevel(2),
+      NavBadgeLevel.exception,
+      reason: '异常未处理完成，查看页面不应改变状态',
+    );
+    expect(find.text('处理异常'), findsOneWidget);
+
+    // 处理完成 → 锚点恢复，按钮变为禁用文案
+    await tester.tap(find.text('处理异常'));
+    await tester.pump();
+    expect(anchorLevel(2), NavBadgeLevel.normal);
+    expect(find.text('当前无待处理异常'), findsOneWidget);
   });
 }

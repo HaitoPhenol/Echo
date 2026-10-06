@@ -28,4 +28,10 @@ abstract final class AppColors {
 
   /// 反色（白底下的深色文字/图标）
   static const Color inverse = Color(0xFF0D1116);
+
+  /// 导航锚点：通知呼吸绿
+  static const Color anchorGreen = Color(0xFF30D158);
+
+  /// 导航锚点：异常闪烁红
+  static const Color anchorRed = Color(0xFFFF453A);
 }

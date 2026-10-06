@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../services/nav_badge_service.dart';
 import '../../services/search_service.dart';
 import '../../theme/app_colors.dart';
 import '../nav_physics.dart';
@@ -147,7 +148,7 @@ class SearchCapsule extends StatelessWidget {
                             _NavDot(pressed: pressedDot == -1),
                           if (!searching)
                             const SizedBox(width: dotGap),
-                          Expanded(child: _buildCapsule(searching)),
+                          Expanded(child: _buildCapsule(context, searching)),
                           if (!searching)
                             const SizedBox(width: dotGap),
                           if (!searching)
@@ -184,7 +185,7 @@ class SearchCapsule extends StatelessWidget {
   ///
   /// 这里不挂手势监听，也不挂 key：常规态按下判定由父级按
   /// 静态几何常量推算出的隐形热区统一处理。
-  Widget _buildCapsule(bool searching) {
+  Widget _buildCapsule(BuildContext context, bool searching) {
     return AnimatedContainer(
       duration: const Duration(milliseconds: 350),
       curve: Curves.easeOutCubic,
@@ -209,7 +210,11 @@ class SearchCapsule extends StatelessWidget {
               ]
             : null,
       ),
-      child: searching ? _searchContent() : _thumb(),
+      child: searching
+          ? _searchContent()
+          // 锚点铺在滑块之上；外层 AnimatedContainer 已开裁剪，
+          // 锚点发光不会超出导航条。
+          : Stack(children: [_thumb(), _anchors(context)]),
     );
   }
 
@@ -247,6 +252,32 @@ class SearchCapsule extends StatelessWidget {
             ),
           ),
         ),
+      ],
+    );
+  }
+
+  /// 导航条内各页的定位锚点：竖短条，位于滑块之上。
+  ///
+  /// 锚点按页段中心排列（与滑块「导航条/页面数」的分段一致）；
+  /// 通过 [NavBadgeScope] 读取状态，通知/异常变化时自动重建。
+  Widget _anchors(BuildContext context) {
+    final badges = NavBadgeScope.maybeOf(context);
+    final segment = _barWidth / controller.pageCount;
+
+    return Stack(
+      children: [
+        for (var i = 0; i < controller.pageCount; i++)
+          Positioned(
+            // 宽 2、上下各留 2 → 长度 6，稍短于导航条高度 10。
+            left: (i + 0.5) * segment - 1,
+            top: 2,
+            bottom: 2,
+            width: 2,
+            child: _NavAnchor(
+              key: ValueKey<String>('nav-anchor-$i'),
+              level: badges?.levelOf(i) ?? NavBadgeLevel.normal,
+            ),
+          ),
       ],
     );
   }
@@ -479,6 +510,114 @@ class _HistoryChipState extends State<_HistoryChip> {
         ),
       ),
     );
+  }
+}
+
+/// 导航条上的单个页面定位锚点。
+///
+/// 形态类似滚筒的中央刻度（竖直短条）；发光样式对齐快捷弧选中项
+/// 的光晕，由外层导航条裁剪。三种状态：
+/// - [NavBadgeLevel.normal]：静止白色、微光；
+/// - [NavBadgeLevel.notification]：绿色缓慢呼吸；
+/// - [NavBadgeLevel.exception]：红色急促闪烁。
+class _NavAnchor extends StatefulWidget {
+  const _NavAnchor({super.key, required this.level});
+
+  final NavBadgeLevel level;
+
+  @override
+  State<_NavAnchor> createState() => _NavAnchorState();
+}
+
+class _NavAnchorState extends State<_NavAnchor>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    value: 1,
+  );
+  late final CurvedAnimation _curve = CurvedAnimation(
+    parent: _controller,
+    curve: Curves.easeInOut,
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    _configure(widget.level);
+  }
+
+  @override
+  void didUpdateWidget(_NavAnchor oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.level != oldWidget.level) _configure(widget.level);
+  }
+
+  /// 按状态启停循环动画（呼吸慢、闪烁快）。
+  void _configure(NavBadgeLevel level) {
+    switch (level) {
+      case NavBadgeLevel.normal:
+        _controller.stop();
+        _controller.value = 1;
+      case NavBadgeLevel.notification:
+        _controller.duration = const Duration(milliseconds: 1700);
+        _controller.repeat(reverse: true);
+      case NavBadgeLevel.exception:
+        _controller.duration = const Duration(milliseconds: 620);
+        _controller.repeat(reverse: true);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // 关键：必须随动画每帧重建，否则 DecoratedBox 只在首次构建时
+    // 取一次 _curve.value，呼吸/闪烁会“冻结”，直到别的事件顺带重建。
+    return AnimatedBuilder(
+      animation: _curve,
+      builder: (context, _) {
+        switch (widget.level) {
+          case NavBadgeLevel.normal:
+            return _tick(base: Colors.white, fill: 0.72, glow: 0.30);
+          case NavBadgeLevel.notification:
+            final t = _curve.value;
+            return _tick(
+              base: AppColors.anchorGreen,
+              fill: 0.35 + 0.65 * t,
+              glow: 0.75 * t,
+            );
+          case NavBadgeLevel.exception:
+            final t = _curve.value;
+            return _tick(
+              base: AppColors.anchorRed,
+              fill: 0.18 + 0.82 * t,
+              glow: 0.90 * t,
+            );
+        }
+      },
+    );
+  }
+
+  /// 一根圆角竖短条 + 同色发光（光晕被导航条裁剪，不超出条外）。
+  Widget _tick({
+    required Color base,
+    required double fill,
+    required double glow,
+  }) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: base.withValues(alpha: fill),
+        borderRadius: BorderRadius.circular(1),
+        boxShadow: [
+          BoxShadow(color: base.withValues(alpha: glow), blurRadius: 8),
+        ],
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _curve.dispose();
+    _controller.dispose();
+    super.dispose();
   }
 }
 

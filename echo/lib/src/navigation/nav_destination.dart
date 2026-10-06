@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../pages/debug_badge_controls.dart';
 import '../pages/template_page.dart';
 
 /// 一个导航目的地（即胶囊导航线上可到达的一页）。
@@ -54,7 +55,15 @@ List<NavDestination> buildDefaultDestinations() {
         id: id,
         label: label,
         icon: null, // TODO: 各页面定型后在此填入图标
-        pageBuilder: (_) => TemplatePage(title: label),
+        // 控制台/日志页挂测试按钮（锚点通知验收用，正式功能接入后移除）。
+        pageBuilder: (_) => TemplatePage(
+          title: label,
+          footer: switch (id) {
+            'console' => const ConsoleBadgeControls(),
+            'notes' => const LogBadgeControls(),
+            _ => null,
+          },
+        ),
       ),
   ];
 }
