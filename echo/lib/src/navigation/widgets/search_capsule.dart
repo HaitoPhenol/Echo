@@ -177,13 +177,18 @@ class SearchCapsule extends StatelessWidget {
   /// 收回——滑块/锚点在收回途中不出现，只在最后由真实导航条揭示。
   ///
   /// **性能结构（逐帧动画期间不做文本重布局）**：
-  /// - 形状层是无子女的轻量色块，每帧重布局成本极低；
+  /// - 颜色+边框画在 ClipRRect **之外**（边框线跨盒缘，画在裁剪区内
+  ///   会被裁掉一半）；
   /// - 滑块/锚点、输入内容都放在**固定尺寸**的 Positioned 层里，只动
   ///   不透明度；内容超出 pill 当前尺寸的部分由 [ClipRRect] 裁掉。
   ///   TextField/RenderParagraph 每帧约束不变，布局直接命中缓存；
+  /// - 圆角每帧**显式夹到 min(宽/2, 高/2)**：渲染器对超大名义半径
+  ///   做横纵独立夹取（rx 夹宽/2、ry 夹高/2），会出现椭圆直边、像
+  ///   矩形遮罩；显式夹取后两端始终是半圆；
   /// - 投影与 fuse 画在裁剪区外（阴影不会被裁）。
   ///
   /// 参数：
+  /// - [frameWidth]：pill 当前外框宽（morph 每帧算出，直接传入）；
   /// - [chrome]：装饰进度（0=常规态外观，1=搜索态外观），180ms；
   /// - [navChrome]：滑块/锚点不透明度（开——随 chrome 淡出；关——恒 0）；
   /// - [contentOpacity]：输入内容不透明度；
@@ -191,6 +196,7 @@ class SearchCapsule extends StatelessWidget {
   /// - [fuseOpacity]：倒计时边框不透明度。
   Widget _searchPill(
     BuildContext context,
+    double frameWidth,
     double chrome,
     double navChrome,
     double contentOpacity,
@@ -205,7 +211,10 @@ class SearchCapsule extends StatelessWidget {
       const Color(0xFF0F141A),
       chrome,
     )!;
-    final radius = 999 + (22 - 999) * chrome;
+    // 名义圆角 999→22；显式夹到条本体半宽/半高，保证两端始终半圆
+    // （不能依赖渲染器对超大半径的处理）。
+    final r = (999 + (22 - 999) * chrome).clamp(0.0, frameWidth / 2 - inset);
+    final radius = BorderRadius.circular(r);
     // 搜索框落定后的固定目标宽（与 morph 的 searchWidth 一致）。
     final targetWidth = MediaQuery.sizeOf(context).width - 28;
     final borderColor = AppColors.tone1.withValues(
@@ -223,11 +232,11 @@ class SearchCapsule extends StatelessWidget {
             bottom: 0,
             child: DecoratedBox(
               decoration: BoxDecoration(
+                borderRadius: radius,
                 boxShadow: [
                   BoxShadow(
-                    color: const Color(0x8C000000).withValues(
-                      alpha: (0x8C / 255) * chrome,
-                    ),
+                    color: const Color(0x8C000000)
+                        .withValues(alpha: (0x8C / 255) * chrome),
                     blurRadius: 38,
                     offset: const Offset(0, 14),
                   ),
@@ -235,33 +244,26 @@ class SearchCapsule extends StatelessWidget {
               ),
             ),
           ),
-        // 主体：统一按当前圆角裁剪。
+        // 形状层（颜色 + 边框）：画在 ClipRRect 之外，边框完整可见。
+        Positioned(
+          left: inset,
+          right: inset,
+          top: 0,
+          bottom: 0,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: barColor,
+              borderRadius: radius,
+              border: chrome > 0.02 ? Border.all(color: borderColor) : null,
+            ),
+          ),
+        ),
+        // 内容层：统一按当前半圆角裁剪。
         Positioned.fill(
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(radius),
+            borderRadius: radius,
             child: Stack(
               children: [
-                // 形状层（无子女）：颜色随 chrome 过渡。
-                Positioned(
-                  left: inset,
-                  right: inset,
-                  top: 0,
-                  bottom: 0,
-                  child: ColoredBox(color: barColor),
-                ),
-                // 形状描边：与形状同区域的透明盒，只画边。
-                if (chrome > 0.02)
-                  Positioned(
-                    left: inset,
-                    right: inset,
-                    top: 0,
-                    bottom: 0,
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        border: Border.all(color: borderColor),
-                      ),
-                    ),
-                  ),
                 // 圆点：开合头快速淡变；置于形状之上。
                 if (dotOpacity > 0)
                   Positioned(
@@ -354,9 +356,7 @@ class SearchCapsule extends StatelessWidget {
           width: thumbWidth,
           child: DecoratedBox(
             decoration: BoxDecoration(
-              color: pressed
-                  ? _pressedChrome
-                  : AppColors.tone2,
+              color: pressed ? _pressedChrome : AppColors.tone2,
               borderRadius: BorderRadius.circular(999),
               border: pressed
                   ? Border.all(color: AppColors.tone2, width: 1.25)
@@ -372,24 +372,30 @@ class SearchCapsule extends StatelessWidget {
   ///
   /// 锚点按页段中心排列（与滑块「导航条/页面数」的分段一致）；
   /// 通过 [NavBadgeScope] 读取状态，通知/异常变化时自动重建。
+  ///
+  /// **当前位置的锚点不绘制**：滑块正覆盖该页段，锚点画了也会被
+  /// 挡住（含通知/异常态——物理遮挡下同样不可见）。翻页途中位置在
+  /// 两页之间（距离均 ≥0.5）时，两个锚点照常显示。
   Widget _anchors(BuildContext context) {
     final badges = NavBadgeScope.maybeOf(context);
     final segment = _barWidth / controller.pageCount;
+    final position = controller.displayPosition;
 
     return Stack(
       children: [
         for (var i = 0; i < controller.pageCount; i++)
-          Positioned(
-            // 宽 2、上下各留 2 → 长度 6，稍短于导航条高度 10。
-            left: (i + 0.5) * segment - 1,
-            top: 2,
-            bottom: 2,
-            width: 2,
-            child: _NavAnchor(
-              key: ValueKey<String>('nav-anchor-$i'),
-              level: badges?.levelOf(i) ?? NavBadgeLevel.normal,
+          if ((position - i).abs() >= 0.5)
+            Positioned(
+              // 宽 2、上下各留 2 → 长度 6，稍短于导航条高度 10。
+              left: (i + 0.5) * segment - 1,
+              top: 2,
+              bottom: 2,
+              width: 2,
+              child: _NavAnchor(
+                key: ValueKey<String>('nav-anchor-$i'),
+                level: badges?.levelOf(i) ?? NavBadgeLevel.normal,
+              ),
             ),
-          ),
       ],
     );
   }
@@ -568,10 +574,12 @@ class _CapsuleMorph extends StatefulWidget {
   /// 真实导航条整体（圆点 + 窄条 + 滑块 + 锚点）。
   final Widget navAssembly;
 
-  /// 独立搜索 pill 构建，参数依次为：context、chrome（装饰进度）、
-  /// navChrome（滑块/锚点不透明度）、输入内容/圆点/fuse 不透明度。
+  /// 独立搜索 pill 构建，参数依次为：context、frameWidth（pill 当前
+  /// 外框宽）、chrome（装饰进度）、navChrome（滑块/锚点不透明度）、
+  /// 输入内容/圆点/fuse 不透明度。
   final Widget Function(
     BuildContext context,
+    double frameWidth,
     double chrome,
     double navChrome,
     double contentOpacity,
@@ -626,9 +634,7 @@ class _CapsuleMorphState extends State<_CapsuleMorph>
     _width.value = _height.value = _chrome.value = searching ? 1 : 0;
     _fuse.value = searching ? 1 : 0;
     _width.addStatusListener((status) {
-      if (status == AnimationStatus.dismissed &&
-          !widget.searching &&
-          mounted) {
+      if (status == AnimationStatus.dismissed && !widget.searching && mounted) {
         setState(() {
           _keepPill = false;
           _showNav = true;
@@ -675,8 +681,7 @@ class _CapsuleMorphState extends State<_CapsuleMorph>
         final wt = _widthCurve.transform(_width.value);
         final ht = _heightCurve.transform(_height.value);
         final areaHeight =
-            widget.barHeight +
-            (widget.searchHeight - widget.barHeight) * ht;
+            widget.barHeight + (widget.searchHeight - widget.barHeight) * ht;
         final w =
             widget.assemblyWidth +
             (widget.searchWidth - widget.assemblyWidth) * wt;
@@ -692,9 +697,10 @@ class _CapsuleMorphState extends State<_CapsuleMorph>
           320 / 380,
           curve: Curves.easeOut,
         ).transform(_width.value).clamp(0.0, 1.0);
-        final fuse = Interval(320 / 620, 1)
-            .transform(_fuse.value)
-            .clamp(0.0, 1.0);
+        final fuse = Interval(
+          320 / 620,
+          1,
+        ).transform(_fuse.value).clamp(0.0, 1.0);
 
         return SizedBox(
           height: areaHeight,
@@ -723,6 +729,7 @@ class _CapsuleMorphState extends State<_CapsuleMorph>
                       height: areaHeight,
                       child: widget.pill(
                         context,
+                        w,
                         chrome,
                         navChrome,
                         content,

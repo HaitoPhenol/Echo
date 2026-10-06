@@ -62,8 +62,10 @@ class FuseBorderPainter extends CustomPainter {
         clockwise: true,
       );
 
+    // 颜色与常规锚点一致（tone2，白 α0.42）：倒计时条不抢视觉重点，
+    // 融入导航线整体。
     final paint = Paint()
-      ..color = AppColors.accentBlue.withValues(alpha: 0.95)
+      ..color = AppColors.tone2
       ..strokeWidth = strokeWidth
       ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.round;

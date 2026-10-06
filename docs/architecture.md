@@ -313,13 +313,25 @@ GlobalKey 重挂载曾触发框架断言），而是由 `SearchCapsule` 的静�
   反向播放（滑块/锚点不参与），播完同一帧卸载 pill、重新显示真实
   导航条。
 - 按压反馈颜色全组件统一：圆点按压色与滑块按压色共用同一常量
-  （`search_capsule.dart` 的 `_pressedChrome`，近白 α.94），避免
-  两种交互的亮度不一致。
+  （`search_capsule.dart` 的 `_pressedChrome`：`AppColors.inverse`
+  即 0xFF0D1116 α.94 的近黑色 + tone2 描边，按下呈"暗芯亮边"
+  挖槽感），避免两种交互的反馈不一致。
 - **逐帧动画期间消除重布局**（本项目曾出现"低帧率慢速"观感）：
   形状层用无子女的轻量色块；文本等复杂内容放在**固定为目标尺寸**
   的 Positioned 层里只动 opacity，超出部分由 ClipRRect 裁掉——约束
-  逐帧不变，布局命中缓存；整块外包 RepaintBoundary 隔离重绘；阴影/
-  外描边画在 ClipRRect 之外。验证用
-  `dumpsys gfxinfo <包名>` 的 Janky frames / Missed Vsync。
+  逐帧不变，布局命中缓存；整块外包 RepaintBoundary 隔离重绘。
+  验证用 `dumpsys gfxinfo <包名>` 的 Janky frames / Missed Vsync。
+- **描边画在 ClipRRect 之外**：`Border` 线跨盒缘（一半在外），
+  放在裁剪层内外侧半条被裁、整圈边框变细。本项目把「颜色+边框」
+  合成一个 DecoratedBox 放在 ClipRRect 外，ClipRRect 只裁内容；
+  阴影同理。
+- **圆角显式夹取**：动画中不要给 ClipRRect 传 999 一类超大名义
+  半径——渲染器横纵独立夹取（rx 夹宽/2、ry 夹高/2）会产生椭圆角、
+  两端像有矩形遮罩。每帧按当前外框宽显式
+  `r.clamp(0, frameWidth / 2 - inset)`，两端始终半圆。
 - 需要重叠"融入"的元素用同一颜色：锚点默认色与滑块同为 tone2、
   锚点不发光，滑块滑过时像融入而非浮在其上。
+- 被物理遮挡、必然不可见的元素不挂载：当前位置锚点被滑块覆盖
+  （含通知/异常态），`_anchors()` 按 `displayPosition` 过滤；badge
+  逻辑状态仍由 `NavBadgeService` 持有流转。翻页途中位置距两页
+  均 ≥0.5 时两个锚点照常显示。
