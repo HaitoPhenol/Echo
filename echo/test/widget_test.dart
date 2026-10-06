@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:echo/src/app/echo_app.dart';
@@ -311,5 +312,90 @@ void main() {
     await tester.pump();
     expect(anchorLevel(2), NavBadgeLevel.normal);
     expect(find.text('当前无待处理异常'), findsOneWidget);
+  });
+
+  testWidgets('返回键：搜索 open/input 态与快捷弧先关闭不退出；'
+      '常规态行为不变', (tester) async {
+    await tester.pumpWidget(const EchoApp());
+    await tester.pump();
+
+    // 记录 App 退出请求（唯一路由被 pop 时框架调用 SystemNavigator.pop）。
+    final exitRequests = <MethodCall>[];
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'SystemNavigator.pop') exitRequests.add(call);
+        return null;
+      },
+    );
+
+    /// 模拟 Android 系统返回键。
+    Future<void> back() => tester.binding.handlePopRoute();
+
+    /// 逐帧推进直到条件成立（上限约 1s，覆盖面板 720ms 退场时间轴）。
+    Future<bool> pumpUntil(bool Function() condition) async {
+      for (var i = 0; i < 64; i++) {
+        if (condition()) return true;
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+      return condition();
+    }
+
+    // ---- ① open 态返回：关闭搜索，不退出 ----
+    await tester.longPressAt(const Offset(600, 560));
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(find.byType(TextField), findsOneWidget, reason: '搜索已展开');
+
+    exitRequests.clear();
+    await back();
+    expect(
+      await pumpUntil(() => find.byType(TextField).evaluate().isEmpty),
+      isTrue,
+      reason: '返回键应收起 open 态搜索',
+    );
+    expect(exitRequests, isEmpty, reason: 'open 态返回不应退出 App');
+
+    // ---- ② input 态返回：关闭搜索，不退出 ----
+    await tester.longPressAt(const Offset(600, 560));
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.tapAt(const Offset(500, 560));
+    await tester.pump(const Duration(milliseconds: 200));
+    await tester.enterText(find.byType(TextField), '聊天');
+    await tester.pump();
+    expect(find.text('页面'), findsOneWidget, reason: 'input 态已有实时结果');
+
+    exitRequests.clear();
+    await back();
+    expect(
+      await pumpUntil(() => find.byType(TextField).evaluate().isEmpty),
+      isTrue,
+      reason: '返回键应收起 input 态搜索',
+    );
+    expect(exitRequests, isEmpty, reason: 'input 态返回不应退出 App');
+
+    // ---- ③ 快捷弧返回：弧收起，不退出 ----
+    final g = await tester.createGesture();
+    await g.down(const Offset(600, 560));
+    await tester.pump();
+    await g.moveTo(const Offset(600, 528));
+    await tester.pump();
+    expect(find.byType(QuickActionArc), findsOneWidget);
+
+    exitRequests.clear();
+    await back();
+    expect(
+      await pumpUntil(() => find.byType(QuickActionArc).evaluate().isEmpty),
+      isTrue,
+      reason: '返回键应收起快捷弧',
+    );
+    expect(exitRequests, isEmpty, reason: '快捷弧返回不应退出 App');
+    // 模拟手指松开：弧已由返回键收起，此次释放不触发任何操作。
+    await g.up();
+    await tester.pump();
+
+    // ---- ④ 常规态返回：默认行为不变（退出 App）----
+    await back();
+    await tester.pump(const Duration(milliseconds: 50));
+    expect(exitRequests, hasLength(1), reason: '常规态返回应保留默认退出行为');
   });
 }

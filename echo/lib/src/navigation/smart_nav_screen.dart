@@ -94,6 +94,11 @@ class _SmartNavScreenState extends State<SmartNavScreen>
   /// 当前正在播放的涟漪列表。
   final List<_RippleSpec> _ripples = [];
 
+  /// 上一次监听到的搜索态标记：搜索态翻转时需重建根树，
+  /// 使 PopScope 的 canPop 及时更新（fuse 自动关闭等路径
+  /// 不经过本 State 的 setState）。在 initState 中初始化。
+  bool _navWasSearching = false;
+
   @override
   void initState() {
     super.initState();
@@ -145,6 +150,11 @@ class _SmartNavScreenState extends State<SmartNavScreen>
       }
     });
 
+    // 搜索态翻转（长按打开 / fuse 烧完 / 失焦关闭等）时重建根树，
+    // 更新 PopScope 拦截状态与 scrim 显隐。
+    _navWasSearching = _nav.isSearching;
+    _nav.addListener(_handleNavSearchToggled);
+
     _searchFocusNode.addListener(_handleFocusChange);
   }
 
@@ -157,6 +167,27 @@ class _SmartNavScreenState extends State<SmartNavScreen>
     _searchFocusNode.dispose();
     _searchTextController.dispose();
     super.dispose();
+  }
+
+  /// 监听到搜索态翻转：重建根树（更新 PopScope.canPop 与 scrim）。
+  void _handleNavSearchToggled() {
+    final searching = _nav.isSearching;
+    if (searching == _navWasSearching) return;
+    _navWasSearching = searching;
+    if (mounted) setState(() {});
+  }
+
+  /// 系统返回键（PopScope）拦截处理：浮层存在时先关浮层、不退出 App。
+  ///
+  /// 优先级：搜索态 → 收起搜索面板；快捷弧 → 不触发操作直接收起；
+  /// 两者皆无时 PopScope.canPop 为 true，系统直接执行默认 pop。
+  void _handlePopInvoked(bool didPop, Object? result) {
+    if (didPop) return;
+    if (_nav.isSearching) {
+      _exitSearch();
+    } else if (_quickArcShown) {
+      _quickArcKey.currentState?.dismiss(fire: false);
+    }
   }
 
   // ================================================================
@@ -735,7 +766,16 @@ class _SmartNavScreenState extends State<SmartNavScreen>
         ),
       ),
     );
-    return NavBadgeScope(service: _badges, child: scaffold);
+    // 返回键：搜索态/快捷弧打开时先关浮层，不退出 App（canPop 在
+    // 根树重建时随状态更新，见 _handleNavSearchToggled）。
+    return NavBadgeScope(
+      service: _badges,
+      child: PopScope(
+        canPop: !_nav.isSearching && !_quickArcShown,
+        onPopInvokedWithResult: _handlePopInvoked,
+        child: scaffold,
+      ),
+    );
   }
 }
 

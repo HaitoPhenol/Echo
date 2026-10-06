@@ -111,6 +111,11 @@ ideas/
 - **`SearchHistoryStore`**（抽象接口）：历史存储，含
   `items` / `add()` / `remove()`。
 - **`InMemorySearchHistoryStore`**：当前实现，内存保存、重启清空。
+- **返回键拦截**：搜索态（open/input）或快捷弧显示时，系统返回键
+  由 `SmartNavScreen` 的 `PopScope` 拦截——先关浮层（搜索走
+  `_exitSearch()`、快捷弧 `dismiss(fire: false)`），不退出 App；
+  两者皆无时默认行为不变。搜索态翻转通过控制器监听触发根树重建，
+  使 PopScope 的 canPop 在 fuse 自动关闭等路径下也保持同步。
 
 ### 3.4 触感反馈 `Haptics`
 
