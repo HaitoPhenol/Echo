@@ -70,9 +70,6 @@ class _SmartNavScreenState extends State<SmartNavScreen>
   /// 不在冷启动首帧路径上）。
   final GlobalKey<QuickActionArcState> _quickArcKey = GlobalKey();
 
-  /// 胶囊常规态是否按下（视觉）。
-  bool _capsulePressed = false;
-
   /// 当前按下色态的圆点：-1 左 / 1 右。
   int? _pressedDot;
 
@@ -321,15 +318,12 @@ class _SmartNavScreenState extends State<SmartNavScreen>
       doubleTap: isDoubleTap,
     );
 
-    setState(() => _capsulePressed = true);
-
     // 长按 450ms 且期间未移动 → 展开搜索。
     _holdTimer?.cancel();
     _holdTimer = Timer(const Duration(milliseconds: 450), () {
       final gesture = _gesture;
       if (gesture != null && !gesture.moved) {
         _gesture = null;
-        setState(() => _capsulePressed = false);
         Haptics.confirm();
         _resetSearchPanel();
         _nav.openSearch();
@@ -395,7 +389,6 @@ class _SmartNavScreenState extends State<SmartNavScreen>
     // 横滑中途改上甩时，滚筒可能正显示着，立即关闭以免与快捷弧重叠。
     _nav.hideRoller();
     setState(() {
-      _capsulePressed = false;
       _computeQuickPositions();
       _quickSelection = 1;
       _quickArcShown = true;
@@ -460,7 +453,6 @@ class _SmartNavScreenState extends State<SmartNavScreen>
 
     _gesture = null;
     _holdTimer?.cancel();
-    setState(() => _capsulePressed = false);
 
     // 快捷操作弧：触发或直接收起。
     if (gesture.isQuick) {
@@ -725,7 +717,6 @@ class _SmartNavScreenState extends State<SmartNavScreen>
               child: SearchCapsule(
                 controller: _nav,
                 screenWidth: screenSize.width,
-                pressed: _capsulePressed,
                 pressedDot: _pressedDot,
                 focusNode: _searchFocusNode,
                 textController: _searchTextController,

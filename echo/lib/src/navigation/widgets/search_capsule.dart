@@ -8,8 +8,7 @@ import '../../theme/app_colors.dart';
 import '../nav_physics.dart';
 import 'fuse_border_painter.dart';
 
-/// 按下态（抓住滑块 / 按住圆点）的统一颜色：近黑（inverse α.94），
-/// 按下呈"暗芯亮边"的挖槽感。滑块与圆点共用，保证两种按压反馈一致。
+/// 按下态（按住圆点翻页）颜色：近黑（inverse α.94）。
 final Color _pressedChrome = AppColors.inverse.withValues(alpha: 0.94);
 
 /// 滑块常态填充色：**不透明灰** 0xFF838383（131/255≈.514），视觉
@@ -33,7 +32,6 @@ class SearchCapsule extends StatelessWidget {
     super.key,
     required this.controller,
     required this.screenWidth,
-    required this.pressed,
     required this.pressedDot,
     required this.focusNode,
     required this.textController,
@@ -50,9 +48,6 @@ class SearchCapsule extends StatelessWidget {
 
   /// 屏幕宽度（搜索态宽度 = screenWidth - 28）。
   final double screenWidth;
-
-  /// 常规态导航条是否处于按下态。
-  final bool pressed;
 
   /// 当前处于按下色态的端点圆点：-1 左 / 1 右 / null 无。
   final int? pressedDot;
@@ -365,14 +360,11 @@ class SearchCapsule extends StatelessWidget {
           bottom: 0,
           width: thumbWidth,
           child: DecoratedBox(
+            // 按下时**无外观变化**（用户拍板：变黑/描边都显得奇怪）；
+            // 保持不透明常态灰，才能持续挡住下方锚点。
             decoration: BoxDecoration(
-              // 滑块必须**不透明**才能真正挡住下方锚点：半透明两层
-              // 同色叠加会变亮，锚点反而显形。
-              color: pressed ? _pressedChrome.withValues(alpha: 1) : _thumbFill,
+              color: _thumbFill,
               borderRadius: BorderRadius.circular(999),
-              border: pressed
-                  ? Border.all(color: AppColors.tone2, width: 1.25)
-                  : null,
             ),
           ),
         ),
