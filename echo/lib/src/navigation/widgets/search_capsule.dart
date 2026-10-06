@@ -8,9 +8,17 @@ import '../../theme/app_colors.dart';
 import '../nav_physics.dart';
 import 'fuse_border_painter.dart';
 
-/// 按下态（抓住滑块 / 按住圆点）的统一颜色：近白。
-/// 滑块与圆点共用，保证两种按压反馈亮度一致。
+/// 按下态（抓住滑块 / 按住圆点）的统一颜色：近黑（inverse α.94），
+/// 按下呈"暗芯亮边"的挖槽感。滑块与圆点共用，保证两种按压反馈一致。
 final Color _pressedChrome = AppColors.inverse.withValues(alpha: 0.94);
+
+/// 滑块常态填充色：**不透明灰** 0xFF838383（131/255≈.514），视觉
+/// 与旧的「tone1 条底（白 α.16）上叠 tone2 滑块（白 α.42）」合成
+/// 结果一致——合成白量 = 0.16 + (1−0.16)×0.42 ≈ 0.513。
+/// 注意不能写成 0x83FFFFFF（半透明白）：外观相同但挡不住下层锚点。
+/// 锚点常态同色（tone2 叠 tone1 视觉同为 .51），被滑块盖住时完全
+/// 不可见，离开滑块时也无色差。
+const Color _thumbFill = Color(0xFF838383);
 
 /// 胶囊导航线在底部的整体簇：搜索建议区 + 胶囊本体 + 倒计时边框。
 ///
@@ -164,8 +172,10 @@ class SearchCapsule extends StatelessWidget {
         color: AppColors.tone1,
         borderRadius: BorderRadius.all(Radius.circular(999)),
       ),
-      // 锚点铺在滑块之上；容器已开裁剪，锚点发光不会超出导航条。
-      child: Stack(children: [_thumb(), _anchors(context)]),
+      // 锚点画在滑块**之下**、始终全部挂载；滑块不透明，物理遮挡
+      // 当前位置的锚点——无显隐逻辑，翻页途中也就没有边缘弹出。
+      // 容器已开裁剪，锚点发光不会超出导航条。
+      child: Stack(children: [_anchors(context), _thumb()]),
     );
   }
 
@@ -293,7 +303,7 @@ class SearchCapsule extends StatelessWidget {
                     height: barHeight,
                     child: Opacity(
                       opacity: navChrome,
-                      child: Stack(children: [_thumb(), _anchors(context)]),
+                      child: Stack(children: [_anchors(context), _thumb()]),
                     ),
                   ),
                 // 输入内容：固定为落定后的目标尺寸，只做延迟淡入；
@@ -356,7 +366,9 @@ class SearchCapsule extends StatelessWidget {
           width: thumbWidth,
           child: DecoratedBox(
             decoration: BoxDecoration(
-              color: pressed ? _pressedChrome : AppColors.tone2,
+              // 滑块必须**不透明**才能真正挡住下方锚点：半透明两层
+              // 同色叠加会变亮，锚点反而显形。
+              color: pressed ? _pressedChrome.withValues(alpha: 1) : _thumbFill,
               borderRadius: BorderRadius.circular(999),
               border: pressed
                   ? Border.all(color: AppColors.tone2, width: 1.25)
@@ -368,34 +380,32 @@ class SearchCapsule extends StatelessWidget {
     );
   }
 
-  /// 导航条内各页的定位锚点：竖短条，位于滑块之上。
+  /// 导航条内各页的定位锚点：竖短条，位于滑块之下、始终全部挂载。
   ///
   /// 锚点按页段中心排列（与滑块「导航条/页面数」的分段一致）；
   /// 通过 [NavBadgeScope] 读取状态，通知/异常变化时自动重建。
   ///
-  /// **当前位置的锚点不绘制**：滑块正覆盖该页段，锚点画了也会被
-  /// 挡住（含通知/异常态——物理遮挡下同样不可见）。翻页途中位置在
-  /// 两页之间（距离均 ≥0.5）时，两个锚点照常显示。
+  /// 不做任何显隐：滑块不透明、正覆盖当前页段时锚点被物理遮挡；
+  /// 拖动滑块时锚点自然地从滑块边缘「滑入滑出」，无阈值切换、
+  /// 不会在边缘弹出露馅。
   Widget _anchors(BuildContext context) {
     final badges = NavBadgeScope.maybeOf(context);
     final segment = _barWidth / controller.pageCount;
-    final position = controller.displayPosition;
 
     return Stack(
       children: [
         for (var i = 0; i < controller.pageCount; i++)
-          if ((position - i).abs() >= 0.5)
-            Positioned(
-              // 宽 2、上下各留 2 → 长度 6，稍短于导航条高度 10。
-              left: (i + 0.5) * segment - 1,
-              top: 2,
-              bottom: 2,
-              width: 2,
-              child: _NavAnchor(
-                key: ValueKey<String>('nav-anchor-$i'),
-                level: badges?.levelOf(i) ?? NavBadgeLevel.normal,
-              ),
+          Positioned(
+            // 宽 2、上下各留 2 → 长度 6，稍短于导航条高度 10。
+            left: (i + 0.5) * segment - 1,
+            top: 2,
+            bottom: 2,
+            width: 2,
+            child: _NavAnchor(
+              key: ValueKey<String>('nav-anchor-$i'),
+              level: badges?.levelOf(i) ?? NavBadgeLevel.normal,
             ),
+          ),
       ],
     );
   }

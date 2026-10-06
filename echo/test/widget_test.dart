@@ -5,7 +5,6 @@ import 'package:echo/src/app/echo_app.dart';
 import 'package:echo/src/navigation/smart_nav_screen.dart';
 import 'package:echo/src/navigation/widgets/nav_roller.dart';
 import 'package:echo/src/navigation/widgets/quick_action_arc.dart';
-import 'package:echo/src/navigation/widgets/search_capsule.dart';
 import 'package:echo/src/pages/template_page.dart';
 import 'package:echo/src/services/nav_badge_service.dart';
 
@@ -173,20 +172,13 @@ void main() {
     await tester.pumpWidget(const EchoApp());
     await tester.pump();
 
-    // 读取第 i 页锚点的当前逻辑状态。
-    // 当前位置的锚点组件不挂载（滑块遮挡），此时改读 NavBadgeService
-    // 的逻辑状态——隐藏的只是绘制，badge 状态照常流转。
+    // 读取第 i 页锚点的当前逻辑状态。锚点始终全部挂载（被滑块
+    // 物理遮挡时组件仍在），直接读 widget 即可。
     NavBadgeLevel anchorLevel(int i) {
-      final f = find.byKey(ValueKey<String>('nav-anchor-$i'));
-      if (f.evaluate().isNotEmpty) {
-        return (tester.widget(f) as dynamic).level as NavBadgeLevel;
-      }
-      // 注意不能用 NavBadgeScope 自身的 element——会让它依赖自己、
-      // 触发框架断言；取其后代 SearchCapsule 的 context。
-      final scope = NavBadgeScope.maybeOf(
-        tester.element(find.byType(SearchCapsule)),
+      final widget = tester.widget(
+        find.byKey(ValueKey<String>('nav-anchor-$i')),
       );
-      return scope!.levelOf(i);
+      return (widget as dynamic).level as NavBadgeLevel;
     }
 
     /// 锚点短条当前绘制颜色（随动画每帧变化）。
@@ -202,13 +194,10 @@ void main() {
       return (box.decoration as BoxDecoration).color!;
     }
 
-    // 初始：首页（当前位置）锚点不挂载；其余为正常白色锚点
-    expect(
-      find.byKey(const ValueKey<String>('nav-anchor-0')),
-      findsNothing,
-      reason: '当前位置锚点被滑块遮挡，不应绘制',
-    );
-    for (var i = 1; i < 4; i++) {
+    // 初始：4 个锚点全部挂载（首页锚点在滑块下方被物理遮挡），
+    // 逻辑状态均为正常。
+    for (var i = 0; i < 4; i++) {
+      expect(find.byKey(ValueKey<String>('nav-anchor-$i')), findsOneWidget);
       expect(anchorLevel(i), NavBadgeLevel.normal);
     }
 
@@ -298,8 +287,8 @@ void main() {
     await tester.tapAt(const Offset(781, 560));
     await settlePage(pageTitle(1));
     expect(anchorLevel(1), NavBadgeLevel.notification, reason: '刚落位、停留未达阈值');
-    // 当前页锚点组件已卸载（滑块遮挡），但逻辑状态仍是未读通知
-    expect(find.byKey(const ValueKey<String>('nav-anchor-1')), findsNothing);
+    // 当前页锚点仍挂载，只是被不透明滑块物理遮挡（无显隐逻辑）
+    expect(find.byKey(const ValueKey<String>('nav-anchor-1')), findsOneWidget);
     await tester.pump(const Duration(milliseconds: 750));
     expect(anchorLevel(1), NavBadgeLevel.normal);
     expect(anchorLevel(2), NavBadgeLevel.exception);
@@ -307,7 +296,7 @@ void main() {
     // ---- 再翻到日志页：仅查看不解除异常，按钮可处理 ----
     await tester.tapAt(const Offset(781, 560));
     await settlePage(pageTitle(2));
-    // 离开聊天页：锚点重新出现（已读 → 正常态）
+    // 离开聊天页：锚点始终在树上（覆盖/揭示都靠物理遮挡）
     expect(find.byKey(const ValueKey<String>('nav-anchor-1')), findsOneWidget);
     await tester.pump(const Duration(milliseconds: 750));
     expect(
