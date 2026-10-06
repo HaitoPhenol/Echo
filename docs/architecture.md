@@ -287,3 +287,14 @@ GlobalKey 重挂载曾触发框架断言），而是由 `SearchCapsule` 的静�
 - 非通用配置不放仓库根目录；
 - 公共 API 写文档注释，说明「为什么」而不只是「做什么」；
 - 提交前保证 `flutter analyze` 无问题、`flutter test` 通过。
+
+### 元素身份与动画
+
+- `Stack`/`Column`/`Row` 中若用 `if`/`for` 条件插入子节点，**每个
+  常驻子节点必须带稳定的 `Key`**。否则同类型（如多个 `Positioned`）
+  子节点在列表错位时会被错误配对：框架按类型顺序配对，插入点之后的
+  元素全部「换人」——被新建的 `RenderAnimatedSize` 首帧直接落定，
+  开合动画静默失效。本项目页面轨道/scrim/滚筒/胶囊均带 `ValueKey`。
+- 验证动画是否真的播放，可在测试中读取 `RenderAnimatedSize`
+  （`visibleForTesting`）的渲染对象身份与中间尺寸：身份必须跨帧不变，
+  尺寸应随时间插值而非一步到位。

@@ -629,6 +629,7 @@ class _SmartNavScreenState extends State<SmartNavScreen>
           children: [
             // -------- 横向页面轨道 --------
             Positioned.fill(
+              key: const ValueKey<String>('pages'),
               child: ClipRect(
                 child: AnimatedBuilder(
                   animation: _nav,
@@ -667,6 +668,7 @@ class _SmartNavScreenState extends State<SmartNavScreen>
             // 点结果等上层组件时事件不会落到 scrim。
             if (_nav.isSearching)
               Positioned.fill(
+                key: const ValueKey<String>('scrim'),
                 child: GestureDetector(
                   behavior: HitTestBehavior.opaque,
                   onTap: _exitSearch,
@@ -700,6 +702,7 @@ class _SmartNavScreenState extends State<SmartNavScreen>
 
             // -------- 滚筒指示器（含页名标签） --------
             Positioned(
+              key: const ValueKey<String>('roller'),
               right: 14,
               bottom: 52 + safeBottom,
               child: NavRoller(
@@ -715,6 +718,7 @@ class _SmartNavScreenState extends State<SmartNavScreen>
             // 胶囊随之自然停在键盘上方，这里不再手动加键盘高度，
             // 否则会双重补偿导致搜索框飞到过高位置。
             Positioned(
+              key: const ValueKey<String>('capsule'),
               left: 14,
               right: 14,
               bottom: 16 + safeBottom,
