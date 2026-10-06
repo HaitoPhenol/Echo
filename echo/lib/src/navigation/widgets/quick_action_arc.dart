@@ -17,7 +17,17 @@ class QuickActionArc extends StatefulWidget {
     required this.selection,
     required this.onFire,
     required this.onDismissed,
-  });
+  }) : assert(
+         actions.length == positions.length,
+         'QuickActionArc：actions 与 positions 数量必须一致',
+       );
+
+  /// 按钮视觉直径（与 DockGeometry.quickArcButtonDiameter 同值，
+  /// 组件内定位用本常量）。
+  static const double buttonDiameter = 40;
+
+  /// 相邻项入场错峰时长（曲线末端/上方项先出）。
+  static const double _stagger = 0.14;
 
   /// 弧上的操作配置（与 [positions] 一一对应）。
   final List<QuickAction> actions;
@@ -40,14 +50,15 @@ class QuickActionArc extends StatefulWidget {
 
 class QuickActionArcState extends State<QuickActionArc>
     with SingleTickerProviderStateMixin {
-  late final AnimationController _controller = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 360),
-  )..addStatusListener((status) {
-      if (status == AnimationStatus.dismissed) {
-        widget.onDismissed();
-      }
-    });
+  late final AnimationController _controller =
+      AnimationController(
+        vsync: this,
+        duration: const Duration(milliseconds: 360),
+      )..addStatusListener((status) {
+        if (status == AnimationStatus.dismissed) {
+          widget.onDismissed();
+        }
+      });
 
   @override
   void initState() {
@@ -63,13 +74,10 @@ class QuickActionArcState extends State<QuickActionArc>
     _controller.reverse();
   }
 
-  /// 第 [index] 个操作项的入场进度（右侧项先出，左侧项最后，错峰 0.05s）。
+  /// 第 [index] 个操作项的入场进度（上方项先出，向下依次错峰）。
   Animation<double> _itemAnimation(int index, Curve curve) {
-    final start = switch (index) {
-      2 => 0.0,
-      1 => 0.14,
-      _ => 0.28,
-    };
+    // 末项（index 最大）start=0，每项向下延后一个错峰。
+    final start = QuickActionArc._stagger * (widget.actions.length - 1 - index);
     return CurvedAnimation(
       parent: _controller,
       curve: Interval(start, 1, curve: curve),
@@ -84,29 +92,30 @@ class QuickActionArcState extends State<QuickActionArc>
         children: List.generate(widget.actions.length, (i) {
           final selected = i == widget.selection;
           return Positioned(
-            left: widget.positions[i].dx - 20,
-            top: widget.positions[i].dy - 20,
-            width: 40,
-            height: 40,
+            left: widget.positions[i].dx - QuickActionArc.buttonDiameter / 2,
+            top: widget.positions[i].dy - QuickActionArc.buttonDiameter / 2,
+            width: QuickActionArc.buttonDiameter,
+            height: QuickActionArc.buttonDiameter,
             child: FadeTransition(
               opacity: _itemAnimation(i, Curves.easeOut),
               child: ScaleTransition(
-                scale: _itemAnimation(i, const Cubic(0.3, 1.5, 0.4, 1))
-                    .drive(Tween(begin: 0.55, end: 1.0)),
+                scale: _itemAnimation(
+                  i,
+                  const Cubic(0.3, 1.5, 0.4, 1),
+                ).drive(Tween(begin: 0.55, end: 1.0)),
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 220),
                   decoration: BoxDecoration(
-                    color: selected ? AppColors.tone4 : AppColors.searchBackground,
+                    color: selected
+                        ? AppColors.tone4
+                        : AppColors.searchBackground,
                     shape: BoxShape.circle,
                     border: selected
                         ? null
                         : Border.all(color: AppColors.tone1),
                     boxShadow: selected
                         ? const [
-                            BoxShadow(
-                              color: AppColors.tone2,
-                              blurRadius: 18,
-                            ),
+                            BoxShadow(color: AppColors.tone2, blurRadius: 18),
                             BoxShadow(
                               color: Color(0x80000000),
                               blurRadius: 24,
@@ -118,9 +127,7 @@ class QuickActionArcState extends State<QuickActionArc>
                   child: Icon(
                     widget.actions[i].icon,
                     size: 19,
-                    color: selected
-                        ? AppColors.inverse
-                        : AppColors.textMuted,
+                    color: selected ? AppColors.inverse : AppColors.textMuted,
                   ),
                 ),
               ),

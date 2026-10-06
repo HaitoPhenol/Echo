@@ -167,7 +167,19 @@ v0.4.10 圆点按压色回退为 tone1→tone2（白 α.42），近黑常量 `_p
 
 ---
 
-### P1-03 快捷弧"操作数量 = 3"仍有硬编码（v0.5.0 部分改善） —— 置信度：确定
+### P1-03 快捷弧"操作数量 = 3"仍有硬编码（v0.5.0 部分改善，v0.5.3 已解决） —— 置信度：确定
+
+> **v0.5.3 复核：已解决（分支 feat/quick-arc-curve）。** 几何层彻底重写：
+> - `DockGeometry.layoutQuickArc({origin, count})` 纯函数按数量生成布局，
+>   按钮沿**弧长等距**（480 段数值积分 + 二分反解弧长比例）分布在以
+>   弧长中点为中心、逐级放宽的窗口（0.60→0.96）内；
+> - 热区半径 = `(相邻圆心距 − 10)/2`，相邻热区间隙与"按钮→热区"余量
+>   均 ≥ 10；数量过多时热区自动缩小，下限 = 按钮半径（热区不小于按钮）；
+> - `_quickSelection` 初始 −1，锁定时按触点到按钮的实际距离选中；
+>   `QuickActionArc` 增加 `assert(actions.length == positions.length)`，
+>   入场错峰按 `i/(count)` 计算、按钮直径单一来源
+>   `DockGeometry.quickArcButtonDiameter`；
+> - 真机 2/3/4/5 项与纯函数测试 0~10 项全部通过（默认 3 项）。
 
 > **v0.5.0 复核**：弧按钮渲染已改为 `List.generate(widget.actions.length, i)`
 > （[quick_action_arc.dart:84](file:///home/phenol/Documents/GitHub/Echo/echo/lib/src/navigation/widgets/quick_action_arc.dart#L84)），

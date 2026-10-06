@@ -146,8 +146,12 @@ class _SmartNavScreenState extends State<SmartNavScreen>
 
   // 快捷操作弧状态
   bool _quickArcShown = false;
-  int _quickSelection = 1;
+  int _quickSelection = -1;
   final List<Offset> _quickPositions = [];
+
+  /// 本次弧的热区半径（由布局按按钮数量算出，不再是常量）。
+  double _quickHotRadius =
+      DockGeometry.quickArcButtonDiameter / 2 + DockGeometry.quickArcHotMargin;
 
   /// 当前正在播放的涟漪列表。
   final List<_RippleSpec> _ripples = [];
@@ -617,8 +621,7 @@ class _SmartNavScreenState extends State<SmartNavScreen>
   /// 吸附时长——开启 420ms 保持从容，关闭 260ms 更快收起。
   void _settleDrawer({required bool open, bool haptic = true}) {
     if (haptic) Haptics.confirm();
-    _drawerAnim.duration =
-        open ? _drawerOpenDuration : _drawerCloseDuration;
+    _drawerAnim.duration = open ? _drawerOpenDuration : _drawerCloseDuration;
     if (open) {
       _drawerAnim.forward();
     } else {
@@ -717,16 +720,20 @@ class _SmartNavScreenState extends State<SmartNavScreen>
     _nav.hideRoller();
     setState(() {
       _computeQuickPositions();
-      _quickSelection = 1;
+      // 初始选中项 = 离当前手指最近的按钮（数量无关）。
+      var nearest = -1;
+      var nearestDistance = double.infinity;
+      for (var i = 0; i < _quickPositions.length; i++) {
+        final distance = (event.position - _quickPositions[i]).distance;
+        if (distance < nearestDistance) {
+          nearestDistance = distance;
+          nearest = i;
+        }
+      }
+      _quickSelection = nearestDistance <= _quickHotRadius ? nearest : -1;
       _quickArcShown = true;
     });
   }
-
-  /// 快捷操作按钮直径（与 QuickActionArc 中 40×40 保持一致）。
-  static const double _quickButtonDiameter = 40;
-
-  /// 按钮热区半径：热区直径 = 按钮直径的 2 倍，故半径 = 按钮直径。
-  static const double _quickHotRadius = _quickButtonDiameter;
 
   /// 快捷弧上根据手指位置更新选中项。
   ///
@@ -968,32 +975,44 @@ class _SmartNavScreenState extends State<SmartNavScreen>
         (_destinations.length - 1);
   }
 
-  /// 计算快捷弧三个操作项的位置。
+  /// 快捷弧曲线起点。
   ///
-  /// 以胶囊中心水平位置为弧心横坐标，弧心纵坐标距屏幕底 21px，
-  /// 半径 108，角度 205° / 258° / 311°（从左到右）。
+  /// 横坐标：缩短导航条左起 1/4 处——实测手势起点位于条上约
+  /// 0.23 处（系统「指针位置」截图量得），这样曲线末端仍在屏内、
+  /// 按钮整体以导航条中心对称。纵坐标为导航条垂直中点。
+  Offset _quickArcOrigin(Size size, double safeBottom) {
+    final assemblyWidth = DockGeometry.navAssemblyWidthFor(size.width);
+    final assemblyLeft = size.width - DockGeometry.sideMargin - assemblyWidth;
+    final barWidth = DockGeometry.navBarWidthFor(size.width);
+    final barLeft =
+        assemblyLeft + DockGeometry.dotDiameter + DockGeometry.dotGap;
+
+    return Offset(
+      barLeft + barWidth / 4,
+      size.height -
+          safeBottom -
+          DockGeometry.bottomMargin -
+          DockGeometry.barHeight / 2,
+    );
+  }
+
+  /// 计算快捷弧各操作项的位置与热区半径。
+  ///
+  /// 各按钮按 [_quickActions] 数量在四分之一椭圆曲线的中段自动
+  /// 排布（规则见 [DockGeometry.layoutQuickArc]）。
   void _computeQuickPositions() {
     final size = MediaQuery.sizeOf(context);
     final safeBottom = MediaQuery.paddingOf(context).bottom;
 
-    final assemblyWidth = DockGeometry.navAssemblyWidthFor(size.width);
-    final centerX = size.width - DockGeometry.sideMargin - assemblyWidth / 2;
-    final centerY = size.height - safeBottom - DockGeometry.bottomMargin - 5;
-
-    const radius = 108.0;
-    const anglesDeg = [205.0, 258.0, 311.0];
+    final layout = DockGeometry.layoutQuickArc(
+      origin: _quickArcOrigin(size, safeBottom),
+      count: _quickActions.length,
+    );
 
     _quickPositions
       ..clear()
-      ..addAll(
-        anglesDeg.map((angle) {
-          final rad = angle * math.pi / 180;
-          return Offset(
-            centerX + radius * math.cos(rad),
-            centerY + radius * math.sin(rad),
-          );
-        }),
-      );
+      ..addAll(layout.centers);
+    _quickHotRadius = layout.hotRadius;
   }
 
   // ================================================================
