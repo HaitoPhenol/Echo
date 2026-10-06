@@ -202,7 +202,9 @@ GlobalKey 重挂载曾触发框架断言），而是由 `SearchCapsule` 的静�
   逐帧重建（无逐帧重建会导致光效冻结）。
 - `pages/debug_badge_controls.dart` 为测试脚手架：控制台页可模拟
   「聊天新消息」「日志报错」，日志页有「处理异常」按钮。接入真实
-  通知源后此脚手架应移除。
+  通知源后此脚手架应移除。脚手架在 `buildDefaultDestinations()` 中由
+  `kDebugMode` 守卫：仅 debug 构建挂入页面，release/profile 构建
+  footer 为 null、组件随树摇移除，不会出现在发布包中。
 
 ### 3.8 颜色体系：中性亮度四阶阶梯
 

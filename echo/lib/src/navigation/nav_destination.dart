@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 
 import '../pages/debug_badge_controls.dart';
@@ -56,13 +57,17 @@ List<NavDestination> buildDefaultDestinations() {
         label: label,
         icon: null, // TODO: 各页面定型后在此填入图标
         // 控制台/日志页挂测试按钮（锚点通知验收用，正式功能接入后移除）。
+        // kDebugMode 守卫：debug 构建可见，release/profile 构建 footer 为 null，
+        // 调试组件随树摇移除，不会进入发布包。
         pageBuilder: (_) => TemplatePage(
           title: label,
-          footer: switch (id) {
-            'console' => const ConsoleBadgeControls(),
-            'notes' => const LogBadgeControls(),
-            _ => null,
-          },
+          footer: kDebugMode
+              ? switch (id) {
+                  'console' => const ConsoleBadgeControls(),
+                  'notes' => const LogBadgeControls(),
+                  _ => null,
+                }
+              : null,
         ),
       ),
   ];
