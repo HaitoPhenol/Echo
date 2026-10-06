@@ -298,3 +298,10 @@ GlobalKey 重挂载曾触发框架断言），而是由 `SearchCapsule` 的静�
 - 验证动画是否真的播放，可在测试中读取 `RenderAnimatedSize`
   （`visibleForTesting`）的渲染对象身份与中间尺寸：身份必须跨帧不变，
   尺寸应随时间插值而非一步到位。
+- 需要宽、高不同时长/曲线（如 HTML 参考的 380ms 与 320ms 各自带
+  弹性过冲）时，`AnimatedSize`（单一曲线）不适用：用持久 `State`
+  里的多个 `AnimationController` 驱动 `SizedBox`，多控制器的
+  `State` 要 mixin `TickerProviderStateMixin`。
+- `didUpdateWidget` 中比较新旧状态，不能读同一个可变对象（如
+  `ChangeNotifier`）的当前属性——新旧两个 widget 拿到的都是现值，
+  永远相等；由父级在 build 时把值捕获为不可变字段传入。

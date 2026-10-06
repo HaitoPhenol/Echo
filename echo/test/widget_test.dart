@@ -75,8 +75,14 @@ void main() {
     // 再次长按展开搜索：结果点击已记入历史。
     await tester.longPressAt(const Offset(600, 560));
     await tester.pump(const Duration(milliseconds: 500));
-    // 「聊天」= 当前页标题 + 恰好一个历史胶囊（重复搜索不重复显示）。
-    expect(find.text('聊天'), findsNWidgets(2));
+    // 「聊天」应恰好出现于两处：当前页标题（TemplatePage 内）与一个
+    // 历史胶囊（带省略号样式）；滚筒页名标签常驻树上但不属于这两者，
+    // 故分别断言，不用全树 findsNWidgets。
+    expect(chatPageText, findsOneWidget);
+    final historyChip = find.byWidgetPredicate(
+      (w) => w is Text && w.data == '聊天' && w.overflow == TextOverflow.ellipsis,
+    );
+    expect(historyChip, findsOneWidget);
   });
 
   testWidgets('横滑松手后立即上甩：滚筒先关闭，快捷弧不叠加', (tester) async {

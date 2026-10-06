@@ -105,67 +105,32 @@ class SearchCapsule extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // 搜索建议区（仅搜索态展开）
-            AnimatedSize(
-              duration: const Duration(milliseconds: 320),
-              curve: Curves.easeOutCubic,
-              alignment: Alignment.bottomCenter,
-              child: searching
-                  ? Padding(
-                      padding: const EdgeInsets.only(bottom: 12),
-                      child: hasQuery
-                          ? _ResultsView(results: results, onTap: onResultTap)
-                          : _HistoryChips(
-                              items: historyItems,
-                              onTap: onHistoryTap,
-                            ),
-                    )
-                  : const SizedBox(width: double.infinity),
+            // 搜索建议区：仅搜索态挂载，开合均带弹入/淡出
+            _PanelEntrance(
+              visible: searching,
+              contentBuilder: (entrance) => Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: hasQuery
+                    ? _ResultsView(results: results, onTap: onResultTap)
+                    : _HistoryChips(
+                        items: historyItems,
+                        entrance: entrance,
+                        onTap: onHistoryTap,
+                      ),
+              ),
             ),
+            // 胶囊本体形变：宽 380ms / 高 320ms，各自带弹性曲线，
+            // 右下锚点固定，向左上方生长。
             Align(
               alignment: Alignment.centerRight,
-              // 常规态与搜索态共用同一棵子树（胶囊始终是 Row 里的
-              // Expanded），几何全部由静态常量推算，不使用 GlobalKey。
-              // 尺寸变化交给外层 AnimatedSize 做平滑生长。
-              child: AnimatedSize(
-                duration: const Duration(milliseconds: 350),
-                curve: Curves.easeOutCubic,
-                // 右、下边缘固定：展开时向左上方生长。
-                alignment: Alignment.bottomRight,
-                child: SizedBox(
-                  width: searching ? screenWidth - 28 : _assemblyWidth,
-                  height: searching ? searchHeight : barHeight,
-                  child: Stack(
-                    clipBehavior: Clip.none,
-                    children: [
-                      Row(
-                        children: [
-                          // 圆点仅常规态存在（搜索态随空位一并移除）。
-                          if (!searching) _NavDot(pressed: pressedDot == -1),
-                          if (!searching) const SizedBox(width: dotGap),
-                          Expanded(child: _buildCapsule(context, searching)),
-                          if (!searching) const SizedBox(width: dotGap),
-                          if (!searching) _NavDot(pressed: pressedDot == 1),
-                        ],
-                      ),
-                      // 倒计时边框仅 open 态（未输入）显示，
-                      // 贴住生长中的胶囊外沿。
-                      if (searching &&
-                          controller.searchState == SearchState.open)
-                        Positioned(
-                          left: -2,
-                          top: -2,
-                          right: -2,
-                          bottom: -2,
-                          child: CustomPaint(
-                            painter: FuseBorderPainter(
-                              progress: controller.fuseProgress,
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
+              child: _CapsuleMorph(
+                nav: controller,
+                searching: searching,
+                assemblyWidth: _assemblyWidth,
+                searchWidth: screenWidth - 28,
+                barHeight: barHeight,
+                searchHeight: searchHeight,
+                interior: (c, d, f) => _capsuleInterior(context, c, d, f),
               ),
             ),
           ],
@@ -174,16 +139,76 @@ class SearchCapsule extends StatelessWidget {
     );
   }
 
+  /// 形变胶囊的内部内容（由 [_CapsuleMorph] 每帧调用，注入各部分
+  /// 的不透明度，使内容/圆点/fuse 的淡入淡出与形变同一条时间轴）。
+  Widget _capsuleInterior(
+    BuildContext context,
+    double contentOpacity,
+    double dotOpacity,
+    double fuseOpacity,
+  ) {
+    final searching = controller.isSearching;
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // 圆点仅常规态存在；开合瞬间快速淡入淡出（180ms）。
+            if (dotOpacity > 0)
+              Opacity(
+                opacity: dotOpacity,
+                child: _NavDot(pressed: pressedDot == -1),
+              ),
+            if (dotOpacity > 0) const SizedBox(width: dotGap),
+            Expanded(child: _buildCapsule(context, searching)),
+            if (dotOpacity > 0) const SizedBox(width: dotGap),
+            if (dotOpacity > 0)
+              Opacity(
+                opacity: dotOpacity,
+                child: _NavDot(pressed: pressedDot == 1),
+              ),
+          ],
+        ),
+        // 倒计时边框仅 open 态（未输入）显示；框体落定后才淡入。
+        if (searching &&
+            controller.searchState == SearchState.open &&
+            fuseOpacity > 0)
+          Positioned(
+            left: -2,
+            top: -2,
+            right: -2,
+            bottom: -2,
+            child: Opacity(
+              opacity: fuseOpacity,
+              child: CustomPaint(
+                painter: FuseBorderPainter(progress: controller.fuseProgress),
+              ),
+            ),
+          ),
+        // 搜索内容延迟淡入：框体生长初期不可见，避免文字在窄框中挤压。
+        if (contentOpacity > 0)
+          Positioned.fill(
+            child: IgnorePointer(
+              ignoring: contentOpacity < 0.05,
+              child: Opacity(opacity: contentOpacity, child: _searchContent()),
+            ),
+          ),
+      ],
+    );
+  }
+
   /// 胶囊本体：常规态窄条 / 搜索态全宽框。
   ///
   /// 这里不挂手势监听，也不挂 key：常规态按下判定由父级按
   /// 静态几何常量推算出的隐形热区统一处理。
+  /// 宽高由外层 [_CapsuleMorph] 统一驱动（Expanded 横向拉满、
+  /// stretch 纵向拉满），这里只做颜色/边框/阴影等装饰过渡，避免
+  /// 内外两层尺寸动画相互打架。
   Widget _buildCapsule(BuildContext context, bool searching) {
     return AnimatedContainer(
-      duration: const Duration(milliseconds: 350),
+      duration: const Duration(milliseconds: 280),
       curve: Curves.easeOutCubic,
-      width: searching ? screenWidth - 28 : _barWidth,
-      height: searching ? searchHeight : barHeight,
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         color: searching ? AppColors.searchBackground : AppColors.tone1,
@@ -199,8 +224,10 @@ class SearchCapsule extends StatelessWidget {
               ]
             : null,
       ),
+      // 搜索内容由 _capsuleInterior 的 Positioned.fill 覆盖层统一构建
+      // （便于延迟淡入）；这里搜索态不挂子节点，避免重复。
       child: searching
-          ? _searchContent()
+          ? null
           // 锚点铺在滑块之上；外层 AnimatedContainer 已开裁剪，
           // 锚点发光不会超出导航条。
           : Stack(children: [_thumb(), _anchors(context)]),
@@ -309,6 +336,236 @@ class SearchCapsule extends StatelessWidget {
   }
 }
 
+/// 搜索建议区（历史/结果）的入场与退场包装。
+///
+/// 对齐 HTML 参考：面板整体从下方 14px、scale .97 弹入（340ms 曲线
+/// (.3,1.2,.4,1)）；不透明度 250ms、延迟 80ms；高度交给
+/// [AnimatedSize] 生长。关闭时反向播放完毕后才卸载内容，随后高度收起。
+class _PanelEntrance extends StatefulWidget {
+  const _PanelEntrance({required this.visible, required this.contentBuilder});
+
+  final bool visible;
+
+  /// 内容构建：注入面板时间轴，供内部条目（历史胶囊）取错峰区间。
+  final Widget Function(Animation<double> entrance) contentBuilder;
+
+  @override
+  State<_PanelEntrance> createState() => _PanelEntranceState();
+}
+
+class _PanelEntranceState extends State<_PanelEntrance>
+    with SingleTickerProviderStateMixin {
+  /// 时间轴总长：覆盖最末位胶囊的错峰弹入（100 + 40×7 + 340 ≈ 720ms）。
+  static const Duration _timeline = Duration(milliseconds: 720);
+
+  late final AnimationController _c = AnimationController(
+    vsync: this,
+    duration: _timeline,
+  );
+  late final Animation<double> _opacity = CurvedAnimation(
+    parent: _c,
+    curve: const Interval(80 / 720, 330 / 720),
+  );
+  late final Animation<double> _pop = CurvedAnimation(
+    parent: _c,
+    curve: const Interval(0, 340 / 720, curve: Cubic(0.3, 1.2, 0.4, 1)),
+  );
+
+  /// 内容是否需要挂载（退场动画播完前保持挂载）。
+  bool _keep = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _keep = widget.visible;
+    _c.value = widget.visible ? 1 : 0;
+    _c.addStatusListener((status) {
+      if (status == AnimationStatus.dismissed && !widget.visible && mounted) {
+        setState(() => _keep = false);
+      }
+    });
+  }
+
+  @override
+  void didUpdateWidget(_PanelEntrance oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.visible != oldWidget.visible) {
+      if (widget.visible) {
+        setState(() => _keep = true);
+        _c.forward();
+      } else {
+        _c.reverse();
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedSize(
+      duration: const Duration(milliseconds: 340),
+      curve: const Cubic(0.3, 1.2, 0.4, 1),
+      alignment: Alignment.bottomCenter,
+      child: _keep
+          ? FadeTransition(
+              opacity: _opacity,
+              child: AnimatedBuilder(
+                animation: _c,
+                builder: (context, child) {
+                  final v = _pop.value;
+                  return Transform.translate(
+                    offset: Offset(0, 14 * (1 - v)),
+                    child: Transform.scale(
+                      scale: 0.97 + 0.03 * v,
+                      child: child,
+                    ),
+                  );
+                },
+                child: widget.contentBuilder(_c),
+              ),
+            )
+          : const SizedBox(width: double.infinity),
+    );
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+}
+
+/// 胶囊本体的形变器：宽、高沿各自的时长与弹性曲线过渡，
+/// 同时在同一条时间轴上驱动搜索内容、圆点、fuse 的淡入淡出。
+///
+/// 用持久的 [State] + [AnimationController] 驱动 [SizedBox]，渲染对象
+/// 跨帧保持稳定（条件插入导致重建会让动画被跳过——本项目曾踩过此坑）。
+class _CapsuleMorph extends StatefulWidget {
+  const _CapsuleMorph({
+    required this.nav,
+    required this.searching,
+    required this.assemblyWidth,
+    required this.searchWidth,
+    required this.barHeight,
+    required this.searchHeight,
+    required this.interior,
+  });
+
+  final NavPhysicsController nav;
+
+  /// 当前是否搜索态（由父级在 build 时捕获；不能直接读 nav.isSearching
+  /// 做新旧值比较——同一个可变对象读不到旧值）。
+  final bool searching;
+
+  final double assemblyWidth;
+  final double searchWidth;
+  final double barHeight;
+  final double searchHeight;
+
+  /// 内部内容构建，参数依次为：搜索内容/圆点/fuse 的不透明度。
+  final Widget Function(
+    double contentOpacity,
+    double dotOpacity,
+    double fuseOpacity,
+  )
+  interior;
+
+  @override
+  State<_CapsuleMorph> createState() => _CapsuleMorphState();
+}
+
+class _CapsuleMorphState extends State<_CapsuleMorph>
+    with TickerProviderStateMixin {
+  late final AnimationController _width = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 380),
+  );
+  late final AnimationController _height = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 320),
+  );
+  // 圆点：开合头 180ms 快速淡入淡出。
+  late final AnimationController _chrome = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 180),
+  );
+  // fuse：延迟 320ms 后 300ms 淡入（框体落定才出现）。
+  late final AnimationController _fuse = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 620),
+  );
+
+  static const Cubic _widthCurve = Cubic(0.3, 1.1, 0.3, 1);
+  static const Cubic _heightCurve = Cubic(0.3, 1.2, 0.4, 1);
+
+  @override
+  void initState() {
+    super.initState();
+    final searching = widget.searching;
+    _width.value = _height.value = _chrome.value = searching ? 1 : 0;
+    _fuse.value = searching ? 1 : 0;
+  }
+
+  @override
+  void didUpdateWidget(_CapsuleMorph oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.searching != oldWidget.searching) {
+      if (widget.searching) {
+        _width.forward();
+        _height.forward();
+        _chrome.forward();
+        _fuse.forward(from: 0);
+      } else {
+        _width.reverse();
+        _height.reverse();
+        _chrome.reverse();
+        _fuse.value = 0;
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: Listenable.merge([
+        _width,
+        _height,
+        _chrome,
+        _fuse,
+        widget.nav,
+      ]),
+      builder: (context, _) {
+        final wt = _widthCurve.transform(_width.value);
+        final ht = _heightCurve.transform(_height.value);
+        final w =
+            widget.assemblyWidth +
+            (widget.searchWidth - widget.assemblyWidth) * wt;
+        final h =
+            widget.barHeight + (widget.searchHeight - widget.barHeight) * ht;
+        // 搜索内容：延迟 100ms 淡入、320ms 淡完（相对宽度 380ms 时间轴）。
+        final content = Curves.easeOut.transform(
+          const Interval(100 / 380, 320 / 380).transform(_width.value),
+        );
+        final dot = 1 - Curves.easeIn.transform(_chrome.value);
+        final fuse = const Interval(320 / 620, 1).transform(_fuse.value);
+        return SizedBox(
+          width: w,
+          height: h,
+          child: widget.interior(content, dot, fuse),
+        );
+      },
+    );
+  }
+
+  @override
+  void dispose() {
+    _width.dispose();
+    _height.dispose();
+    _chrome.dispose();
+    _fuse.dispose();
+    super.dispose();
+  }
+}
+
 /// 实时搜索结果列表。
 class _ResultsView extends StatelessWidget {
   const _ResultsView({required this.results, required this.onTap});
@@ -408,9 +665,17 @@ class _ResultTileState extends State<_ResultTile> {
 
 /// 搜索框为空时显示的最近搜索胶囊流。
 class _HistoryChips extends StatelessWidget {
-  const _HistoryChips({required this.items, required this.onTap});
+  const _HistoryChips({
+    required this.items,
+    required this.entrance,
+    required this.onTap,
+  });
 
   final List<String> items;
+
+  /// 面板入场时间轴（0→1），各胶囊在其上取错峰区间。
+  final Animation<double> entrance;
+
   final ValueChanged<String> onTap;
 
   @override
@@ -430,8 +695,13 @@ class _HistoryChips extends StatelessWidget {
       spacing: 8,
       runSpacing: 8,
       children: [
-        for (final text in items)
-          _HistoryChip(text: text, onTap: () => onTap(text)),
+        for (var i = 0; i < items.length; i++)
+          _HistoryChip(
+            text: items[i],
+            index: i,
+            entrance: entrance,
+            onTap: () => onTap(items[i]),
+          ),
       ],
     );
   }
@@ -439,9 +709,21 @@ class _HistoryChips extends StatelessWidget {
 
 /// 单个最近搜索胶囊。
 class _HistoryChip extends StatefulWidget {
-  const _HistoryChip({required this.text, required this.onTap});
+  const _HistoryChip({
+    required this.text,
+    required this.index,
+    required this.entrance,
+    required this.onTap,
+  });
 
   final String text;
+
+  /// 在历史流中的序号（决定错峰延迟：100ms + 40ms/个）。
+  final int index;
+
+  /// 面板入场时间轴。
+  final Animation<double> entrance;
+
   final VoidCallback onTap;
 
   @override
@@ -451,6 +733,28 @@ class _HistoryChip extends StatefulWidget {
 class _HistoryChipState extends State<_HistoryChip> {
   /// 点击后的闪白反馈态。
   bool _hit = false;
+
+  // 面板时间轴总长 720ms（见 _PanelEntrance）。
+  static const double _timelineMs = 720;
+  static const double _startMs = 100;
+  static const double _staggerMs = 40;
+  static const double _opacityMs = 260;
+  static const double _transformMs = 340;
+
+  late final double _s = (_startMs + _staggerMs * widget.index) / _timelineMs;
+
+  late final Animation<double> _opacity = CurvedAnimation(
+    parent: widget.entrance,
+    curve: Interval(_s, (_s + _opacityMs / _timelineMs).clamp(0, 1)),
+  );
+  late final Animation<double> _pop = CurvedAnimation(
+    parent: widget.entrance,
+    curve: Interval(
+      _s,
+      (_s + _transformMs / _timelineMs).clamp(0, 1),
+      curve: const Cubic(0.3, 1.4, 0.4, 1),
+    ),
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -462,28 +766,42 @@ class _HistoryChipState extends State<_HistoryChip> {
         });
         widget.onTap();
       },
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
-        constraints: const BoxConstraints(maxWidth: 220),
-        height: 28,
-        padding: const EdgeInsets.symmetric(horizontal: 13),
-        // 历史项不设底色：仅保留胶囊描边；按下时描边、文字提亮。
-        decoration: ShapeDecoration(
-          shape: StadiumBorder(
-            side: BorderSide(color: _hit ? AppColors.tone2 : AppColors.tone1),
+      child: AnimatedBuilder(
+        animation: widget.entrance,
+        builder: (context, child) {
+          final v = _pop.value.clamp(0.0, 1.0);
+          // 从下方 8px、scale .85 弹入（曲线带过冲）。
+          return Transform.translate(
+            offset: Offset(0, 8 * (1 - v)),
+            child: Transform.scale(scale: 0.85 + 0.15 * v, child: child),
+          );
+        },
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          constraints: const BoxConstraints(maxWidth: 220),
+          height: 28,
+          padding: const EdgeInsets.symmetric(horizontal: 13),
+          // 历史项不设底色：仅保留胶囊描边；按下时描边、文字提亮。
+          decoration: ShapeDecoration(
+            shape: StadiumBorder(
+              side: BorderSide(color: _hit ? AppColors.tone2 : AppColors.tone1),
+            ),
           ),
-        ),
-        // 不能用容器自身 alignment（会使容器撑满可用宽度、失去自适应）；
-        // widthFactor:1 让 Center 仅包裹文字宽度，同时在固定高度内居中。
-        child: Center(
-          widthFactor: 1,
-          child: Text(
-            widget.text,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontSize: 12,
-              color: _hit ? AppColors.tone4 : AppColors.tone2,
+          // 不能用容器自身 alignment（会使容器撑满可用宽度、失去自适应）；
+          // widthFactor:1 让 Center 仅包裹文字宽度，同时在固定高度内居中。
+          child: Center(
+            widthFactor: 1,
+            child: Opacity(
+              opacity: _opacity.value,
+              child: Text(
+                widget.text,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: _hit ? AppColors.tone4 : AppColors.tone2,
+                ),
+              ),
             ),
           ),
         ),
