@@ -23,6 +23,15 @@ class EchoApp extends StatelessWidget {
           seedColor: AppColors.accentBlue,
           brightness: Brightness.dark,
         ),
+        // M3 默认 SnackBar 是反色浅底（inverseSurface），与应用近黑
+        // 浮层语言冲突；统一为 overlaySurface 深底 + 白字、贴底常驻样式。
+        snackBarTheme: SnackBarThemeData(
+          behavior: SnackBarBehavior.fixed,
+          backgroundColor: AppColors.overlaySurface,
+          contentTextStyle: const TextStyle(color: AppColors.textPrimary),
+          actionTextColor: AppColors.accentBlue,
+          elevation: 0,
+        ),
       ),
       home: const SmartNavScreen(),
     );

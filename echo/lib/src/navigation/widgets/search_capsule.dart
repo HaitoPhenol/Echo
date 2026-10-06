@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../services/nav_badge_service.dart';
 import '../../services/search_service.dart';
 import '../../theme/app_colors.dart';
+import '../dock_geometry.dart';
 import '../nav_physics.dart';
 import 'fuse_border_painter.dart';
 
@@ -73,30 +74,18 @@ class SearchCapsule extends StatelessWidget {
   /// 提交搜索（键盘搜索键）。
   final ValueChanged<String> onSubmitted;
 
-  // 几何常量（逻辑像素）：父级计算隐形热区时共用同一来源，
+  // 几何事实（边距/高度/圆点/搜索尺寸/宽度规则）统一收在
+  // DockGeometry：把手条、AI 条、竖单、抽屉与本组件共用同一来源，
   // 不再通过 GlobalKey 实时取矩形。
   //
   // 常规态整体 = 圆点(10) + 间距(5) + 导航条(W-30) + 间距(5) + 圆点(10)，
   // 整体宽度为半屏宽；搜索态为全宽（screenWidth - 28）、高 44。
-  static const double sideMargin = 14;
-  static const double bottomMargin = 16;
-  static const double barHeight = 10;
-  static const double dotDiameter = 10;
-  static const double dotGap = dotDiameter / 2;
-  static const double searchHeight = 44;
-
-  /// 常规态圆点 + 导航条整体的宽度（半屏宽）。
-  static double assemblyWidthFor(double screenWidth) => screenWidth / 2;
-
-  /// 缩短后的导航条宽度。
-  static double barWidthFor(double screenWidth) =>
-      screenWidth / 2 - 2 * dotDiameter - 2 * dotGap;
 
   /// 圆点 + 导航条整体的宽度。
-  double get _assemblyWidth => screenWidth / 2;
+  double get _assemblyWidth => DockGeometry.navAssemblyWidthFor(screenWidth);
 
   /// 缩短后的导航条宽度。
-  double get _barWidth => barWidthFor(screenWidth);
+  double get _barWidth => DockGeometry.navBarWidthFor(screenWidth);
 
   @override
   Widget build(BuildContext context) {
@@ -129,9 +118,9 @@ class SearchCapsule extends StatelessWidget {
               nav: controller,
               searching: searching,
               assemblyWidth: _assemblyWidth,
-              searchWidth: screenWidth - 28,
-              barHeight: barHeight,
-              searchHeight: searchHeight,
+              searchWidth: screenWidth - 2 * DockGeometry.sideMargin,
+              barHeight: DockGeometry.barHeight,
+              searchHeight: DockGeometry.searchHeight,
               navAssembly: _navAssembly(context),
               pill: _searchPill,
             ),
@@ -148,9 +137,9 @@ class SearchCapsule extends StatelessWidget {
     return Row(
       children: [
         _NavDot(pressed: pressedDot == -1),
-        const SizedBox(width: dotGap),
+        const SizedBox(width: DockGeometry.dotGap),
         Expanded(child: _navBar(context)),
-        const SizedBox(width: dotGap),
+        const SizedBox(width: DockGeometry.dotGap),
         _NavDot(pressed: pressedDot == 1),
       ],
     );
@@ -218,7 +207,8 @@ class SearchCapsule extends StatelessWidget {
     final r = (999 + (22 - 999) * chrome).clamp(0.0, frameWidth / 2 - inset);
     final radius = BorderRadius.circular(r);
     // 搜索框落定后的固定目标宽（与 morph 的 searchWidth 一致）。
-    final targetWidth = MediaQuery.sizeOf(context).width - 28;
+    final targetWidth =
+        MediaQuery.sizeOf(context).width - 2 * DockGeometry.sideMargin;
     final borderColor = AppColors.tone1.withValues(
       alpha: AppColors.tone1.a * chrome,
     );
@@ -292,7 +282,7 @@ class SearchCapsule extends StatelessWidget {
                     right: 15,
                     bottom: 0,
                     width: _barWidth,
-                    height: barHeight,
+                    height: DockGeometry.barHeight,
                     child: Opacity(
                       opacity: navChrome,
                       child: Stack(children: [_anchors(context), _thumb()]),
@@ -304,7 +294,7 @@ class SearchCapsule extends StatelessWidget {
                   right: 0,
                   bottom: 0,
                   width: targetWidth,
-                  height: searchHeight,
+                  height: DockGeometry.searchHeight,
                   child: IgnorePointer(
                     ignoring: contentOpacity < 0.05,
                     child: Opacity(
@@ -323,7 +313,7 @@ class SearchCapsule extends StatelessWidget {
             right: -2,
             bottom: -2,
             width: targetWidth + 4,
-            height: searchHeight + 4,
+            height: DockGeometry.searchHeight + 4,
             child: Opacity(
               opacity: fuseOpacity,
               child: CustomPaint(
@@ -1123,8 +1113,8 @@ class _NavDot extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: SearchCapsule.dotDiameter,
-      height: SearchCapsule.dotDiameter,
+      width: DockGeometry.dotDiameter,
+      height: DockGeometry.dotDiameter,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         color: pressed ? AppColors.tone2 : AppColors.tone1,

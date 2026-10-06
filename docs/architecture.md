@@ -3,6 +3,11 @@
 > 本文档记录 Echo 的目录结构、核心设计原则、预留接口与扩展方法。
 > 新增或改动功能时，先阅读本文档，确保改动落在正确的位置，
 > 保持项目可维护、不混乱。
+>
+> 其他文档：[工程规范](engineering_standards.md)（原则 / 门禁 / 事故档案）·
+> [规则演进机制](governance.md) · [现状快照](current_state.md) ·
+> [术语表](glossary.md) · [问题清单](code_review_report.md) ·
+> [根目录工作提示](../AGENT.md)
 
 ---
 
@@ -41,23 +46,45 @@ echo/
 │       │   └── search_service.dart        # 搜索服务/数据源/历史接口
 │       └── navigation/                    # 智能导航线
 │           ├── nav_destination.dart       # ★ 导航目的地配置（页面）
-│           ├── quick_action.dart          # ★ 快捷操作配置
+│           ├── quick_action.dart          # ★ 快捷操作配置（全局快捷弧）
+│           ├── page_action.dart           # ★ 本页操作配置（把手竖单）
+│           ├── dock_geometry.dart         # 底部三条几何单一事实来源
 │           ├── nav_physics.dart           # 滚动/吸附物理引擎
 │           ├── smart_nav_screen.dart      # 主屏：手势识别 + 组装
 │           └── widgets/
 │               ├── nav_roller.dart        # 滚筒指示器 + 页名标签
 │               ├── quick_action_arc.dart  # 快捷操作弧
 │               ├── search_capsule.dart    # 导航条 + 翻页圆点 + 搜索面板
-│               └── fuse_border_painter.dart # 倒计时边框
+│               ├── fuse_border_painter.dart # 倒计时边框
+│               ├── handle_bar.dart        # 把手条（常态小条）
+│               ├── handle_menu.dart       # 本页操作竖单（生长动画）
+│               ├── ai_bar.dart            # AI 条（虹彩流动 + 光晕）
+│               ├── ai_dialog.dart         # AI 对话框（聊天面板）
+│               └── side_drawer.dart       # 侧边抽屉（毛玻璃空壳）
 ├── test/
-│   └── widget_test.dart                   # Widget 测试（当前 5 个用例）
+│   └── widget_test.dart                   # Widget 测试（当前 11 个用例）
 └── README.md                              # Flutter 默认工程说明
 docs/
-├── architecture.md                        # 本文档
-└── glossary.md                            # 组件命名称呼表
+├── architecture.md                        # 本文档：架构与接口
+├── engineering_standards.md               # 工程原则、交付门禁、事故档案
+├── current_state.md                       # 当前实现现状快照（会随版本更新）
+├── code_review_report.md                  # 已知问题清单与修复路线
+├── glossary.md                            # 组件命名称呼表
+├── governance.md                         # 规则演进机制（RCR 流程、级别、复审）
+├── maintainer-charter.md                 # AI 维护者常设职责（审查/问题登记/文档维护）
+├── proposals/                            # 规则变更提案与登记册（永不删除）
+│   └── README.md
+├── templates/
+│   └── rule-proposal.md                  # RCR 提案模板
+└── component-reports/                     # 组件阶段开发总结（归档，只增不改）
+    └── smart-nav-line-v0.4.10-2026-10-06.md
 ideas/
-└── smart_line.html                        # 原型：设计与手感基准
+├── smart_line.html                        # 原型：导航线设计与手感基准
+└── another_two_lines.html                 # 原型：把手条 / AI 条 / 抽屉基准
+AGENT.md                                   # 给开发 agent 的工作提示（入口）
 ```
+
+> 各文档的阅读时机见 [AGENT.md](../AGENT.md) 的文档地图。
 
 带 ★ 的两个文件是日常扩展最常修改的地方。
 
@@ -111,11 +138,13 @@ ideas/
 - **`SearchHistoryStore`**（抽象接口）：历史存储，含
   `items` / `add()` / `remove()`。
 - **`InMemorySearchHistoryStore`**：当前实现，内存保存、重启清空。
-- **返回键拦截**：搜索态（open/input）或快捷弧显示时，系统返回键
-  由 `SmartNavScreen` 的 `PopScope` 拦截——先关浮层（搜索走
-  `_exitSearch()`、快捷弧 `dismiss(fire: false)`），不退出 App；
-  两者皆无时默认行为不变。搜索态翻转通过控制器监听触发根树重建，
-  使 PopScope 的 canPop 在 fuse 自动关闭等路径下也保持同步。
+- **返回键拦截**：任一浮层（搜索态 open/input、快捷弧、本页操作竖单、
+  AI 对话框、侧边抽屉）存在时，系统返回键由 `SmartNavScreen` 的
+  `PopScope` 拦截——先关最上层浮层（搜索走 `_exitSearch()`、快捷弧
+  `dismiss(fire: false)`、竖单/对话框走各自的 `dismiss()`、抽屉反向
+  吸附），不退出 App；全部皆无时默认行为不变。搜索态翻转通过控制器
+  监听触发根树重建，使 PopScope 的 canPop 在 fuse 自动关闭等路径下
+  也保持同步。
 
 ### 3.4 触感反馈 `Haptics`
 
@@ -148,15 +177,16 @@ Android 端走原生 `Vibrator` 服务（通道 `echo/haptics`，见
 ### 3.6 几何与热区规则
 
 常规态组件几何不在运行时用 GlobalKey 测量（冷启动首帧负载高时
-GlobalKey 重挂载曾触发框架断言），而是由 `SearchCapsule` 的静态
-常量与 `MediaQuery` 推算（见 `smart_nav_screen.dart` 的
-`_navGeometry()` / `_searchCapsuleRect()`），视觉与命中共用同一
-事实来源：
+GlobalKey 重挂载曾触发框架断言），而是由 `DockGeometry`（底部三条
+全部尺寸/间距，见 3.9）与 `SearchCapsule` 的静态常量配合
+`MediaQuery` 推算（见 `smart_nav_screen.dart` 的 `_navGeometry()` /
+`_searchCapsuleRect()`），视觉与命中共用同一事实来源：
 
 - **尺寸**：圆点直径 = 导航条高度 = 10；导航条与圆点间距 = 5
   （一个半径）；常规态整体宽 = 半屏宽（两端加圆点后导航条相应
-  缩短，总长度不变）；圆点默认色 = 导航条色（tone1），按下色 =
-  拇指滑块色（tone2）。
+  缩短，总长度不变）；圆点默认色 = 导航条色（tone1），按下翻页时
+  提亮到 tone2（白 α.42）；**滑块按下无外观变化**（按压变色方案
+  多次被否，见规范事故 14）。
 - **纵向热区**：导航条与圆点共用，向上 32、向下 10。
 - **横向热区**：导航条 = 自身长度（不扩展）；圆点 = 自身直径的
   2 倍（以圆点为中心），圆点优先判定。
@@ -205,6 +235,9 @@ GlobalKey 重挂载曾触发框架断言），而是由 `SearchCapsule` 的静�
 - 锚点渲染在 `search_capsule.dart` 的 `_NavAnchor`：竖短条 + 同色
   发光，光晕由导航条外层裁剪，不超出条外。动画期间以 `AnimatedBuilder`
   逐帧重建（无逐帧重建会导致光效冻结）。
+- **锚点始终全部挂载、画在滑块下层，不做位置显隐**：当前页段被不透明
+  滑块物理遮挡，拖动时从滑块边缘自然滑入滑出；常态色与滑块视觉一致
+  （白 α.42 叠 tone1 ≈ 滑块灰），离开滑块时无色差（见规范事故 12/13）。
 - `pages/debug_badge_controls.dart` 为测试脚手架：控制台页可模拟
   「聊天新消息」「日志报错」，日志页有「处理异常」按钮。接入真实
   通知源后此脚手架应移除。脚手架在 `buildDefaultDestinations()` 中由
@@ -216,23 +249,89 @@ GlobalKey 重挂载曾触发框架断言），而是由 `SearchCapsule` 的静�
 文件：`lib/src/theme/app_colors.dart`
 
 界面上的白色元素统一为 `tone1`～`tone4`（白 α0.16 / 0.42 / 0.72 /
-1.00），四个锚定元素分别对号：**导航条 = tone1、拇指滑块 = tone2、
-锚点 = tone3、快捷弧选中按钮 = tone4**。其余元素就近取阶：
+1.00），四个锚定元素分别对号：**导航条 = tone1、圆点按下 / 锚点常态 =
+tone2、快捷弧选中按钮 = tone4**；**拇指滑块是特例**：使用不透明灰
+`_thumbFill`（0xFF838383），亮度等同「tone1 底 + tone2 滑块」的合成
+结果（白量 ≈.513），之所以不用半透明 tone2，是因为滑块要不透明地物理
+遮挡下层锚点（见规范事故 12/13）。其余元素就近取阶：
 
 - **tone1**：圆点默认、滚筒/搜索胶囊/历史胶囊/弧按钮描边、搜索结果行底；
-- **tone2**：圆点按下、滑块、静态光晕、历史胶囊文字、未选中图标/次级文字；
-- **tone3**：锚点本体、页名标签、次级按钮文字；
+- **tone2**：圆点按下、锚点常态本体、静态光晕、历史胶囊文字、未选中图标/次级文字；
+- **tone3**：页名标签、次级按钮文字；
 - **tone4**：主文字、滚筒选中页标、快捷弧选中项本体。
 
 另有两类**并列**颜色，不并入阶梯：
 
-- **深色表面层**：`background` / `rollerBackground` / `searchBackground`；
+- **深色表面层**：`background` / `rollerBackground` / `searchBackground`
+  / `overlaySurface`（本页操作竖单、AI 对话框、SnackBar）/
+  `drawerSurface`（侧边抽屉，另叠 18px 毛玻璃）；
 - **功能强调色**：`accentBlue`、`anchorGreen`、`anchorRed`——仅表达
   状态语义（搜索、通知、异常）。
+- **AI 虹彩色**：AI 条流动六色是该组件的专属识别色，不属于中性阶梯
+  也不进共享色板，就地定义在 `widgets/ai_bar.dart`。
+- SnackBar 不走 M3 默认反色浅底：`EchoApp` 主题统一为
+  `overlaySurface` 底 + 白字、贴底固定（`snackBarTheme`）。
 
 取色规则：新增元素先判断是否状态语义（用功能色），否则按视觉亮度
 就近取阶，不自造白透明度。动画中的连续 alpha（滚筒中央刻度脉冲、
 锚点呼吸/急闪）允许跨阶插值。
+
+### 3.9 底部三条、本页操作与侧边抽屉
+
+原型：`ideas/another_two_lines.html`。屏幕底部同一水平线等高地排列
+**把手条 / AI 条 / 导航条整体**（导航条含两端圆点，整体右对齐、宽
+半屏）。全部几何收在 `dock_geometry.dart` 的 `DockGeometry`，
+`SearchCapsule` 与 `SmartNavScreen` 都从这里取数：
+
+| 量 | 公式（w = 屏宽） |
+|---|---|
+| 统一间距 / 底边距 / 条高 | 14 / 16 / 10（`dotGap` = 5） |
+| 把手条 | 左边距 14，宽 12vw |
+| AI 条 | 左边距 `14 + 把手宽 + 14`，宽 `38vw - 56`（恰好填满中段） |
+| 导航条整体 | 宽 `w/2`、右边距 14；条本体 = 整体宽 − 两端圆点与间距 |
+| 竖单按钮直径 | `(把手宽 - 12).clamp(32, 42)`；边缘留白 = `(把手宽 − 按钮直径)/2`（横纵同值，端弧与端按钮**同心圆**）；竖单高 = 3 按钮 + 间距 10×2 + 上下留白 |
+| 抽屉 | 宽 `min(78vw, 340)`；打开时把手停靠在 `抽屉宽 + 14` |
+
+手势全部在 `SmartNavScreen` 的根指针路由中按热区分发（
+`_handleRootPointerDown` / 把手 / AI 两组 move/up）：
+
+- **点按把手条** → 挂载 `HandleMenu`：由 10px 小条用 340ms
+  Cubic(0.3,1.2,.4,1) 向上生长成胶囊，三个圆形按钮白圆底 + inverse
+  图标错峰弹入；生长/收回期间 `IgnorePointer` 拦截（注意该节点必须
+  在逐帧重建的 builder 内部，status 翻转才会生效），完全展开后按钮
+  才接受点击；触发操作后在按钮位置播放涟漪并自动收起。竖单挂载的
+  同一帧常态把手隐藏，收回卸载同帧回归（与导航条/pill 交接同规则）。
+- **右拖把手条** → 跟手拉出 `SideDrawer`：横向位移 >6px 且占优时
+  锁定横拖，抽屉进度 0↔1 直接跟手；松手按进度/速度吸附开合
+  （420ms 控制器），把手条同步滑动到抽屉右缘外侧的停靠位。抽屉面板
+  右圆角 22、18px 毛玻璃 + `drawerSurface`，**当前是空壳**：面板
+  内容留空、`IgnorePointer` 不接事件；遮罩黑 α.44，点遮罩/返回键
+  关闭。
+- **AI 条**：`AiBar` 是 7s 匀速循环的虹彩六色流动条（条外上下各
+  溢 4px 同色模糊光晕）。流动只平移着色器起点、条体矩形固定不动；
+  按压态整体 brightness ×1.3、光晕 α .55→.95，**把手条按压无外观
+  变化**（沿用滑块的既定结论）。手势：移动 >8px 取消、长按 450ms
+  呼出 `AiDialog`；单击无行为。
+- **AI 对话框**：22 圆角浮层（left/right 14、bottom 38+安全区），
+  入场 320ms；自管 FocusNode/TextEditingController，挂载后下一帧
+  自动聚焦唤起输入法。**当前消息区为空、发送按钮恒禁用、提交无
+  行为**——只做到可打字；收起时先 unfocus 再反向播放（返回键先收
+  键盘再关对话框是系统层顺序，无需自己处理）。
+- **互斥**：竖单、AI 对话框、抽屉、搜索态、快捷弧任一存在时，
+  其余手势被遮罩/阻断标志拦截；`_dismissPeerOverlays()` 保证同屏
+  只有一个浮层。
+
+**本页操作配置 `PageAction`**（`page_action.dart`）：字段
+`id / icon / label / onSelect(BuildContext)`，与 `QuickAction`
+同构但语义是「作用于当前页」（今后可按页返回不同列表）；
+`buildDefaultPageActions()` 当前为刷新 / 分享 / 置顶三个占位，
+`onSelect` 统一弹「「X」功能开发中」SnackBar（1s，先清旧条）。
+
+Stack 分层在 `SmartNavScreen.build`：页面 → 搜索 scrim → 快捷弧 →
+涟漪 → 滚筒 → AI 条 → 把手条 → 搜索胶囊 →（条件）抽屉 + 停靠把手
+→（条件）竖单 scrim + 竖单 →（条件）AI scrim + 对话框；所有条件
+插入节点带稳定 `ValueKey`，逐帧层只动 transform/opacity，
+虹彩/抽屉/竖单各自 `RepaintBoundary` 隔离。
 
 ---
 
@@ -250,6 +349,17 @@ GlobalKey 重挂载曾触发框架断言），而是由 `SearchCapsule` 的静�
 ### 接入快捷操作的真实行为
 修改 `buildDefaultQuickActions()` 中对应 `QuickAction` 的 `onSelect`，
 替换掉「开发中」占位回调（如扫码、新建会话、语音助手）。
+
+### 接入本页操作的真实行为 / 按页配置
+修改 `buildDefaultPageActions()` 中对应 `PageAction` 的 `onSelect`；
+要按页面给出不同操作时，把当前 State 持有的固定列表改为依据
+当前页 index 构建（`PageAction` 语义即「作用于当前页」）。
+竖单项数变化时同步检查 `DockGeometry.menuHeightFor` 的高度公式。
+
+### 向侧边抽屉填充内容
+`SideDrawer` 面板当前为空壳（内容 `IgnorePointer`）。填充时在面板
+内放入真实内容节点、解除内容忽略，宽度与停靠位仍由 `DockGeometry`
+决定，不要在组件内另写尺寸。
 
 ### 新增一类搜索数据源（联系人、文件等）
 1. 新建一个类实现 `SearchProvider`；
@@ -270,76 +380,36 @@ GlobalKey 重挂载曾触发框架断言），而是由 `SearchCapsule` 的静�
 
 ---
 
-## 5. 开发规范
+## 5. 开发规范索引
 
-### 版本号（语义化版本 SemVer）
+通用工程规范统一收在 [engineering_standards.md](engineering_standards.md)，
+本文不再重复维护，改规范去那里改。索引：
 
-格式：`MAJOR.MINOR.PATCH+BUILD`，例如 `0.1.0+3`。
+- **版本与提交**（1.1）：SemVer 与只增不减的 versionCode、git tag、
+  Conventional Commits、不主动提交；
+- **文档一致、单一事实来源、依赖方向、视觉取色**（1.2~1.5）：
+  含本文件第 1 节五条设计原则的通用表述；
+- **动画交互**（1.6~1.10）：稳定 Key、形态解耦、几何事实来源、
+  帧时钟/墙钟、消除逐帧重布局、多 Controller 与不可变状态比较、
+  描边/阴影在裁剪层外、圆角显式夹取、物理遮挡而非显隐；
+- **反馈与手感**（1.11~1.12）：无死按钮、非关键能力静默降级、
+  真机验收六种手势；
+- **命名、依赖审慎**（1.13~1.14）与**交付门禁、测试写法**（第 2 节）。
 
-- `MAJOR`：正式发布前保持 `0`；
-- `MINOR`：功能更新时 +1；
-- `PATCH`：Bug 修复时 +1，MINOR 增加时清零；
-- `+BUILD`：Android versionCode，**每次构建只增不减**，与版本名无关。
+历史上踩过的坑统一登记在规范文件第 3 节事故档案（含症状→根因→原则），
+本文件各处只引用编号、不重复叙述。
 
-每个版本节点打 git 标签，如 `v0.1.0`。
+本文第 1 节的设计原则是上述规范在架构层面的投影；两处若有冲突，
+以 engineering_standards.md 为准并修正本文。
 
-### 提交信息（Conventional Commits）
+### 架构层面必须记住的两条视觉事实
 
-使用前缀：`feat:` 新功能 · `fix:` 修复 · `refactor:` 重构 ·
-`chore:` 杂项 · `docs:` 文档。标题简述，正文说明原因。
-
-### 命名与文件
-
-- 文件名 `snake_case.dart`，类名 `UpperCamelCase`；
-- 非通用配置不放仓库根目录；
-- 公共 API 写文档注释，说明「为什么」而不只是「做什么」；
-- 提交前保证 `flutter analyze` 无问题、`flutter test` 通过。
-
-### 元素身份与动画
-
-- `Stack`/`Column`/`Row` 中若用 `if`/`for` 条件插入子节点，**每个
-  常驻子节点必须带稳定的 `Key`**。否则同类型（如多个 `Positioned`）
-  子节点在列表错位时会被错误配对：框架按类型顺序配对，插入点之后的
-  元素全部「换人」——被新建的 `RenderAnimatedSize` 首帧直接落定，
-  开合动画静默失效。本项目页面轨道/scrim/滚筒/胶囊均带 `ValueKey`。
-- 验证动画是否真的播放，可在测试中读取 `RenderAnimatedSize`
-  （`visibleForTesting`）的渲染对象身份与中间尺寸：身份必须跨帧不变，
-  尺寸应随时间插值而非一步到位。
-- 需要宽、高不同时长/曲线（如 HTML 参考的 380ms 与 320ms 各自带
-  弹性过冲）时，`AnimatedSize`（单一曲线）不适用：用持久 `State`
-  里的多个 `AnimationController` 驱动 `SizedBox`，多控制器的
-  `State` 要 mixin `TickerProviderStateMixin`。
-- `didUpdateWidget` 中比较新旧状态，不能读同一个可变对象（如
-  `ChangeNotifier`）的当前属性——新旧两个 widget 拿到的都是现值，
-  永远相等；由父级在 build 时把值捕获为不可变字段传入。
-- 两种形态的组件要**解耦**，不要让同一组件既当静止导航条又当变形
-  搜索框（会出现覆盖层层级错乱、收回时滑块/锚点穿帮）。本项目做法：
-  真实导航条仅常规态挂载、搜索开始的同一帧隐藏；另起一个独立搜索
-  pill，其起始帧外观与导航条完全一致（圆点 + tone1 圆角条 + 滑块/
-  锚点），因此替换不可察觉，再由它缩放为全宽搜索框；收回时 pill
-  反向播放（滑块/锚点不参与），播完同一帧卸载 pill、重新显示真实
-  导航条。
-- 按压反馈：端点圆点按下翻页时由 tone1 提亮到 tone2（白 α.42）；
-  **滑块按下无外观变化**（曾做变黑/描边、曾统一为近黑按压色，
-  用户均反馈奇怪，已回退）——State 中也不再保留按压视觉字段。
-- **逐帧动画期间消除重布局**（本项目曾出现"低帧率慢速"观感）：
-  形状层用无子女的轻量色块；文本等复杂内容放在**固定为目标尺寸**
-  的 Positioned 层里只动 opacity，超出部分由 ClipRRect 裁掉——约束
-  逐帧不变，布局命中缓存；整块外包 RepaintBoundary 隔离重绘。
-  验证用 `dumpsys gfxinfo <包名>` 的 Janky frames / Missed Vsync。
-- **描边画在 ClipRRect 之外**：`Border` 线跨盒缘（一半在外），
-  放在裁剪层内外侧半条被裁、整圈边框变细。本项目把「颜色+边框」
-  合成一个 DecoratedBox 放在 ClipRRect 外，ClipRRect 只裁内容；
-  阴影同理。
-- **圆角显式夹取**：动画中不要给 ClipRRect 传 999 一类超大名义
-  半径——渲染器横纵独立夹取（rx 夹宽/2、ry 夹高/2）会产生椭圆角、
-  两端像有矩形遮罩。每帧按当前外框宽显式
-  `r.clamp(0, frameWidth / 2 - inset)`，两端始终半圆。
-- 需要重叠"融入"的元素用同一颜色：锚点默认色与滑块同为 tone2、
-  锚点不发光，滑块滑过时像融入而非浮在其上。
-- 被前景遮挡的元素**用物理遮挡而非显隐逻辑**：锚点始终全部挂载、
-  画在滑块下层；滑块不透明（常态填充 `_thumbFill` = 0xFF838383
-  不透明灰，亮度等同 tone1+tone2 合成白量 .513，视觉与旧半透明
-  滑块一致），当前页段锚点被物理盖住，拖动时从滑块边缘自然滑入
-  滑出。曾按位置阈值（<0.5）卸载锚点，临界点锚点恰在滑块边缘、
-  突然弹出露馅。
+- 真实导航条与搜索 pill 是两个解耦组件：常规态只挂真实导航条，
+  搜索开始的同一帧隐藏、挂载起始外观一致的 pill；收回反向播放后
+  同帧卸载 pill、重新显示真实导航条（规范 1.7 / 事故 3）。
+- 锚点常态与滑块视觉同色（白 α.42 叠 tone1 ≈ 不透明灰滑块），
+  锚点常挂载、被滑块物理遮挡，拖动时"融入"滑块边缘滑入滑出
+  （规范 1.10 / 事故 12、13）。
+- 底部三条（把手 / AI / 导航）视觉分离但共用同一几何来源
+  `DockGeometry`；把手与竖单、常态把手与抽屉停靠把手同样是
+  「同帧交接、不做位移动画穿帮」的条件挂载，不要合并成常驻组件。

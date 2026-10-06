@@ -4,10 +4,24 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:echo/src/app/echo_app.dart';
 import 'package:echo/src/navigation/smart_nav_screen.dart';
+import 'package:echo/src/navigation/widgets/ai_dialog.dart';
+import 'package:echo/src/navigation/widgets/handle_menu.dart';
 import 'package:echo/src/navigation/widgets/nav_roller.dart';
 import 'package:echo/src/navigation/widgets/quick_action_arc.dart';
+import 'package:echo/src/navigation/widgets/side_drawer.dart';
 import 'package:echo/src/pages/template_page.dart';
 import 'package:echo/src/services/nav_badge_service.dart';
+
+/// 以 16ms 为步长逐帧推进 [ms] 毫秒。
+///
+/// 必须逐帧 pump：在 widget 测试里单次 `pump(Duration)` 只触发一帧，
+/// 组件挂载当帧启动的 Ticker 拿不到逐帧回调，入场动画会停在 0。
+Future<void> pumpFramesMs(WidgetTester tester, int ms) async {
+  final frames = (ms / 16).ceil();
+  for (var i = 0; i < frames; i++) {
+    await tester.pump(const Duration(milliseconds: 16));
+  }
+}
 
 void main() {
   testWidgets('初始展示 4 个占位页，且首页标题为「控制台」', (tester) async {
@@ -397,5 +411,211 @@ void main() {
     await back();
     await tester.pump(const Duration(milliseconds: 50));
     expect(exitRequests, hasLength(1), reason: '常规态返回应保留默认退出行为');
+  });
+
+  // 800×600 表面下的几何：
+  // 把手 x14..110（中心 62）、AI 条 x124..372（中心 248）、
+  // 条顶 y=574，热区上下扩到 542/594；竖单在把手位向上生长，
+  // 抽屉宽 340，全开时把手停靠 x354..450。
+  testWidgets('把手点按：竖单生长出 3 个占位按钮；返回键/点遮罩收起', (tester) async {
+    await tester.pumpWidget(const EchoApp());
+    await tester.pump();
+
+    // 初始只有常态把手，没有竖单。
+    expect(find.byKey(const ValueKey<String>('handle-bar')), findsOneWidget);
+    expect(find.byType(HandleMenu), findsNothing);
+
+    // 点按把手条 → 竖单挂载并生长。
+    await tester.tapAt(const Offset(62, 579));
+    await tester.pump();
+    expect(find.byType(HandleMenu), findsOneWidget);
+    // 等生长动画（340ms）与按钮错峰弹入完成。
+    await pumpFramesMs(tester, 400);
+
+    // 竖单期间常态把手隐藏（同帧交接），三个图标按钮就位。
+    expect(find.byKey(const ValueKey<String>('handle-bar')), findsNothing);
+    expect(
+      find.descendant(
+        of: find.byType(HandleMenu),
+        matching: find.byIcon(Icons.refresh),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: find.byType(HandleMenu),
+        matching: find.byIcon(Icons.ios_share),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: find.byType(HandleMenu),
+        matching: find.byIcon(Icons.push_pin_outlined),
+      ),
+      findsOneWidget,
+    );
+
+    // 系统返回键：先收竖单，不退出 App。
+    final exitRequests = <MethodCall>[];
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'SystemNavigator.pop') exitRequests.add(call);
+        return null;
+      },
+    );
+    await tester.binding.handlePopRoute();
+    var closed = false;
+    for (var i = 0; i < 48 && !closed; i++) {
+      await tester.pump(const Duration(milliseconds: 16));
+      closed = find.byType(HandleMenu).evaluate().isEmpty;
+    }
+    expect(closed, isTrue, reason: '返回键应收起竖单');
+    expect(exitRequests, isEmpty, reason: '竖单打开时返回不应退出 App');
+    expect(
+      find.byKey(const ValueKey<String>('handle-bar')),
+      findsOneWidget,
+      reason: '竖单退场后把手条应回归',
+    );
+
+    // 再次打开，点遮罩空白处也应收起。
+    await tester.tapAt(const Offset(62, 579));
+    await pumpFramesMs(tester, 400);
+    expect(find.byType(HandleMenu), findsOneWidget);
+    await tester.tapAt(const Offset(400, 200));
+    closed = false;
+    for (var i = 0; i < 48 && !closed; i++) {
+      await tester.pump(const Duration(milliseconds: 16));
+      closed = find.byType(HandleMenu).evaluate().isEmpty;
+    }
+    expect(closed, isTrue, reason: '点遮罩应收起竖单');
+  });
+
+  testWidgets('竖单按钮触发：弹「开发中」提示并收起竖单', (tester) async {
+    await tester.pumpWidget(const EchoApp());
+    await tester.pump();
+
+    await tester.tapAt(const Offset(62, 579));
+    await pumpFramesMs(tester, 400);
+
+    // 最上方按钮（刷新）圆心 ≈ (62,432)；直接点其图标保证命中。
+    await tester.tap(
+      find.descendant(
+        of: find.byType(HandleMenu),
+        matching: find.byIcon(Icons.refresh),
+      ),
+      warnIfMissed: true,
+    );
+    await tester.pump();
+    expect(find.text('「刷新」功能开发中'), findsOneWidget);
+
+    // 竖单随即反向收起，把手条回归。
+    var closed = false;
+    for (var i = 0; i < 48 && !closed; i++) {
+      await tester.pump(const Duration(milliseconds: 16));
+      closed = find.byType(HandleMenu).evaluate().isEmpty;
+    }
+    expect(closed, isTrue, reason: '触发操作后竖单应收起');
+    expect(find.byKey(const ValueKey<String>('handle-bar')), findsOneWidget);
+  });
+
+  testWidgets('AI 条：单击/短滑动不误触；长按呼出对话框可输入，点遮罩收起', (tester) async {
+    await tester.pumpWidget(const EchoApp());
+    await tester.pump();
+
+    // 单击 AI 条：预留无动作。
+    await tester.tapAt(const Offset(248, 579));
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(find.byType(AiDialog), findsNothing);
+
+    // 按下后上滑超过 8px：取消长按，不弹对话框。
+    final slide = await tester.createGesture();
+    await slide.down(const Offset(248, 579));
+    await slide.moveTo(const Offset(248, 550));
+    await tester.pump(const Duration(milliseconds: 500));
+    await slide.up();
+    expect(find.byType(AiDialog), findsNothing);
+
+    // 长按 450ms：对话框升起，输入框自动聚焦，可直接打字。
+    await tester.longPressAt(const Offset(248, 579));
+    await tester.pump();
+    expect(find.byType(AiDialog), findsOneWidget);
+    await pumpFramesMs(tester, 340);
+    final dialogField = find.descendant(
+      of: find.byType(AiDialog),
+      matching: find.byType(TextField),
+    );
+    expect(dialogField, findsOneWidget);
+    await tester.enterText(dialogField, '你好');
+    await tester.pump();
+    expect(find.text('你好'), findsOneWidget);
+
+    // 点遮罩空白处：失焦收键盘 + 面板退场。
+    await tester.tapAt(const Offset(400, 100));
+    var closed = false;
+    for (var i = 0; i < 48 && !closed; i++) {
+      await tester.pump(const Duration(milliseconds: 16));
+      closed = find.byType(AiDialog).evaluate().isEmpty;
+    }
+    expect(closed, isTrue, reason: '点遮罩应收起 AI 对话框');
+  });
+
+  testWidgets('把手右拖：抽屉跟手滑出、松手吸附；返回键关闭，把手回归', (tester) async {
+    await tester.pumpWidget(const EchoApp());
+    await tester.pump();
+    expect(find.byType(SideDrawer), findsNothing);
+
+    // 从把手向右拖出约 220px（抽屉宽 340 → 进度 ≈ .65）。
+    final g = await tester.createGesture();
+    await g.down(const Offset(62, 579));
+    await tester.pump();
+    await g.moveTo(const Offset(90, 579));
+    await g.moveTo(const Offset(160, 579));
+    await g.moveTo(const Offset(282, 579));
+    await tester.pump();
+    expect(find.byType(SideDrawer), findsOneWidget, reason: '跟手期间抽屉应已挂载');
+
+    // 松手 → 进度过半，吸附到全开（420ms 动画）。
+    await g.up();
+    for (var i = 0; i < 40; i++) {
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    expect(find.byType(SideDrawer), findsOneWidget, reason: '松手应吸附到全开');
+    expect(
+      find.byKey(const ValueKey<String>('handle-bar-docked')),
+      findsOneWidget,
+      reason: '全开后把手应停靠在抽屉右缘',
+    );
+    expect(find.byKey(const ValueKey<String>('handle-bar')), findsNothing);
+
+    // 返回键关闭抽屉，把手回归常态位。
+    await tester.binding.handlePopRoute();
+    var closed = false;
+    for (var i = 0; i < 48 && !closed; i++) {
+      await tester.pump(const Duration(milliseconds: 16));
+      closed = find.byType(SideDrawer).evaluate().isEmpty;
+    }
+    expect(closed, isTrue, reason: '返回键应关闭抽屉');
+    expect(find.byKey(const ValueKey<String>('handle-bar')), findsOneWidget);
+  });
+
+  testWidgets('浮层互斥：竖单打开时在 AI 条上长按不弹对话框', (tester) async {
+    await tester.pumpWidget(const EchoApp());
+    await tester.pump();
+
+    // 先开竖单。
+    await tester.tapAt(const Offset(62, 579));
+    await pumpFramesMs(tester, 400);
+    expect(find.byType(HandleMenu), findsOneWidget);
+
+    // 在 AI 条区域按下并停留超过长按阈值：被竖单遮罩拦截，
+    // 不允许同时呼出 AI 对话框。
+    final g = await tester.createGesture();
+    await g.down(const Offset(248, 579));
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(find.byType(AiDialog), findsNothing, reason: '竖单打开时 AI 长按必须被互斥');
+    await g.up();
+    await tester.pump();
   });
 }

@@ -22,6 +22,12 @@ abstract final class AppColors {
   /// 搜索态胶囊底色（深色 90% 不透明）
   static const Color searchBackground = Color(0xE60F141A);
 
+  /// 全屏浮层表面色（深色 92% 不透明）：把手竖单、AI 对话框
+  static const Color overlaySurface = Color(0xEB0F141A);
+
+  /// 侧边抽屉底色（深色 96% 不透明，另叠 18px 毛玻璃）
+  static const Color drawerSurface = Color(0xF511161D);
+
   // ================================================================
   // 中性亮度四阶阶梯（1 最暗 → 4 最亮）
   // ================================================================
