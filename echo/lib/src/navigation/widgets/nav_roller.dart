@@ -70,7 +70,7 @@ class NavRoller extends StatelessWidget {
       decoration: BoxDecoration(
         color: AppColors.rollerBackground,
         borderRadius: BorderRadius.circular(29),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+        border: Border.all(color: AppColors.tone1),
         boxShadow: const [
           BoxShadow(
             color: Color(0x73000000),
@@ -206,12 +206,12 @@ class _RollerDotState extends State<_RollerDot>
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 180),
         decoration: BoxDecoration(
-          color: widget.active ? Colors.white : Colors.transparent,
+          color: widget.active ? AppColors.tone4 : Colors.transparent,
           shape: BoxShape.circle,
           boxShadow: widget.active
               ? const [
                   BoxShadow(
-                    color: Color(0x66FFFFFF),
+                    color: AppColors.tone2,
                     blurRadius: 18,
                   ),
                 ]

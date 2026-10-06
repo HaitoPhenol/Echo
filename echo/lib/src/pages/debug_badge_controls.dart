@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../services/nav_badge_service.dart';
+import '../theme/app_colors.dart';
 
 // 页面序号（测试脚手架直接按当前 4 页顺序引用；
 // 正式接入时由各业务模块在自己的上下文中上报，不会硬编码序号）。
@@ -80,8 +81,8 @@ class _DebugButtonRow extends StatelessWidget {
             onPressed: action.enabled ? action.onTap : null,
             style: OutlinedButton.styleFrom(
               padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-              side: BorderSide(color: Colors.white.withValues(alpha: 0.18)),
-              foregroundColor: Colors.white.withValues(alpha: 0.78),
+              side: const BorderSide(color: AppColors.tone1),
+              foregroundColor: AppColors.tone3,
               textStyle: const TextStyle(fontSize: 13),
             ),
             child: Text(action.label),

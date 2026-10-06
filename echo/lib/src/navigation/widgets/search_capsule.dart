@@ -193,13 +193,9 @@ class SearchCapsule extends StatelessWidget {
       height: searching ? searchHeight : barHeight,
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        color: searching
-            ? AppColors.searchBackground
-            : Colors.white.withValues(alpha: pressed ? 0.22 : 0.16),
+        color: searching ? AppColors.searchBackground : AppColors.tone1,
         borderRadius: BorderRadius.circular(searching ? 22 : 999),
-        border: searching
-            ? Border.all(color: Colors.white.withValues(alpha: 0.10))
-            : null,
+        border: searching ? Border.all(color: AppColors.tone1) : null,
         boxShadow: searching
             ? const [
                 BoxShadow(
@@ -241,11 +237,11 @@ class SearchCapsule extends StatelessWidget {
             decoration: BoxDecoration(
               color: pressed
                   ? AppColors.inverse.withValues(alpha: 0.94)
-                  : Colors.white.withValues(alpha: 0.42),
+                  : AppColors.tone2,
               borderRadius: BorderRadius.circular(999),
               border: pressed
                   ? Border.all(
-                      color: Colors.white.withValues(alpha: 0.40),
+                      color: AppColors.tone2,
                       width: 1.25,
                     )
                   : null,
@@ -371,23 +367,16 @@ class _ResultTile extends StatefulWidget {
 }
 
 class _ResultTileState extends State<_ResultTile> {
-  bool _pressed = false;
-
   @override
   Widget build(BuildContext context) {
     final result = widget.result;
     return GestureDetector(
-      onTapDown: (_) => setState(() => _pressed = true),
-      onTapUp: (_) => setState(() => _pressed = false),
-      onTapCancel: () => setState(() => _pressed = false),
       onTap: widget.onTap,
       child: Container(
         height: 46,
         padding: const EdgeInsets.symmetric(horizontal: 14),
         decoration: BoxDecoration(
-          color: _pressed
-              ? Colors.white.withValues(alpha: 0.08)
-              : Colors.white.withValues(alpha: 0.04),
+          color: AppColors.tone1,
           borderRadius: BorderRadius.circular(12),
         ),
         margin: const EdgeInsets.only(bottom: 6),
@@ -487,14 +476,10 @@ class _HistoryChipState extends State<_HistoryChip> {
         height: 28,
         padding: const EdgeInsets.symmetric(horizontal: 13),
         decoration: BoxDecoration(
-          color: _hit
-              ? Colors.white
-              : Colors.white.withValues(alpha: 0.05),
+          color: _hit ? AppColors.tone4 : AppColors.tone1,
           borderRadius: BorderRadius.circular(999),
           border: Border.all(
-            color: _hit
-                ? Colors.transparent
-                : Colors.white.withValues(alpha: 0.05),
+            color: _hit ? Colors.transparent : AppColors.tone1,
           ),
         ),
         child: Text(
@@ -503,9 +488,7 @@ class _HistoryChipState extends State<_HistoryChip> {
           overflow: TextOverflow.ellipsis,
           style: TextStyle(
             fontSize: 12,
-            color: _hit
-                ? AppColors.inverse
-                : Colors.white.withValues(alpha: 0.52),
+            color: _hit ? AppColors.inverse : AppColors.tone2,
           ),
         ),
       ),
@@ -576,6 +559,7 @@ class _NavAnchorState extends State<_NavAnchor>
       builder: (context, _) {
         switch (widget.level) {
           case NavBadgeLevel.normal:
+            // 本体即色板 tone3（白 α0.72）。
             return _tick(base: Colors.white, fill: 0.72, glow: 0.30);
           case NavBadgeLevel.notification:
             final t = _curve.value;
@@ -639,7 +623,7 @@ class _NavDot extends StatelessWidget {
       height: SearchCapsule.dotDiameter,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        color: Colors.white.withValues(alpha: pressed ? 0.42 : 0.16),
+        color: pressed ? AppColors.tone2 : AppColors.tone1,
       ),
     );
   }

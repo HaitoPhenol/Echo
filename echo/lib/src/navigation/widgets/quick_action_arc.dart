@@ -96,19 +96,15 @@ class QuickActionArcState extends State<QuickActionArc>
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 220),
                   decoration: BoxDecoration(
-                    color: selected
-                        ? Colors.white
-                        : AppColors.searchBackground,
+                    color: selected ? AppColors.tone4 : AppColors.searchBackground,
                     shape: BoxShape.circle,
                     border: selected
                         ? null
-                        : Border.all(
-                            color: Colors.white.withValues(alpha: 0.08),
-                          ),
+                        : Border.all(color: AppColors.tone1),
                     boxShadow: selected
                         ? const [
                             BoxShadow(
-                              color: Color(0x73FFFFFF),
+                              color: AppColors.tone2,
                               blurRadius: 18,
                             ),
                             BoxShadow(

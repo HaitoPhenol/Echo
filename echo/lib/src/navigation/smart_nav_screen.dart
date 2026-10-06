@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import '../services/haptics.dart';
 import '../services/nav_badge_service.dart';
 import '../services/search_service.dart';
+import '../theme/app_colors.dart';
 import 'nav_destination.dart';
 import 'nav_physics.dart';
 import 'quick_action.dart';
@@ -827,12 +828,12 @@ class _RippleState extends State<_Ripple>
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               border: Border.all(
-                color: Colors.white.withValues(alpha: 0.9),
+                color: AppColors.tone4,
                 width: 2,
               ),
               boxShadow: const [
                 BoxShadow(
-                  color: Color(0x66FFFFFF),
+                  color: AppColors.tone2,
                   blurRadius: 16,
                 ),
               ],
