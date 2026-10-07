@@ -1,26 +1,24 @@
 import 'package:flutter/material.dart';
 
+import '../services/chat_store.dart';
+import '../services/haptics.dart';
 import '../theme/app_colors.dart';
 
-/// 聊天页（页面化第一步：会话列表骨架）。
+/// 聊天页（会话列表）。
 ///
 /// **没有标题栏**：整页就是一条纵向会话列表，铺满导航页面轨道
 /// 分配的整块屏幕，最大化可用画面。状态栏安全区作为列表顶部
 /// 内边距；底部悬浮着把手 / AI / 导航三条停靠条，故列表底部
 /// 预留等高内边距，使最后一行能滚到停靠条之上而不被永久遮挡。
 ///
-/// 当前 [conversationCount] 个会话行是脚手架占位行：每行包含
-/// 圆形头像框（空白）、昵称、消息预览三个槽位，文案全部相同，
-/// 另有一条 tone1 细分隔线（与 AI 对话框顶部分隔线同一视觉
-/// 语言）。接入会话数据源后，行内容改由数据驱动、占位文案移除。
-class ChatPage extends StatelessWidget {
+/// 数据来自 [ChatStore]：每行含圆形头像框（空白占位）、昵称、
+/// 消息预览；未读会话右上角有与导航消息锚点同色同节奏的呼吸
+/// 绿点。交互：
+/// - 点按未读行：标记已读（绿点消失，全部已读后导航锚点恢复）；
+/// - 左滑行：露出操作区——已读行有「未读」（恢复未读态）与
+///   「删除」（红色，移除该行）；未读行只有「删除」。
+class ChatPage extends StatefulWidget {
   const ChatPage({super.key});
-
-  /// 占位会话行数。
-  ///
-  /// 脚手架阶段写死为 30，接入会话数据源后本常量随之移除、
-  /// 行数改由列表数据驱动。
-  static const int conversationCount = 30;
 
   /// 会话行统一高度：内容区（头像 48 居中）+ 底部 1px 分隔线。
   static const double rowHeight = 72;
@@ -37,11 +35,11 @@ class ChatPage extends StatelessWidget {
   /// 昵称 / 预览文案间的行距。
   static const double textLineGap = 4;
 
-  /// 昵称占位文案。
-  static const String placeholderNickname = '昵称';
+  /// 未读绿点直径。
+  static const double unreadDotSize = 8;
 
-  /// 消息预览占位文案。
-  static const String placeholderPreview = '消息预览…';
+  /// 单个左滑操作按钮的宽度（操作区总宽 = 可见按钮数 × 本值）。
+  static const double actionButtonWidth = 76;
 
   /// 底部为悬浮停靠三条预留的高度：底边距 16 + 条高 10。
   ///
@@ -52,28 +50,53 @@ class ChatPage extends StatelessWidget {
   static const double _dockReservedHeight = 26;
 
   @override
+  State<ChatPage> createState() => _ChatPageState();
+}
+
+class _ChatPageState extends State<ChatPage> {
+  /// 当前展开着操作区的行 id（全局只允许一行展开；开另一行会
+  /// 通过 open 标记驱动旧行动画收回）。
+  String? _openRowId;
+
+  ChatStore get _store => ChatStoreScope.of(context);
+
+  @override
   Widget build(BuildContext context) {
+    final store = _store;
     final safePadding = MediaQuery.paddingOf(context);
 
-    return ListView.builder(
-      key: const ValueKey<String>('chat-page-list'),
-      itemExtent: rowHeight,
-      itemCount: conversationCount,
-      // 安全区与停靠条避让走列表内边距而非外包 SafeArea/SizedBox：
-      // 列表本身始终铺满全屏，滚动时内容可从停靠条下方穿过。
-      padding: EdgeInsets.only(
-        top: safePadding.top,
-        bottom: safePadding.bottom + _dockReservedHeight,
-      ),
-      itemBuilder: (context, index) {
-        // 稳定 key：当前 30 行内容完全相同，接入真实数据（头像/
-        // 未读态/滑动操作等）后用于保持各行渲染对象身份。
-        return ChatListRow(
-          key: ValueKey<String>('chat-row-$index'),
-          nickname: placeholderNickname,
-          preview: placeholderPreview,
-        );
+    // 列表开始竖向滚动时收回展开的操作区，避免「行开着滑走」。
+    return NotificationListener<ScrollStartNotification>(
+      onNotification: (notification) {
+        if (notification.depth == 0 &&
+            _openRowId != null &&
+            notification.dragDetails != null) {
+          setState(() => _openRowId = null);
+        }
+        return false;
       },
+      child: ListView.builder(
+        key: const ValueKey<String>('chat-page-list'),
+        itemExtent: ChatPage.rowHeight,
+        itemCount: store.conversations.length,
+        // 安全区与停靠条避让走列表内边距而非外包 SafeArea/SizedBox：
+        // 列表本身始终铺满全屏，滚动时内容可从停靠条下方穿过。
+        padding: EdgeInsets.only(
+          top: safePadding.top,
+          bottom: safePadding.bottom + ChatPage._dockReservedHeight,
+        ),
+        itemBuilder: (context, index) {
+          final conversation = store.conversations[index];
+          return ChatListRow(
+            key: ValueKey<String>('chat-row-${conversation.id}'),
+            conversation: conversation,
+            open: _openRowId == conversation.id,
+            onOpenChanged: (open) {
+              setState(() => _openRowId = open ? conversation.id : null);
+            },
+          );
+        },
+      ),
     );
   }
 }
@@ -90,76 +113,192 @@ const TextStyle _previewStyle = TextStyle(
   color: AppColors.textMuted,
 );
 
-/// 一个会话列表行（脚手架阶段）。
+/// 一个会话列表行。
 ///
-/// 布局：左侧圆形头像框 [ChatAvatar]，右侧上为昵称、下为消息预览
-/// 两行文案（均单行省略）；底部分隔线与文案列左边对齐
-/// （从头像右侧开始，不贯通屏幕左缘）。当前不响应点击——没有
-/// 可触发的行为，故不挂手势（不构成「死按钮」），后续接入点击
-/// 进入会话与未读态/时间等元素。
+/// 由 [_SwipeToReveal] 承载左滑手势：底层是右对齐的操作按钮，
+/// 上层前景（不透明页面底色）跟手平移；分隔线画在前景底部、
+/// 随前景一起滑动。已读行不响应点按（没有可触发的行为，
+/// 不构成「死按钮」）；未读行点按即标记已读。
 class ChatListRow extends StatelessWidget {
-  const ChatListRow({super.key, required this.nickname, required this.preview});
+  const ChatListRow({
+    super.key,
+    required this.conversation,
+    required this.open,
+    required this.onOpenChanged,
+  });
 
-  /// 会话昵称。
-  final String nickname;
+  final ChatConversation conversation;
 
-  /// 最新一条消息的预览文案。
-  final String preview;
+  /// 操作区是否处于展开态（开合状态由列表统一持有）。
+  final bool open;
+
+  /// 开合状态变化通知（吸附到展开/收起时回调）。
+  final ValueChanged<bool> onOpenChanged;
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Expanded(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(
-              horizontal: ChatPage.rowHorizontalPadding,
-            ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                const ChatAvatar(),
-                const SizedBox(width: ChatPage.avatarTextGap),
-                Expanded(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
+    final store = ChatStoreScope.of(context);
+    final showUnreadAction = !conversation.unread;
+    final actionWidth = ChatPage.actionButtonWidth * (showUnreadAction ? 2 : 1);
+
+    return _SwipeToReveal(
+      open: open,
+      actionWidth: actionWidth.toDouble(),
+      onOpenChanged: onOpenChanged,
+      // 操作区：右对齐，顺序为「未读」「删除」，删除在最右。
+      actions: [
+        if (showUnreadAction)
+          _RowAction(
+            label: '未读',
+            color: AppColors.tone2,
+            foregroundColor: AppColors.inverse,
+            onTap: () {
+              Haptics.tick();
+              store.markUnread(conversation.id);
+              onOpenChanged(false);
+            },
+          ),
+        _RowAction(
+          label: '删除',
+          color: AppColors.anchorRed,
+          foregroundColor: AppColors.tone4,
+          onTap: () {
+            Haptics.confirm();
+            store.remove(conversation.id);
+          },
+        ),
+      ],
+      // 已读行无点按行为；未读行点按即已读。
+      onTap: conversation.unread
+          ? () {
+              Haptics.tick();
+              store.markRead(conversation.id);
+            }
+          : null,
+      child: _RowForeground(conversation: conversation),
+    );
+  }
+}
+
+/// 行前景：不透明底色上的头像 + 文案 + 未读绿点 + 底部分隔线。
+///
+/// 不透明底色负责在左滑时物理遮挡操作按钮（项目既有经验：
+/// 半透明遮挡会让下层内容透出）。
+class _RowForeground extends StatelessWidget {
+  const _RowForeground({required this.conversation});
+
+  final ChatConversation conversation;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: const BoxDecoration(color: AppColors.background),
+      child: Stack(
+        children: [
+          Column(
+            children: [
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: ChatPage.rowHorizontalPadding,
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      Text(
-                        nickname,
-                        style: _nicknameStyle,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: ChatPage.textLineGap),
-                      Text(
-                        preview,
-                        style: _previewStyle,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                      const ChatAvatar(),
+                      const SizedBox(width: ChatPage.avatarTextGap),
+                      Expanded(
+                        child: Padding(
+                          // 未读时文案右侧让出绿点位置，
+                          // 避免省略号压在点下。
+                          padding: EdgeInsets.only(
+                            right: conversation.unread ? 16 : 0,
+                          ),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                conversation.nickname,
+                                style: _nicknameStyle,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              const SizedBox(height: ChatPage.textLineGap),
+                              Text(
+                                conversation.preview,
+                                style: _previewStyle,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
                     ],
                   ),
                 ),
-              ],
+              ),
+              // 分隔线从文案列左缘起，随前景一起滑动。
+              Padding(
+                padding: const EdgeInsets.only(
+                  left:
+                      ChatPage.rowHorizontalPadding +
+                      ChatPage.avatarSize +
+                      ChatPage.avatarTextGap,
+                  right: ChatPage.rowHorizontalPadding,
+                ),
+                child: const SizedBox(
+                  height: 1,
+                  child: ColoredBox(color: AppColors.tone1),
+                ),
+              ),
+            ],
+          ),
+          // 未读呼吸绿点：行内容右上角。
+          if (conversation.unread)
+            const Positioned(
+              right: ChatPage.rowHorizontalPadding,
+              top: 14,
+              child: UnreadDot(),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 左滑操作区里的单个按钮：填满分配的宽高，纯实色 + 居中文字。
+class _RowAction extends StatelessWidget {
+  const _RowAction({
+    required this.label,
+    required this.color,
+    required this.foregroundColor,
+    required this.onTap,
+  });
+
+  final String label;
+  final Color color;
+  final Color foregroundColor;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: ColoredBox(
+        color: color,
+        child: SizedBox(
+          width: ChatPage.actionButtonWidth,
+          child: Center(
+            child: Text(
+              label,
+              style: TextStyle(fontSize: 14, color: foregroundColor),
             ),
           ),
         ),
-        // 分隔线从文案列左缘起：屏边距 + 头像 + 头像文案间距。
-        Padding(
-          padding: const EdgeInsets.only(
-            left:
-                ChatPage.rowHorizontalPadding +
-                ChatPage.avatarSize +
-                ChatPage.avatarTextGap,
-            right: ChatPage.rowHorizontalPadding,
-          ),
-          child: const SizedBox(
-            height: 1,
-            child: ColoredBox(color: AppColors.tone1),
-          ),
-        ),
-      ],
+      ),
     );
   }
 }
@@ -180,6 +319,249 @@ class ChatAvatar extends StatelessWidget {
         shape: BoxShape.circle,
         border: Border.all(color: AppColors.tone1),
       ),
+    );
+  }
+}
+
+/// 未读呼吸绿点。
+///
+/// 视觉参数与导航消息锚点完全一致：anchorGreen、1700ms
+/// easeInOut 反向循环、不透明度 0.35→1.0、同色辉光
+/// blurRadius 8（透明度 0→0.75），保证行内绿点与导航条
+/// 锚点「同呼吸」。
+class UnreadDot extends StatefulWidget {
+  const UnreadDot({super.key});
+
+  @override
+  State<UnreadDot> createState() => _UnreadDotState();
+}
+
+class _UnreadDotState extends State<UnreadDot>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1700),
+  )..repeat(reverse: true);
+
+  late final CurvedAnimation _curve = CurvedAnimation(
+    parent: _controller,
+    curve: Curves.easeInOut,
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    // 必须随动画每帧重建，否则呼吸会冻结（与导航锚点同一教训）。
+    return AnimatedBuilder(
+      animation: _curve,
+      builder: (context, _) {
+        final t = _curve.value;
+        return Container(
+          width: ChatPage.unreadDotSize,
+          height: ChatPage.unreadDotSize,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: AppColors.anchorGreen.withValues(alpha: 0.35 + 0.65 * t),
+            boxShadow: [
+              BoxShadow(
+                color: AppColors.anchorGreen.withValues(alpha: 0.75 * t),
+                blurRadius: 8,
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  @override
+  void dispose() {
+    _curve.dispose();
+    _controller.dispose();
+    super.dispose();
+  }
+}
+
+/// 左滑露出操作区的容器。
+///
+/// - 底层（[actions]）：右对齐的操作按钮行；
+/// - 上层前景（[child]）：不透明，跟手横移，松手按速度/行程
+///   吸附到全开或全关，吸附动画 180ms；
+/// - 只允许向左滑开：全关时向右的拖动被夹在 0；
+/// - 展开状态由父级持有（[open] / [onOpenChanged]），本组件只
+///   负责呈现与手势，因此「同时只开一行」由列表统一裁决。
+class _SwipeToReveal extends StatefulWidget {
+  const _SwipeToReveal({
+    required this.open,
+    required this.actionWidth,
+    required this.actions,
+    required this.onOpenChanged,
+    required this.child,
+    this.onTap,
+  });
+
+  final bool open;
+  final double actionWidth;
+  final List<Widget> actions;
+  final ValueChanged<bool> onOpenChanged;
+  final Widget child;
+  final VoidCallback? onTap;
+
+  @override
+  State<_SwipeToReveal> createState() => _SwipeToRevealState();
+}
+
+class _SwipeToRevealState extends State<_SwipeToReveal>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 180),
+  )..addListener(() => setState(() {}));
+
+  /// 前景水平偏移：0 = 全关，-actionWidth = 全开。
+  double get _closedOffset => 0;
+  double get _openOffset => -widget.actionWidth;
+
+  /// 吸附动画进行中的值曲线；非动画期间为 null。
+  Animation<Offset>? _snapAnim;
+
+  /// 吸附序号：每次启动新吸附 +1，作废旧动画的完成回调
+  /// （旧动画被打断时 whenCompleteOrCancel 仍会触发）。
+  int _snapSeq = 0;
+
+  /// 是否正在跟手拖动（拖动期间直接写偏移、不响应外部 open 变化）。
+  bool _dragging = false;
+
+  /// 跟手阶段的实时偏移。
+  double _dragOffset = 0;
+
+  double get _currentOffset {
+    if (_dragging) return _dragOffset;
+    final anim = _snapAnim;
+    if (anim != null) return anim.value.dx;
+    return widget.open ? _openOffset : _closedOffset;
+  }
+
+  @override
+  void didUpdateWidget(_SwipeToReveal oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // 外部裁决（开了另一行 / 列表滚动 / 操作后收起）驱动吸附，
+    // 但不能打断正在进行的跟手拖动。
+    if (!_dragging && widget.open != oldWidget.open) {
+      _animateTo(widget.open ? _openOffset : _closedOffset);
+    }
+  }
+
+  void _animateTo(double target) {
+    final start = _currentOffset;
+    final seq = ++_snapSeq;
+    if ((start - target).abs() < 0.5) {
+      _snapAnim = null;
+      _controller.value = 1;
+      // 对齐无动画路径的状态同步（如外部要求展开但已在展开位）。
+      final willOpen = target == _openOffset;
+      if (widget.open != willOpen) widget.onOpenChanged(willOpen);
+      return;
+    }
+    _snapAnim = Tween<Offset>(
+      begin: Offset(start, 0),
+      end: Offset(target, 0),
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOut));
+    _controller
+      ..stop()
+      ..forward(from: 0).whenCompleteOrCancel(() {
+        // 吸附落位：仅当本次仍是最新动画时同步，避免被打断的旧
+        // 动画回传过期开合状态（取消也会触发本回调）。
+        if (!mounted || seq != _snapSeq) return;
+        final willOpen = target == _openOffset;
+        if (widget.open != willOpen) {
+          Haptics.tick();
+          widget.onOpenChanged(willOpen);
+        }
+      });
+  }
+
+  void _onDragStart(DragStartDetails _) {
+    _dragging = true;
+    // 作废任何在途吸附动画的完成回调。
+    _snapSeq++;
+    _snapAnim = null;
+    _controller.stop();
+    _dragOffset = _currentOffset;
+  }
+
+  void _onDragUpdate(DragUpdateDetails details) {
+    // 全关后只允许向左；全开后可继续向左的余量夹死。
+    final next = (_dragOffset + details.delta.dx).clamp(
+      _openOffset,
+      _closedOffset,
+    );
+    setState(() => _dragOffset = next);
+  }
+
+  void _onDragEnd(DragEndDetails details) {
+    _dragging = false;
+    // 快速甩动按方向决定，否则按半程吸附。
+    final velocity = details.velocity.pixelsPerSecond.dx;
+    final bool willOpen;
+    if (velocity.abs() > 300) {
+      willOpen = velocity < 0;
+    } else {
+      willOpen = _dragOffset < _openOffset / 2;
+    }
+    final target = willOpen ? _openOffset : _closedOffset;
+    _animateTo(target);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final offset = _currentOffset;
+    return Stack(
+      children: [
+        // 操作区：右对齐铺满行高，始终在树中（左滑跟手时要即时露出），
+        // 但被前景不透明物理遮挡时 hit test 落不到；同时用
+        // ExcludeSemantics 排除，避免无障碍读到「看不见的按钮」。
+        Positioned.fill(
+          child: ExcludeSemantics(
+            excluding: offset == _closedOffset,
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                // stretch：让操作按钮填满整行高度（Align 给的是
+                // 全高松散约束，不 stretch 会缩成文字高度）。
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: widget.actions,
+              ),
+            ),
+          ),
+        ),
+        // 前景：跟手平移；展开时点前景只负责收回，收起时才触发
+        // 行自身的 onTap（标记已读）。
+        Positioned.fill(
+          left: offset,
+          right: -offset,
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onHorizontalDragStart: _onDragStart,
+            onHorizontalDragUpdate: _onDragUpdate,
+            onHorizontalDragEnd: _onDragEnd,
+            onTap: () {
+              if (widget.open) {
+                widget.onOpenChanged(false);
+              } else {
+                widget.onTap?.call();
+              }
+            },
+            child: widget.child,
+          ),
+        ),
+      ],
     );
   }
 }

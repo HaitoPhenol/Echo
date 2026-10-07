@@ -486,8 +486,9 @@ PointerMove 事件在两帧之间也会到达（触控采样率通常 ≥ 120Hz�
 
 **位置**：[nav_badge_service.dart:23-35](file:///home/phenol/Documents/GitHub/Echo/echo/lib/src/services/nav_badge_service.dart#L23-L35)
 （全部接口用 int page）、
-[debug_badge_controls.dart:8-9](file:///home/phenol/Documents/GitHub/Echo/echo/lib/src/pages/debug_badge_controls.dart#L8-L9)
-硬编码聊天=1、日志=2。
+[debug_badge_controls.dart:9](file:///home/phenol/Documents/GitHub/Echo/echo/lib/src/pages/debug_badge_controls.dart#L9)
+硬编码日志页=2（聊天=1 已随聊天锚点改由 ChatStore 数据驱动而移除，
+聊天页下标在装配层用 `indexWhere(id=='chat')` 解析）。
 
 **影响**：NavDestination 专门设计了稳定 `id`（"代码引用页面时永远用它"），
 但锚点状态绑序号——调整页面顺序后通知会亮在错误页面；将来持久化锚点状态时，

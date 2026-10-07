@@ -38,10 +38,11 @@ echo/
 │       ├── theme/
 │       │   └── app_colors.dart            # 全局调色板
 │       ├── pages/
-│       │   ├── chat_page.dart             # 聊天页（会话列表：头像框/昵称/预览占位）
+│       │   ├── chat_page.dart             # 聊天页（数据驱动会话列表：左滑操作/未读绿点）
 │       │   ├── template_page.dart         # 空白占位页（只显示标题，可挂 footer）
 │       │   └── debug_badge_controls.dart  # 锚点通知/异常的测试按钮（脚手架）
 │       ├── services/                      # 与界面无关的能力层
+│       │   ├── chat_store.dart            # 聊天会话数据：增删/已读未读 + 未读聚合
 │       │   ├── haptics.dart               # 触感反馈统一入口
 │       │   ├── nav_badge_service.dart     # 导航锚点状态：通知/异常接口
 │       │   └── search_service.dart        # 搜索服务/数据源/历史接口
@@ -67,7 +68,7 @@ echo/
 │   ├── navigation/
 │   │   └── dock_geometry_test.dart        # 快捷弧布局纯函数测试（6 个用例）
 │   └── pages/
-│       └── chat_page_test.dart            # 聊天页骨架测试（2 个用例）
+│       └── chat_page_test.dart            # 会话列表交互测试（5 个用例）
 └── README.md                              # Flutter 默认工程说明
 docs/
 ├── architecture.md                        # 本文档：架构与接口
@@ -112,11 +113,24 @@ AGENT.md                                   # 给开发 agent 的工作提示（�
 
 默认配置由 `buildDefaultDestinations()` 构建，当前为 4 页：
 控制台（console）、聊天（chat）、日志（notes）、我（me）。
-其中**聊天页已替换为真实页面** `ChatPage`（`pages/chat_page.dart`：
-无标题栏、整屏 ListView 铺满、30 个 72px 会话行——每行含 48px
-圆形头像占位框（tone1 空心圆描边）、昵称（tone4 16px）与消息
-预览（tone2 14px，均单行省略），分隔线从文案列左缘缩进，
-内边距避让状态栏与底部悬浮停靠条），其余三页仍是 TemplatePage。
+其中**聊天页已替换为真实页面** `ChatPage`（`pages/chat_page.dart`，
+会话数据来自 `ChatStore`，见 3.10）：无标题栏、整屏 ListView
+铺满、会话行高 72px——每行含 48px 圆形头像占位框（tone1 空心
+圆描边）、昵称（tone4 16px）与消息预览（tone2 14px，均单行省略），
+分隔线从文案列左缘缩进，内边距避让状态栏与底部悬浮停靠条。
+初始为 30 条全部已读的占位会话（id `seed-0..29`）。行交互：
+
+- **未读绿点**：未读会话行右上角显示 8px 呼吸绿点（anchorGreen，
+  1.7s 缓动往返 + 同色发光，参数与导航锚点 `_NavAnchor` 完全一致）；
+  点按未读行即标记已读、绿点消失（已读行点按无行为）。
+- **左滑操作区**：行内向左拖动露出右侧操作按钮（每个宽 76px）——
+  已读行为「未读」（tone2 底/inverse 字，恢复未读态）与「删除」
+  （anchorRed 底/tone4 字，移除该会话）；未读行只有「删除」。
+  拖动按速度（>300/s）或半程吸附开合（180ms easeOut），同屏全局
+  只展开一行（展开另一行先收回），竖向滚动列表时自动收回。
+  操作按钮常驻树中、由不透明行前景物理遮挡（与锚点/滑块同思路）。
+
+其余三页仍是 TemplatePage。
 
 ### 3.2 快捷操作 `QuickAction`
 
@@ -228,7 +242,7 @@ GlobalKey 重挂载曾触发框架断言），而是由 `DockGeometry`（底部�
   | `levelOf(page)` | 读取某页当前锚点状态 |
   | `postNotification(page)` | 置为通知态（绿色呼吸） |
   | `reportException(page)` | 置为异常态（红色急闪） |
-  | `markViewed(page)` | 仅 `notification → normal`：在该页连续停留 700ms 才已读 |
+  | `markViewed(page)` | 仅 `notification → normal`：默认在该页连续停留 700ms 才已读；聊天页例外（见下） |
   | `resolveException(page)` | 仅 `exception → normal`：显式处理完成才恢复 |
 
   异常优先级高于通知：异常未处理时查看页面不会改变状态。
@@ -237,6 +251,11 @@ GlobalKey 重挂载曾触发框架断言），而是由 `DockGeometry`（底部�
   `Timer(_readDwell = 700ms)`，只有连续停留满 700ms 才调
   `markViewed(page)`。快速扫过（按住圆点连续翻页）、双击导航条
   直达末页时途经的中转页不会被标为已读。
+- **聊天页例外：锚点由会话未读数据驱动**。聊天页锚点不走停留计时
+  （激活到该页时不启动 700ms 计时器），而由装配层监听 `ChatStore`
+  的 `_syncChatBadge()` 同步：存在任意未读会话即
+  `postNotification`，**聊天页内所有会话都已读时**才 `markViewed`
+  恢复默认；左滑「设为未读」会重新点亮锚点。异常态优先级不变。
 - **帧时钟**：导航物理不使用墙钟（`Stopwatch`），而以物理帧的
   `currentFrameTimeStamp` 为时间源（在 tick 回调内缓存）。真机上与
   真实时间一致；测试中随 `pump` 推进，停留/倒计时逻辑可确定性验证。
@@ -254,7 +273,8 @@ GlobalKey 重挂载曾触发框架断言），而是由 `DockGeometry`（底部�
   滑块物理遮挡，拖动时从滑块边缘自然滑入滑出；常态色与滑块视觉一致
   （白 α.42 叠 tone1 ≈ 滑块灰），离开滑块时无色差（见规范事故 12/13）。
 - `pages/debug_badge_controls.dart` 为测试脚手架：控制台页可模拟
-  「聊天新消息」「日志报错」，日志页有「处理异常」按钮。接入真实
+  「聊天新消息」（调 `ChatStore.addIncoming()`，不再直接操作锚点）、
+  「日志报错」，日志页有「处理异常」按钮。接入真实
   通知源后此脚手架应移除。脚手架在 `buildDefaultDestinations()` 中由
   `kDebugMode` 守卫：仅 debug 构建挂入页面，release/profile 构建
   footer 为 null、组件随树摇移除，不会出现在发布包中。
@@ -349,6 +369,36 @@ Stack 分层在 `SmartNavScreen.build`：页面 → 搜索 scrim → 快捷弧 �
 插入节点带稳定 `ValueKey`，逐帧层只动 transform/opacity，
 虹彩/抽屉/竖单各自 `RepaintBoundary` 隔离。
 
+### 3.10 聊天会话服务 `ChatStore`
+
+文件：`lib/src/services/chat_store.dart`
+
+聊天列表的数据层，页面只依赖本服务读写会话，不直接操作导航锚点
+（页面层不反向依赖 navigation 层）：
+
+- **`ChatConversation`**：不可变值对象，字段 `id`（稳定标识，
+  列表 key 与定向更新都以它为准、不用下标）、`nickname`、`preview`、
+  `unread`；状态变更走 `copyWith({bool? unread})`。
+- **`ChatStore extends ChangeNotifier`**：`ChatStore({seedCount = 30})`
+  生成全部已读的占位会话（昵称/预览为静态占位常量）。方法：
+
+  | 方法 | 含义 |
+  |---|---|
+  | `conversations` | 当前会话（新消息在最前），unmodifiable 视图 |
+  | `hasUnread` | 是否存在任意未读会话（锚点联动的聚合依据） |
+  | `addIncoming()` | 列表最前插入一条未读会话（id `incoming-N`） |
+  | `remove(id)` | 删除指定会话 |
+  | `markRead(id)` / `markUnread(id)` | 置已读 / 置未读 |
+
+  当前为内存实现、重启清空；接入消息模块时替换实现（或持久化），
+  `ChatPage` 无需改动。
+- **`ChatStoreScope`**（`InheritedNotifier<ChatStore>`）：
+  `ChatStoreScope.of(context)` / `.maybeOf(context)`；由
+  `SmartNavScreen` 创建实例并包在 `NavBadgeScope` 外层。
+- **锚点桥接**：`SmartNavScreen` 在 initState 中以
+  `indexWhere(id == 'chat')` 找到聊天页下标并 `addListener`
+  （见 3.7 聊天页例外）；聊天页停留不启动 700ms 已读计时器。
+
 ---
 
 ## 4. 常见扩展操作
@@ -390,9 +440,11 @@ Stack 分层在 `SmartNavScreen.build`：页面 → 搜索 scrim → 快捷弧 �
 取得 `NavBadgeService`（经 `NavBadgeScope.of(context)` 或由上层注入）：
 消息到达时调 `postNotification(页索引)`，日志监控捕获错误时调
 `reportException(页索引)`，问题修复流程完成时调 `resolveException(页索引)`。
-「停留 700ms 即已读」与锚点动画无需接入方处理。需要持久化时，新建一个
-`NavBadgeService` 实现替换 `InMemoryNavBadgeService`，并移除
-`debug_badge_controls.dart` 测试脚手架。
+「停留 700ms 即已读」与锚点动画无需接入方处理；**聊天页是数据驱动
+例外**——接入真实消息模块时实现/替换 `ChatStore`（见 3.10），锚点
+联动由 `SmartNavScreen` 的监听完成，不要直接 post 聊天页通知。
+需要持久化时，新建一个 `NavBadgeService` 实现替换
+`InMemoryNavBadgeService`，并移除 `debug_badge_controls.dart` 测试脚手架。
 
 ---
 

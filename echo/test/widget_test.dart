@@ -178,7 +178,8 @@ void main() {
     expect(pageCenterX(), closeTo(400, 0.5));
   });
 
-  testWidgets('导航锚点：停留才算已读，快速扫过/双击跳转不读中转页；'
+  testWidgets('导航锚点：聊天锚点由会话未读数据驱动（点未读行才恢复），'
+      '其余页停留才算已读，快速扫过/双击跳转不读中转页；'
       '异常须处理完成才恢复', (tester) async {
     await tester.pumpWidget(const EchoApp());
     await tester.pump();
@@ -307,14 +308,30 @@ void main() {
     expect(anchorLevel(1), NavBadgeLevel.notification, reason: '快速扫过不应判定已读');
     expect(anchorLevel(2), NavBadgeLevel.exception);
 
-    // ---- 真正翻到聊天页并停留：落位时仍未读，停留够久才已读 ----
+    // ---- 真正翻到聊天页：锚点由未读数据驱动，停留再久也不自动恢复 ----
     await tester.tapAt(const Offset(781, 560));
     await settlePage(pageMarker(1));
-    expect(anchorLevel(1), NavBadgeLevel.notification, reason: '刚落位、停留未达阈值');
+    expect(anchorLevel(1), NavBadgeLevel.notification, reason: '刚落位仍未读');
     // 当前页锚点仍挂载，只是被不透明滑块物理遮挡（无显隐逻辑）
     expect(find.byKey(const ValueKey<String>('nav-anchor-1')), findsOneWidget);
     await tester.pump(const Duration(milliseconds: 750));
-    expect(anchorLevel(1), NavBadgeLevel.normal);
+    expect(
+      anchorLevel(1),
+      NavBadgeLevel.notification,
+      reason: '聊天锚点改为全部已读才恢复，停留计时不清除',
+    );
+
+    // 新消息行在列表最前（800×600 测试表面无安全区：首行中心 y=36），
+    // 行内呼吸绿点在树；点按该行 → 全部已读 → 锚点恢复、绿点消失。
+    final incomingRow = find.byKey(
+      const ValueKey<String>('chat-row-incoming-1'),
+    );
+    expect(incomingRow, findsOneWidget);
+    expect(find.byType(UnreadDot), findsOneWidget);
+    await tester.tap(incomingRow);
+    await tester.pump();
+    expect(anchorLevel(1), NavBadgeLevel.normal, reason: '点按未读行后全部已读，锚点恢复默认');
+    expect(find.byType(UnreadDot), findsNothing);
     expect(anchorLevel(2), NavBadgeLevel.exception);
 
     // ---- 再翻到日志页：仅查看不解除异常，按钮可处理 ----

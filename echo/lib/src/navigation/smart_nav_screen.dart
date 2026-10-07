@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../services/chat_store.dart';
 import '../services/haptics.dart';
 import '../services/nav_badge_service.dart';
 import '../services/search_service.dart';
@@ -76,6 +77,12 @@ class _SmartNavScreenState extends State<SmartNavScreen>
 
   /// 导航锚点状态服务（通知/异常上报接口）。
   late final NavBadgeService _badges;
+
+  /// 聊天会话数据服务（会话增删 / 已读未读）。
+  late final ChatStore _chatStore;
+
+  /// 聊天目的地在页面轨道中的下标（驱动锚点联动；-1 表示未配置）。
+  int _chatPageIndex = -1;
 
   /// 当前页停留满阈值后标为已读的延迟计时器（离开页面即取消）。
   Timer? _readTimer;
@@ -193,6 +200,14 @@ class _SmartNavScreenState extends State<SmartNavScreen>
 
     _badges = InMemoryNavBadgeService(pageCount: _destinations.length);
 
+    _chatStore = ChatStore();
+    _chatPageIndex = _destinations.indexWhere((d) => d.id == 'chat');
+    // 锚点联动：聊天页锚点不再由「停留 700ms」清除，而完全由
+    // 会话未读数据驱动——存在未读即通知（绿呼吸），全部已读才
+    // 恢复默认；左滑「设为未读」同样会重新点亮锚点。
+    _chatStore.addListener(_syncChatBadge);
+    _syncChatBadge();
+
     _nav = NavPhysicsController(
       vsync: this,
       pageCount: _destinations.length,
@@ -216,7 +231,11 @@ class _SmartNavScreenState extends State<SmartNavScreen>
       if (page != lastViewedPage) {
         lastViewedPage = page;
         _readTimer?.cancel();
-        _readTimer = Timer(_readDwell, () => _badges.markViewed(page));
+        // 聊天页的通知态由会话已读数据驱动（见 _syncChatBadge），
+        // 停留计时不再清除它；其余页面维持「停留即已读」。
+        if (page != _chatPageIndex) {
+          _readTimer = Timer(_readDwell, () => _badges.markViewed(page));
+        }
       }
     });
 
@@ -235,6 +254,7 @@ class _SmartNavScreenState extends State<SmartNavScreen>
     _aiHoldTimer?.cancel();
     _drawerAnim.dispose();
     _nav.dispose();
+    _chatStore.dispose();
     _badges.dispose();
     _searchFocusNode.dispose();
     _searchTextController.dispose();
@@ -243,6 +263,20 @@ class _SmartNavScreenState extends State<SmartNavScreen>
 
   /// 抽屉进度帧回调：驱动遮罩/面板/把手停靠位重绘。
   void _handleDrawerTick() => setState(() {});
+
+  /// 会话未读状态 → 聊天页导航锚点的单向同步。
+  ///
+  /// 存在任意未读会话：锚点进入通知态（绿呼吸）；全部已读：
+  /// 通知态直接恢复默认（不经过停留计时）。异常态不受本同步影响。
+  void _syncChatBadge() {
+    final page = _chatPageIndex;
+    if (page < 0) return;
+    if (_chatStore.hasUnread) {
+      _badges.postNotification(page);
+    } else if (_badges.levelOf(page) == NavBadgeLevel.notification) {
+      _badges.markViewed(page);
+    }
+  }
 
   /// 监听到搜索态翻转：重建根树（更新 PopScope.canPop 与 scrim）。
   void _handleNavSearchToggled() {
@@ -1267,17 +1301,20 @@ class _SmartNavScreenState extends State<SmartNavScreen>
     // 返回键：搜索态/快捷弧/竖单/AI 对话框/抽屉打开时先关浮层，
     // 不退出 App（canPop 在根树重建时随状态更新，
     // 见 _handleNavSearchToggled 与抽屉帧回调）。
-    return NavBadgeScope(
-      service: _badges,
-      child: PopScope(
-        canPop:
-            !_nav.isSearching &&
-            !_quickArcShown &&
-            !_menuShown &&
-            !_aiShown &&
-            _drawerAnim.value == 0,
-        onPopInvokedWithResult: _handlePopInvoked,
-        child: scaffold,
+    return ChatStoreScope(
+      store: _chatStore,
+      child: NavBadgeScope(
+        service: _badges,
+        child: PopScope(
+          canPop:
+              !_nav.isSearching &&
+              !_quickArcShown &&
+              !_menuShown &&
+              !_aiShown &&
+              _drawerAnim.value == 0,
+          onPopInvokedWithResult: _handlePopInvoked,
+          child: scaffold,
+        ),
       ),
     );
   }

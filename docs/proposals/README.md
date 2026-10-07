@@ -31,6 +31,7 @@
 > 不走提案、直接执行的规则文档小改，在此追加一行（最新在上）。
 > 格式：日期 · 文件 · 一句话原因 · 提交。
 
+- 2026-10-07 · architecture / current_state / glossary / code_review_report · 会话列表数据化（ChatStore）：左滑删除/置未读、未读呼吸绿点、模拟新消息插入；聊天锚点改数据驱动（全部已读才恢复，停留 700ms 对聊天页失效）。新增 3.10 ChatStore 章节与术语表「聊天页」节，测试 19→22（聊天用例 2→5），更新 P2-10 证据（脚手架移除聊天序号硬编码） · 随本提交入库
 - 2026-10-07 · architecture / current_state / code_review_report · 会话行填充头像占位框/昵称/预览：3.1 页面说明、目录树、页面现状与 P2-08 负载描述同步（几何数值 48/72/74 与取色 tone1/tone2/tone4） · 随本提交入库
 - 2026-10-07 · architecture / current_state / code_review_report · 聊天页替换占位页（ChatPage 会话列表骨架）：目录树、3.1 页面说明、页面现状、测试数量（19 个/三文件）同步，P2-08 影响更新为「首个真实页面已常建」；顺手补登目录树遗漏的 dock_geometry_test.dart · 已随 a6fbf13 入库
 - 2026-10-07 · engineering_standards 1.1 / AGENT.md · 撞号事故（两分支同占 v0.5.3+26）后定规：版本号主线排号、任务分支不预占 pubspec、合并者按 main 实际状态取下一号、撞号后来者顺延；建分支前同步最新 main、开工/合并前扫其他分支 · 随 v0.5.4 提交入库
