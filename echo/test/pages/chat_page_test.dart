@@ -287,6 +287,89 @@ void main() {
     expect(find.text(ChatPage.emptyHint), findsOneWidget);
   });
 
+  testWidgets('松手吸附从手指离开位置起播，不弹回旧状态重播（开/合两方向）', (
+    tester,
+  ) async {
+    tester.view
+      ..devicePixelRatio = 1.0
+      ..physicalSize = const Size(800, 1200);
+    addTearDown(tester.view.reset);
+    mockHaptics(tester);
+
+    // 未读行操作区只有「删除」，宽 76：半程 = -38。
+    final store = ChatStore()..addIncoming();
+    await tester.pumpWidget(booth(store));
+    await tester.pump();
+
+    final row = find.byKey(const ValueKey<String>('chat-row-incoming-1'));
+    Finder avatar() => find.descendant(
+      of: row,
+      matching: find.byType(ChatAvatar),
+    );
+
+    // 起播首帧前景位置（头像左边距 14 + 前景偏移）。
+    double avatarLeft() => tester.getRect(avatar()).left;
+
+    /// 逐段小步拖动（每段都 pump），直到前景偏移进入 [target] 区间。
+    /// 首段过 slop 的位移量被识别器折算、不可精确预测，故只按
+    /// 实际渲染位置逼近，不预设步数。
+    Future<TestGesture> dragUntil(
+      double step,
+      bool Function(double offset) reached,
+    ) async {
+      final gesture = await tester.startGesture(const Offset(400, 36));
+      await tester.pump();
+      for (var i = 0; i < 20; i++) {
+        await gesture.moveBy(Offset(step, 0));
+        await tester.pump();
+        if (reached(avatarLeft() - 14)) break;
+      }
+      return gesture;
+    }
+
+    // ---- 关闭态左拖到半程与全开位之间（-60 附近）后松手 ----
+    var gesture = await dragUntil(
+      -10,
+      (offset) => offset <= -58 && offset > -76,
+    );
+    final beforeOpen = avatarLeft();
+    expect(beforeOpen, lessThan(14 - 38), reason: '测试前置：已过半程');
+    await gesture.up();
+    // 吸附动画第 0 帧：必须停在手指离开位置，不能弹回 0 再打开
+    await tester.pump(Duration.zero);
+    expect(
+      avatarLeft(),
+      closeTo(beforeOpen, 0.5),
+      reason: '松手后首帧不应弹回关闭态',
+    );
+    await pumpSnap(tester);
+    // 落位到全开 -76
+    expect(avatarLeft(), closeTo(14 - 76, 0.5));
+    expect(
+      find.descendant(of: row, matching: find.text('删除')).hitTestable(),
+      findsOneWidget,
+    );
+
+    // ---- 打开态向右拖回半程与全关位之间（-26 附近）后松手 ----
+    gesture = await dragUntil(10, (offset) => offset >= -30 && offset < 0);
+    final beforeClose = avatarLeft();
+    expect(beforeClose, greaterThan(14 - 38), reason: '测试前置：已过半程');
+    await gesture.up();
+    // 首帧必须停在手指离开位置，不能弹回全开位 -76 再播关闭
+    await tester.pump(Duration.zero);
+    expect(
+      avatarLeft(),
+      closeTo(beforeClose, 0.5),
+      reason: '松手后首帧不应弹回打开态',
+    );
+    await pumpSnap(tester);
+    expect(avatarLeft(), closeTo(14, 0.5));
+    expect(
+      find.descendant(of: row, matching: find.text('删除')).hitTestable(),
+      findsNothing,
+    );
+  });
+
   testWidgets('左滑展开一行后，竖向滚动列表会自动收回操作区', (
     tester,
   ) async {

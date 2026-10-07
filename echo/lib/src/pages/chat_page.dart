@@ -462,12 +462,21 @@ class _SwipeToRevealState extends State<_SwipeToReveal>
     // 外部裁决（开了另一行 / 列表滚动 / 操作后收起）驱动吸附，
     // 但不能打断正在进行的跟手拖动。
     if (!_dragging && widget.open != oldWidget.open) {
-      _animateTo(widget.open ? _openOffset : _closedOffset);
+      // 此时 widget.open 已是新值，_currentOffset 的静止回退会直接
+      // 读到新目标位，必须显式从「当前呈现位置」起播：动画在途取
+      // 动画值，否则取旧 widget 对应的静止位——否则会跳变无动画。
+      final from = _snapAnim != null
+          ? _snapAnim!.value.dx
+          : (oldWidget.open ? _openOffset : _closedOffset);
+      _animateTo(widget.open ? _openOffset : _closedOffset, from: from);
     }
   }
 
-  void _animateTo(double target) {
-    final start = _currentOffset;
+  /// 启动吸附动画到 [target]；[from] 为起播位置，必须由调用方显式
+  /// 给出——动画启动的同一帧内拖动标志 / widget.open 都可能已切换，
+  /// 从状态反推起点会拿到旧状态位或新目标位，导致画面先弹回再重播。
+  void _animateTo(double target, {required double from}) {
+    final start = from;
     final seq = ++_snapSeq;
     if ((start - target).abs() < 0.5) {
       _snapAnim = null;
@@ -514,6 +523,10 @@ class _SwipeToRevealState extends State<_SwipeToReveal>
   }
 
   void _onDragEnd(DragEndDetails details) {
+    // 必须先抓住手指离开的位置再起播：_dragging 置 false 后
+    // _currentOffset 会回退到 widget.open 的旧静止位（0 或全开位），
+    // 从那里起播就会出现「先弹回旧状态、再重新吸附」的穿帮。
+    final from = _dragOffset;
     _dragging = false;
     // 快速甩动按方向决定，否则按半程吸附。
     final velocity = details.velocity.pixelsPerSecond.dx;
@@ -521,10 +534,10 @@ class _SwipeToRevealState extends State<_SwipeToReveal>
     if (velocity.abs() > 300) {
       willOpen = velocity < 0;
     } else {
-      willOpen = _dragOffset < _openOffset / 2;
+      willOpen = from < _openOffset / 2;
     }
     final target = willOpen ? _openOffset : _closedOffset;
-    _animateTo(target);
+    _animateTo(target, from: from);
   }
 
   @override
