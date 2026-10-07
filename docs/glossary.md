@@ -58,7 +58,8 @@
 
 | 称呼 | 说明 | 代码位置 |
 |---|---|---|
-| **会话行** | 聊天列表的一行（高 72px）：48px 空心圆头像框 + 昵称（tone4 16px）+ 消息预览（tone2 14px）；数据来自 `ChatStore`，以会话 id 为行 key | `pages/chat_page.dart` 的 `ChatListRow`，数据在 `services/chat_store.dart` |
+| **会话行** | 聊天列表的一行（高 72px）：48px 空心圆头像框 + 昵称（tone4 16px）+ 消息预览（tone2 14px），行间为屏宽 80%、水平居中的 1px tone1 分隔线；数据来自 `ChatStore`，以会话 id 为行 key | `pages/chat_page.dart` 的 `ChatListRow`，数据在 `services/chat_store.dart` |
+| **空态「暂无消息」** | 会话列表为空时整屏居中的 13px tone2 小字提示；此时不构建 ListView，收到首条消息（`addIncoming()`）后切换为列表，删光全部会话后回到空态 | `pages/chat_page.dart` 的 `ChatPage.emptyHint` |
 | **未读绿点** | 未读会话行右上角的 8px 绿色呼吸点（anchorGreen，1.7s 往返 + 发光，与导航锚点同色同节奏）；点按该行使其已读、绿点消失 | `pages/chat_page.dart` 的 `UnreadDot` |
 | **左滑操作区** | 会话行向左拖动后从右侧露出的操作按钮组（每个宽 76px）：已读行有「未读」「删除」，未读行只有「删除」；全局只展开一行，竖滚列表自动收回 | `pages/chat_page.dart` 的 `_SwipeToReveal` |
 

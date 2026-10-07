@@ -10,7 +10,8 @@ import 'package:echo/src/theme/app_colors.dart';
 ///
 /// 用 [TestFlutterView] 直接配置表面尺寸与安全区 padding，
 /// 不挂载整个 EchoApp：页面骨架与导航/手势无关，隔离测更精确。
-/// 数据经由 [ChatStoreScope] 注入 [ChatStore]。
+/// 数据经由 [ChatStoreScope] 注入 [ChatStore]——store 初始为空，
+/// 需要行的用例一律通过 `addIncoming()` 造数据。
 void main() {
   /// 包一层 ChatStoreScope 的挂载台。
   Widget booth(ChatStore store) => MaterialApp(
@@ -35,82 +36,58 @@ void main() {
     }
   }
 
-  testWidgets('初始 30 个已读会话行：头像/昵称/预览齐全，无未读绿点', (tester) async {
-    // 表面高度足以容纳全部 30 行 + 底部停靠预留：30*72 + 26 = 2186。
+  /// 造 [count] 条会话（addIncoming 逐条插到最前，id 为
+  /// incoming-1..count，最终顺序为 incoming-count..incoming-1），
+  /// 再全部标记已读，得到不带呼吸动画的纯列表（可安全 settle）。
+  ChatStore seededReadStore(int count) {
+    final store = ChatStore();
+    for (var i = 0; i < count; i++) {
+      store.addIncoming();
+    }
+    for (var i = 1; i <= count; i++) {
+      store.markRead('incoming-$i');
+    }
+    return store;
+  }
+
+  testWidgets('初始为空：无列表/头像/绿点，居中显示「暂无消息」小字', (
+    tester,
+  ) async {
     tester.view
       ..devicePixelRatio = 1.0
-      ..physicalSize = const Size(800, 2200);
+      ..physicalSize = const Size(800, 1200);
     addTearDown(tester.view.reset);
 
     final store = ChatStore();
     await tester.pumpWidget(booth(store));
     await tester.pump();
 
-    expect(store.conversations, hasLength(30));
+    expect(store.conversations, isEmpty);
     expect(store.hasUnread, isFalse);
 
-    // 没有任何标题栏，整页只有一个列表
+    // 空态不挂标题栏也不挂列表
     expect(find.byType(AppBar), findsNothing);
-    expect(find.byType(ListView), findsOneWidget);
-
-    // 每行一个头像框、一条昵称、一条预览；没有任何未读绿点
-    expect(find.byType(ChatAvatar), findsNWidgets(30));
-    expect(find.text(ChatStore.placeholderNickname), findsNWidgets(30));
-    expect(find.text(ChatStore.placeholderPreview), findsNWidgets(30));
+    expect(find.byType(ListView), findsNothing);
+    expect(find.byType(ChatAvatar), findsNothing);
     expect(find.byType(UnreadDot), findsNothing);
 
-    // 30 行全部构建且 key 连续
-    for (var i = 0; i < store.seedCount; i++) {
-      expect(find.byKey(ValueKey<String>('chat-row-seed-$i')), findsOneWidget);
-    }
-
-    // 无安全区时首行紧贴屏幕顶部（无标题栏占位），统一行高 72
-    final firstRow = find.byKey(const ValueKey<String>('chat-row-seed-0'));
-    final firstRect = tester.getRect(firstRow);
-    expect(firstRect.top, 0);
-    expect(firstRect.height, ChatPage.rowHeight);
-
-    // 首行头像：左边距 14、在分隔线之上的内容区（行高 − 1px 分隔线）
-    // 内垂直居中，48 见方
-    final avatarRect = tester.getRect(
-      find.descendant(of: firstRow, matching: find.byType(ChatAvatar)),
+    // 唯一一条空态提示：tone2 13px 小字，位于屏幕正中
+    final hint = find.text(ChatPage.emptyHint);
+    expect(hint, findsOneWidget);
+    final hintText = tester.widget<Text>(hint);
+    expect(hintText.style?.fontSize, 13);
+    expect(hintText.style?.color, AppColors.textMuted);
+    expect(
+      find.ancestor(of: hint, matching: find.byType(Center)),
+      findsOneWidget,
     );
-    expect(avatarRect.left, ChatPage.rowHorizontalPadding);
-    expect(avatarRect.width, ChatPage.avatarSize);
-    expect(avatarRect.height, ChatPage.avatarSize);
-    expect(avatarRect.top, (ChatPage.rowHeight - 1 - ChatPage.avatarSize) / 2);
-
-    // 头像框为 tone1 圆形描边
-    final avatarBox = tester.widget<Container>(
-      find.descendant(of: firstRow, matching: find.byType(Container)).first,
-    );
-    final decoration = avatarBox.decoration! as BoxDecoration;
-    expect(decoration.shape, BoxShape.circle);
-    expect(decoration.border!.top.color, AppColors.tone1);
-
-    // 昵称在头像右侧、预览为单行省略
-    final name = tester.widget<Text>(
-      find.descendant(
-        of: firstRow,
-        matching: find.text(ChatStore.placeholderNickname),
-      ),
-    );
-    expect(name.style?.color, AppColors.textPrimary);
-    expect(name.maxLines, 1);
-    expect(name.overflow, TextOverflow.ellipsis);
-
-    final preview = tester.widget<Text>(
-      find.descendant(
-        of: firstRow,
-        matching: find.text(ChatStore.placeholderPreview),
-      ),
-    );
-    expect(preview.style?.color, AppColors.textMuted);
-    expect(preview.maxLines, 1);
-    expect(preview.overflow, TextOverflow.ellipsis);
+    final hintCenter = tester.getCenter(hint);
+    expect(hintCenter, const Offset(400, 600));
   });
 
-  testWidgets('列表可纵向滚动；状态栏与底部停靠条通过内边距避让', (tester) async {
+  testWidgets('列表可纵向滚动；状态栏与底部停靠条通过内边距避让', (
+    tester,
+  ) async {
     // 常规手机表面：上 30 状态栏、下 20 手势条安全区
     tester.view
       ..devicePixelRatio = 1.0
@@ -118,18 +95,19 @@ void main() {
       ..padding = const FakeViewPadding(top: 30, bottom: 20);
     addTearDown(tester.view.reset);
 
-    await tester.pumpWidget(booth(ChatStore()));
+    final store = seededReadStore(30);
+    await tester.pumpWidget(booth(store));
     await tester.pump();
 
-    // 首行从状态栏安全区之下开始（没有额外标题栏占位）
+    // 首行（最后插入的 incoming-30）从状态栏安全区之下开始
     final firstRect = tester.getRect(
-      find.byKey(const ValueKey<String>('chat-row-seed-0')),
+      find.byKey(const ValueKey<String>('chat-row-incoming-30')),
     );
     expect(firstRect.top, 30);
 
     // 视口只放得下约 7 行，末行尚未构建
     expect(
-      find.byKey(const ValueKey<String>('chat-row-seed-29')),
+      find.byKey(const ValueKey<String>('chat-row-incoming-1')),
       findsNothing,
     );
 
@@ -139,12 +117,14 @@ void main() {
 
     // 末行底边距屏幕底部 = 底部安全区 20 + 停靠条预留 26
     final lastRect = tester.getRect(
-      find.byKey(const ValueKey<String>('chat-row-seed-29')),
+      find.byKey(const ValueKey<String>('chat-row-incoming-1')),
     );
     expect(lastRect.bottom, 600 - 20 - 26);
   });
 
-  testWidgets('新消息：列表最前插入未读会话并显示呼吸绿点，点行已读清除', (tester) async {
+  testWidgets('新消息：空态切为列表，最前插入未读行（绿点+80%居中分隔线），点行已读', (
+    tester,
+  ) async {
     tester.view
       ..devicePixelRatio = 1.0
       ..physicalSize = const Size(800, 1200);
@@ -154,13 +134,16 @@ void main() {
     final store = ChatStore();
     await tester.pumpWidget(booth(store));
     await tester.pump();
+    expect(find.text(ChatPage.emptyHint), findsOneWidget);
 
     store.addIncoming();
     await tester.pump();
 
-    // 31 行，新会话在最前且带未读绿点；初始 30 行仍无点
-    expect(store.conversations, hasLength(31));
+    // 空态消失，出现 1 行，新会话在最前且带未读绿点
+    expect(store.conversations, hasLength(1));
     expect(store.hasUnread, isTrue);
+    expect(find.text(ChatPage.emptyHint), findsNothing);
+    expect(find.byType(ListView), findsOneWidget);
     final newRow = find.byKey(const ValueKey<String>('chat-row-incoming-1'));
     expect(newRow, findsOneWidget);
     expect(tester.getTopLeft(newRow).dy, 0);
@@ -169,7 +152,52 @@ void main() {
       findsOneWidget,
     );
 
-    // 点按该行 → 标记已读：绿点消失，store 无未读
+    // 行几何回归：统一行高 72；头像左边距 14、在内容区（行高 − 1px
+    // 分隔线）内垂直居中，48 见方、tone1 圆形描边
+    expect(tester.getSize(newRow).height, ChatPage.rowHeight);
+    final avatarRect = tester.getRect(
+      find.descendant(of: newRow, matching: find.byType(ChatAvatar)),
+    );
+    expect(avatarRect.left, ChatPage.rowHorizontalPadding);
+    expect(avatarRect.width, ChatPage.avatarSize);
+    expect(avatarRect.height, ChatPage.avatarSize);
+    expect(avatarRect.top, (ChatPage.rowHeight - 1 - ChatPage.avatarSize) / 2);
+    final avatarBox = tester.widget<Container>(
+      find.descendant(of: newRow, matching: find.byType(Container)).first,
+    );
+    final decoration = avatarBox.decoration! as BoxDecoration;
+    expect(decoration.shape, BoxShape.circle);
+    expect(decoration.border!.top.color, AppColors.tone1);
+
+    // 昵称 / 预览样式
+    final name = tester.widget<Text>(find.text('新消息 1'));
+    expect(name.style?.color, AppColors.textPrimary);
+    expect(name.maxLines, 1);
+    expect(name.overflow, TextOverflow.ellipsis);
+    final preview = tester.widget<Text>(find.text('你有一条新消息'));
+    expect(preview.style?.color, AppColors.textMuted);
+    expect(preview.maxLines, 1);
+    expect(preview.overflow, TextOverflow.ellipsis);
+
+    // 分隔线：屏宽 80%（800 表面 → 640 宽、左右各留 80）、1px、
+    // tone1，贴在行底（行顶 0 → 底边 72）
+    final divider = find.descendant(
+      of: newRow,
+      matching: find.byWidgetPredicate(
+        (w) => w is ColoredBox && w.color == AppColors.tone1,
+      ),
+    );
+    expect(divider, findsOneWidget);
+    final dividerRect = tester.getRect(divider);
+    expect(
+      dividerRect.left,
+      closeTo(800 * (1 - ChatPage.dividerWidthRatio) / 2, 1e-9),
+    );
+    expect(dividerRect.width, closeTo(800 * ChatPage.dividerWidthRatio, 1e-9));
+    expect(dividerRect.height, 1);
+    expect(dividerRect.bottom, ChatPage.rowHeight);
+
+    // 点按该行 → 标记已读：绿点消失，store 无未读；行保留、不回空态
     await tester.tap(newRow);
     await tester.pump();
     expect(store.hasUnread, isFalse);
@@ -177,20 +205,27 @@ void main() {
       find.descendant(of: newRow, matching: find.byType(UnreadDot)),
       findsNothing,
     );
+    expect(newRow, findsOneWidget);
+    expect(find.text(ChatPage.emptyHint), findsNothing);
   });
 
-  testWidgets('左滑：已读行露出「未读」「删除」，未读行只露出「删除」', (tester) async {
+  testWidgets('左滑：已读行露出「未读」「删除」；置未读/删除后行为正确且删光回空态', (
+    tester,
+  ) async {
     tester.view
       ..devicePixelRatio = 1.0
       ..physicalSize = const Size(800, 1200);
     addTearDown(tester.view.reset);
     mockHaptics(tester);
 
-    final store = ChatStore();
+    // 造一条已读行：未读行只有「删除」，测「未读」按钮需要已读态
+    final store = ChatStore()
+      ..addIncoming()
+      ..markRead('incoming-1');
     await tester.pumpWidget(booth(store));
     await tester.pump();
 
-    final row0 = find.byKey(const ValueKey<String>('chat-row-seed-0'));
+    final row0 = find.byKey(const ValueKey<String>('chat-row-incoming-1'));
 
     /// 行内的操作按钮文字。
     Finder rowAction(String label) =>
@@ -229,7 +264,7 @@ void main() {
     await tester.tap(unreadButton);
     await pumpSnap(tester);
     expect(store.hasUnread, isTrue);
-    expect(store.conversations.first.unread, isTrue);
+    expect(store.conversations.single.unread, isTrue);
     expect(
       find.descendant(of: row0, matching: find.byType(UnreadDot)),
       findsOneWidget,
@@ -242,27 +277,33 @@ void main() {
     expect(revealed('删除'), findsOneWidget);
     expect(rowAction('未读'), findsNothing);
 
-    // 点「删除」：该行从列表移除，且仍剩 29 行
+    // 点「删除」：唯一一行被移除 → 列表消失、空态复现
     await tester.tap(revealed('删除'));
     await pumpSnap(tester);
+    expect(store.conversations, isEmpty);
+    expect(store.hasUnread, isFalse);
     expect(row0, findsNothing);
-    expect(store.conversations, hasLength(29));
-    expect(store.hasUnread, isFalse, reason: '删掉唯一未读行后应无未读');
+    expect(find.byType(ListView), findsNothing);
+    expect(find.text(ChatPage.emptyHint), findsOneWidget);
   });
 
-  testWidgets('左滑展开一行后，竖向滚动列表会自动收回操作区', (tester) async {
+  testWidgets('左滑展开一行后，竖向滚动列表会自动收回操作区', (
+    tester,
+  ) async {
     tester.view
       ..devicePixelRatio = 1.0
       ..physicalSize = const Size(800, 600);
     addTearDown(tester.view.reset);
     mockHaptics(tester);
 
-    await tester.pumpWidget(booth(ChatStore()));
+    // 视口放得下约 7 行，造 12 条已读行让列表真正可竖向滚动
+    final store = seededReadStore(12);
+    await tester.pumpWidget(booth(store));
     await tester.pump();
 
-    final row0 = find.byKey(const ValueKey<String>('chat-row-seed-0'));
+    final row0 = find.byKey(const ValueKey<String>('chat-row-incoming-12'));
     await tester.drag(row0, const Offset(-200, 0));
-    await tester.pumpAndSettle();
+    await pumpSnap(tester);
     expect(
       find.descendant(of: row0, matching: find.text('删除')).hitTestable(),
       findsOneWidget,
@@ -270,7 +311,7 @@ void main() {
 
     // 从列表中部发起竖向滚动（避开操作按钮所在的右缘）
     await tester.dragFrom(const Offset(300, 400), const Offset(0, -300));
-    await tester.pumpAndSettle();
+    await pumpSnap(tester);
     expect(
       find.descendant(of: row0, matching: find.text('删除')).hitTestable(),
       findsNothing,

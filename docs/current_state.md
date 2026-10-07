@@ -30,10 +30,11 @@
 - **4 个页面**：控制台 / 聊天 / 日志 / 我（见 `navigation/nav_destination.dart`）。
   聊天页已替换为真实页面 `ChatPage`（`pages/chat_page.dart`，数据来自
   `services/chat_store.dart` 的 `ChatStore`）：**无标题栏**，
-  整页 ListView 铺满轨道（会话行高 72px：48px 圆形头像占位框
+  列表初始为空，空态整屏居中显示 13px 小字「暂无消息」（tone2）；
+  有会话时整页 ListView 铺满轨道（会话行高 72px：48px 圆形头像占位框
   （tone1 空心描边）+ 昵称 tone4 16px + 消息预览 tone2 14px 单行省略，
-  分隔线从文案列左缘 74px 处缩进；顶部避让状态栏、底部预留 26px 停靠条
-  高度）；初始 30 条全部已读的占位会话。行交互已接通数据：
+  行间分隔线为屏宽 80%、水平居中的 1px tone1 细线；顶部避让状态栏、
+  底部预留 26px 停靠条高度）。行交互已接通数据：
   **左滑**露出右侧操作区（已读行：「未读」tone2 底 + 「删除」anchorRed 底；
   未读行仅「删除」），按速度/半程 180ms 吸附、全局只开一行、竖滚自动收回；
   未读行右上角有**呼吸绿点**（anchorGreen，1.7s 往返，与导航锚点同参数），
@@ -42,8 +43,8 @@
   其余三页仍是只显示标题的 TemplatePage，控制台、日志页挂有调试用模拟按钮。
 - 页面**全部常驻构建**（一个 Row 一次性 build）。注意这与 `pageBuilder`
   "按需构建"的注释意图不符，是已知债务（P2-08）；聊天页已成为首个
-  常驻的真实页面（30 个简单会话行的 ListView，负载很轻），更多真实
-  页面接入前需评估
+  常驻的真实页面（空态仅一个 Center+Text，有会话时为 itemExtent
+  定高 ListView，负载很轻），更多真实页面接入前需评估
   窗口化懒加载（activePage±1）方案，离屏页 State 销毁重建的接受度需用户确认。
 - 导航物理为自研 `NavPhysicsController`：`position`（线性物理）与
   `displayPosition`（橡胶带 + Hermite 磁力曲线）两层分离；fling 指数摩擦、

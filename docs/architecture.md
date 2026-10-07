@@ -114,11 +114,12 @@ AGENT.md                                   # 给开发 agent 的工作提示（�
 默认配置由 `buildDefaultDestinations()` 构建，当前为 4 页：
 控制台（console）、聊天（chat）、日志（notes）、我（me）。
 其中**聊天页已替换为真实页面** `ChatPage`（`pages/chat_page.dart`，
-会话数据来自 `ChatStore`，见 3.10）：无标题栏、整屏 ListView
-铺满、会话行高 72px——每行含 48px 圆形头像占位框（tone1 空心
-圆描边）、昵称（tone4 16px）与消息预览（tone2 14px，均单行省略），
-分隔线从文案列左缘缩进，内边距避让状态栏与底部悬浮停靠条。
-初始为 30 条全部已读的占位会话（id `seed-0..29`）。行交互：
+会话数据来自 `ChatStore`，见 3.10）：无标题栏；列表初始为空，
+空态整屏居中显示 13px 小字「暂无消息」（tone2），有会话时切换为
+铺满轨道的 ListView。会话行高 72px——每行含 48px 圆形头像占位框
+（tone1 空心圆描边）、昵称（tone4 16px）与消息预览（tone2 14px，
+均单行省略），行间分隔线为屏宽 80%、水平居中的 1px tone1 细线，
+内边距避让状态栏与底部悬浮停靠条。行交互：
 
 - **未读绿点**：未读会话行右上角显示 8px 呼吸绿点（anchorGreen，
   1.7s 缓动往返 + 同色发光，参数与导航锚点 `_NavAnchor` 完全一致）；
@@ -379,8 +380,8 @@ Stack 分层在 `SmartNavScreen.build`：页面 → 搜索 scrim → 快捷弧 �
 - **`ChatConversation`**：不可变值对象，字段 `id`（稳定标识，
   列表 key 与定向更新都以它为准、不用下标）、`nickname`、`preview`、
   `unread`；状态变更走 `copyWith({bool? unread})`。
-- **`ChatStore extends ChangeNotifier`**：`ChatStore({seedCount = 30})`
-  生成全部已读的占位会话（昵称/预览为静态占位常量）。方法：
+- **`ChatStore extends ChangeNotifier`**：构造即空列表
+  （页面展示「暂无消息」空态），会话只能经 `addIncoming()` 产生。方法：
 
   | 方法 | 含义 |
   |---|---|

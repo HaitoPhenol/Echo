@@ -51,8 +51,9 @@ void main() {
     await tester.pumpWidget(const EchoApp());
     await tester.pump();
 
-    // 第 2 页（聊天）已是 ChatPage，用其列表组件作为页面位置标记
-    final chatPageMarker = find.byKey(const ValueKey<String>('chat-page-list'));
+    // 第 2 页（聊天）已是 ChatPage，用页面组件本身作为位置标记
+    // （列表初始为空、ListView 不构建，不能拿列表当标记）
+    final chatPageMarker = find.byType(ChatPage);
     // 初始时聊天页虽在树上但在屏幕右侧（中心 x≈1200）
     expect(tester.getCenter(chatPageMarker).dx, greaterThan(800));
 
@@ -161,8 +162,9 @@ void main() {
     await tester.pumpWidget(const EchoApp());
     await tester.pump();
 
-    // 聊天页（第 2 页）已是 ChatPage，用其列表组件作为位置标记
-    final chatPageMarker = find.byKey(const ValueKey<String>('chat-page-list'));
+    // 聊天页（第 2 页）已是 ChatPage，用页面组件本身作为位置标记
+    // （列表初始为空、ListView 不构建，不能拿列表当标记）
+    final chatPageMarker = find.byType(ChatPage);
     expect(tester.getCenter(chatPageMarker).dx, greaterThan(800));
 
     // 右圆点中心≈(781, 579)，热区 20 宽；点其热区（按下即触发）

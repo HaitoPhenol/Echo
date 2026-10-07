@@ -11,9 +11,10 @@ import '../theme/app_colors.dart';
 /// 内边距；底部悬浮着把手 / AI / 导航三条停靠条，故列表底部
 /// 预留等高内边距，使最后一行能滚到停靠条之上而不被永久遮挡。
 ///
-/// 数据来自 [ChatStore]：每行含圆形头像框（空白占位）、昵称、
-/// 消息预览；未读会话右上角有与导航消息锚点同色同节奏的呼吸
-/// 绿点。交互：
+/// 数据来自 [ChatStore]：列表初始为空，居中显示「暂无消息」小字，
+/// 收到第一条消息后切换为列表。每行含圆形头像框（空白占位）、
+/// 昵称、消息预览，行间为屏宽 80%、水平居中的 1px 分隔线；
+/// 未读会话右上角有与导航消息锚点同色同节奏的呼吸绿点。交互：
 /// - 点按未读行：标记已读（绿点消失，全部已读后导航锚点恢复）；
 /// - 左滑行：露出操作区——已读行有「未读」（恢复未读态）与
 ///   「删除」（红色，移除该行）；未读行只有「删除」。
@@ -41,6 +42,12 @@ class ChatPage extends StatefulWidget {
   /// 单个左滑操作按钮的宽度（操作区总宽 = 可见按钮数 × 本值）。
   static const double actionButtonWidth = 76;
 
+  /// 行间分隔线占屏幕宽度的比例（水平居中，两侧各留 10%）。
+  static const double dividerWidthRatio = 0.8;
+
+  /// 空列表时居中展示的提示文案。
+  static const String emptyHint = '暂无消息';
+
   /// 底部为悬浮停靠三条预留的高度：底边距 16 + 条高 10。
   ///
   /// 数值对齐 navigation 层的 `DockGeometry.bottomMargin + barHeight`。
@@ -64,6 +71,13 @@ class _ChatPageState extends State<ChatPage> {
   Widget build(BuildContext context) {
     final store = _store;
     final safePadding = MediaQuery.paddingOf(context);
+
+    // 空态：没有会话时整页居中展示小字提示（无标题栏、无列表）。
+    if (store.conversations.isEmpty) {
+      return const Center(
+        child: Text(ChatPage.emptyHint, style: _emptyHintStyle),
+      );
+    }
 
     // 列表开始竖向滚动时收回展开的操作区，避免「行开着滑走」。
     return NotificationListener<ScrollStartNotification>(
@@ -110,6 +124,12 @@ const TextStyle _nicknameStyle = TextStyle(
 /// 消息预览样式：次级文字（tone2）14px。
 const TextStyle _previewStyle = TextStyle(
   fontSize: 14,
+  color: AppColors.textMuted,
+);
+
+/// 空态提示样式：次级文字（tone2）13px 小字。
+const TextStyle _emptyHintStyle = TextStyle(
+  fontSize: 13,
   color: AppColors.textMuted,
 );
 
@@ -239,19 +259,14 @@ class _RowForeground extends StatelessWidget {
                   ),
                 ),
               ),
-              // 分隔线从文案列左缘起，随前景一起滑动。
-              Padding(
-                padding: const EdgeInsets.only(
-                  left:
-                      ChatPage.rowHorizontalPadding +
-                      ChatPage.avatarSize +
-                      ChatPage.avatarTextGap,
-                  right: ChatPage.rowHorizontalPadding,
-                ),
-                child: const SizedBox(
-                  height: 1,
-                  child: ColoredBox(color: AppColors.tone1),
-                ),
+              // 分隔线：屏宽 80%、水平居中（Column 默认交叉轴居中），
+              // 置于行底并随前景一起左滑。
+              SizedBox(
+                width:
+                    MediaQuery.sizeOf(context).width *
+                    ChatPage.dividerWidthRatio,
+                height: 1,
+                child: const ColoredBox(color: AppColors.tone1),
               ),
             ],
           ),

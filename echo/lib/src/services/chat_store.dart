@@ -41,25 +41,10 @@ class ChatConversation {
 /// 继承 [ChangeNotifier]，通过 [ChatStoreScope] 向子树提供实例，
 /// 数据变化时依赖组件自动重建。
 ///
-/// 当前为内存实现：初始 [seedCount] 条全部已读的占位会话，
+/// 当前为内存实现：初始列表为空（页面展示「暂无消息」空态），
 /// 重启清空；接入消息模块后替换为真实实现即可。
 class ChatStore extends ChangeNotifier {
-  ChatStore({this.seedCount = 30})
-    : _items = [
-        for (var i = 0; i < seedCount; i++)
-          ChatConversation(
-            id: 'seed-$i',
-            nickname: placeholderNickname,
-            preview: placeholderPreview,
-          ),
-      ];
-
-  /// 脚手架占位昵称 / 预览文案（接入数据源后移除）。
-  static const String placeholderNickname = '昵称';
-  static const String placeholderPreview = '消息预览…';
-
-  /// 初始占位会话条数。
-  final int seedCount;
+  ChatStore() : _items = <ChatConversation>[];
 
   final List<ChatConversation> _items;
 
