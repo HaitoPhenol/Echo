@@ -38,7 +38,7 @@ echo/
 │       ├── theme/
 │       │   └── app_colors.dart            # 全局调色板
 │       ├── pages/
-│       │   ├── chat_page.dart             # 聊天页（无标题栏的会话列表骨架）
+│       │   ├── chat_page.dart             # 聊天页（会话列表：头像框/昵称/预览占位）
 │       │   ├── template_page.dart         # 空白占位页（只显示标题，可挂 footer）
 │       │   └── debug_badge_controls.dart  # 锚点通知/异常的测试按钮（脚手架）
 │       ├── services/                      # 与界面无关的能力层
@@ -113,7 +113,9 @@ AGENT.md                                   # 给开发 agent 的工作提示（�
 默认配置由 `buildDefaultDestinations()` 构建，当前为 4 页：
 控制台（console）、聊天（chat）、日志（notes）、我（me）。
 其中**聊天页已替换为真实页面** `ChatPage`（`pages/chat_page.dart`：
-无标题栏、整屏 ListView 铺满、30 个统一行高的空白会话行骨架，
+无标题栏、整屏 ListView 铺满、30 个 72px 会话行——每行含 48px
+圆形头像占位框（tone1 空心圆描边）、昵称（tone4 16px）与消息
+预览（tone2 14px，均单行省略），分隔线从文案列左缘缩进，
 内边距避让状态栏与底部悬浮停靠条），其余三页仍是 TemplatePage。
 
 ### 3.2 快捷操作 `QuickAction`

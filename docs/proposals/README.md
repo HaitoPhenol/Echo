@@ -31,7 +31,8 @@
 > 不走提案、直接执行的规则文档小改，在此追加一行（最新在上）。
 > 格式：日期 · 文件 · 一句话原因 · 提交。
 
-- 2026-10-07 · architecture / current_state / code_review_report · 聊天页替换占位页（ChatPage 会话列表骨架）：目录树、3.1 页面说明、页面现状、测试数量（19 个/三文件）同步，P2-08 影响更新为「首个真实页面已常建」；顺手补登目录树遗漏的 dock_geometry_test.dart · feat/chat-page 分支，待随版提交入库
+- 2026-10-07 · architecture / current_state / code_review_report · 会话行填充头像占位框/昵称/预览：3.1 页面说明、目录树、页面现状与 P2-08 负载描述同步（几何数值 48/72/74 与取色 tone1/tone2/tone4） · 随本提交入库
+- 2026-10-07 · architecture / current_state / code_review_report · 聊天页替换占位页（ChatPage 会话列表骨架）：目录树、3.1 页面说明、页面现状、测试数量（19 个/三文件）同步，P2-08 影响更新为「首个真实页面已常建」；顺手补登目录树遗漏的 dock_geometry_test.dart · 已随 a6fbf13 入库
 - 2026-10-07 · engineering_standards 1.1 / AGENT.md · 撞号事故（两分支同占 v0.5.3+26）后定规：版本号主线排号、任务分支不预占 pubspec、合并者按 main 实际状态取下一号、撞号后来者顺延；建分支前同步最新 main、开工/合并前扫其他分支 · 随 v0.5.4 提交入库
 - 2026-10-07 · engineering_standards 1.1 / AGENT.md / echo-maintainer-review 技能 · 负责人直接指示：新增分支纪律（开工与提交前检查分支、新任务主动提议建分支、不删分支、可 ff 合并 main、合并后构建装手机）；小 bug/小优化授权自主升 PATCH+N 并提交打本地 tag，MINOR/push/删分支仍须确认；纯文档跟随最新分支提交 · 已入库
 - 2026-10-07 · code_review_report / current_state / maintainer-charter · v0.5.0 轻复核：标注 P0-01/02 已解决、P1-02/03/04/05 复核结论，现状快照更新到 1ecec32 · 随本提交入库
