@@ -209,7 +209,7 @@ void main() {
     expect(find.text(ChatPage.emptyHint), findsNothing);
   });
 
-  testWidgets('左滑：已读行露出「未读」「删除」；置未读/删除后行为正确且删光回空态', (
+  testWidgets('左滑：操作区恒为「读状态切换 + 删除」两按钮，切换/删除行为正确且删光回空态', (
     tester,
   ) async {
     tester.view
@@ -218,7 +218,7 @@ void main() {
     addTearDown(tester.view.reset);
     mockHaptics(tester);
 
-    // 造一条已读行：未读行只有「删除」，测「未读」按钮需要已读态
+    // 从已读行起步：读状态按钮标签为「未读」
     final store = ChatStore()
       ..addIncoming()
       ..markRead('incoming-1');
@@ -238,6 +238,7 @@ void main() {
     // 收起态：没有任何可点的操作按钮
     expect(revealed('删除'), findsNothing);
     expect(revealed('未读'), findsNothing);
+    expect(revealed('已读'), findsNothing);
 
     // 左滑超过半程并吸附：两个按钮露出
     await tester.drag(row0, const Offset(-200, 0));
@@ -246,13 +247,13 @@ void main() {
     final unreadButton = revealed('未读');
     expect(deleteButton, findsOneWidget);
     expect(unreadButton, findsOneWidget);
-    // 删除按钮在最右（未读在其左侧）
+    // 删除按钮在最右（读状态按钮在其左侧）
     expect(
       tester.getCenter(deleteButton).dx,
       greaterThan(tester.getCenter(unreadButton).dx),
     );
     // 删除按钮为 anchorRed 实底（沿「删除」文字向上找它自己的
-    // ColoredBox，不能取行内第一个——分隔线/未读按钮也有 ColoredBox）
+    // ColoredBox，不能取行内第一个——分隔线/读状态按钮也有 ColoredBox）
     final deleteFill = tester.widget<ColoredBox>(
       find
           .ancestor(of: rowAction('删除'), matching: find.byType(ColoredBox))
@@ -271,11 +272,29 @@ void main() {
     );
     expect(revealed('删除'), findsNothing);
 
-    // 未读行再左滑：只有「删除」，「未读」根本不构建
+    // 未读行再左滑：仍是两个按钮，读状态按钮改标为「已读」
     await tester.drag(row0, const Offset(-200, 0));
     await pumpSnap(tester);
     expect(revealed('删除'), findsOneWidget);
     expect(rowAction('未读'), findsNothing);
+    final readButton = revealed('已读');
+    expect(readButton, findsOneWidget);
+
+    // 点「已读」：标记已读（绿点消失、操作区收回）
+    await tester.tap(readButton);
+    await pumpSnap(tester);
+    expect(store.hasUnread, isFalse);
+    expect(
+      find.descendant(of: row0, matching: find.byType(UnreadDot)),
+      findsNothing,
+    );
+    expect(revealed('删除'), findsNothing);
+
+    // 再左滑：读状态按钮标签切回「未读」——操作区宽度全程恒定
+    await tester.drag(row0, const Offset(-200, 0));
+    await pumpSnap(tester);
+    expect(revealed('未读'), findsOneWidget);
+    expect(revealed('已读'), findsNothing);
 
     // 点「删除」：唯一一行被移除 → 列表消失、空态复现
     await tester.tap(revealed('删除'));
@@ -296,7 +315,7 @@ void main() {
     addTearDown(tester.view.reset);
     mockHaptics(tester);
 
-    // 未读行操作区只有「删除」，宽 76：半程 = -38。
+    // 操作区恒为两个按钮、宽 152：半程 = -76、全开 = -152。
     final store = ChatStore()..addIncoming();
     await tester.pumpWidget(booth(store));
     await tester.pump();
@@ -327,13 +346,13 @@ void main() {
       return gesture;
     }
 
-    // ---- 关闭态左拖到半程与全开位之间（-60 附近）后松手 ----
+    // ---- 关闭态左拖到半程与全开位之间（-120 附近）后松手 ----
     var gesture = await dragUntil(
       -10,
-      (offset) => offset <= -58 && offset > -76,
+      (offset) => offset <= -110 && offset > -152,
     );
     final beforeOpen = avatarLeft();
-    expect(beforeOpen, lessThan(14 - 38), reason: '测试前置：已过半程');
+    expect(beforeOpen, lessThan(14 - 76), reason: '测试前置：已过半程');
     await gesture.up();
     // 吸附动画第 0 帧：必须停在手指离开位置，不能弹回 0 再打开
     await tester.pump(Duration.zero);
@@ -343,19 +362,19 @@ void main() {
       reason: '松手后首帧不应弹回关闭态',
     );
     await pumpSnap(tester);
-    // 落位到全开 -76
-    expect(avatarLeft(), closeTo(14 - 76, 0.5));
+    // 落位到全开 -152
+    expect(avatarLeft(), closeTo(14 - 152, 0.5));
     expect(
       find.descendant(of: row, matching: find.text('删除')).hitTestable(),
       findsOneWidget,
     );
 
-    // ---- 打开态向右拖回半程与全关位之间（-26 附近）后松手 ----
-    gesture = await dragUntil(10, (offset) => offset >= -30 && offset < 0);
+    // ---- 打开态向右拖回半程与全关位之间（-40 附近）后松手 ----
+    gesture = await dragUntil(10, (offset) => offset >= -55 && offset < 0);
     final beforeClose = avatarLeft();
-    expect(beforeClose, greaterThan(14 - 38), reason: '测试前置：已过半程');
+    expect(beforeClose, greaterThan(14 - 76), reason: '测试前置：已过半程');
     await gesture.up();
-    // 首帧必须停在手指离开位置，不能弹回全开位 -76 再播关闭
+    // 首帧必须停在手指离开位置，不能弹回全开位 -152 再播关闭
     await tester.pump(Duration.zero);
     expect(
       avatarLeft(),
@@ -368,6 +387,56 @@ void main() {
       find.descendant(of: row, matching: find.text('删除')).hitTestable(),
       findsNothing,
     );
+  });
+
+  testWidgets('吸附落位后再次拖动：从当前呈现位连续跟手，不跳回上一次松手位置', (
+    tester,
+  ) async {
+    tester.view
+      ..devicePixelRatio = 1.0
+      ..physicalSize = const Size(800, 1200);
+    addTearDown(tester.view.reset);
+    mockHaptics(tester);
+
+    final store = ChatStore()..addIncoming();
+    await tester.pumpWidget(booth(store));
+    await tester.pump();
+
+    final row = find.byKey(const ValueKey<String>('chat-row-incoming-1'));
+    double avatarLeft() =>
+        tester
+            .getRect(
+              find.descendant(of: row, matching: find.byType(ChatAvatar)),
+            )
+            .left;
+
+    // 左拖到半程与全开之间（约 -120）松手，吸附落位到全开 -152。
+    // 注意：此时内部记录的上次松手位置仍在 -120 一带，与呈现位不同。
+    final first = await tester.startGesture(const Offset(400, 36));
+    await tester.pump();
+    for (var i = 0; i < 20; i++) {
+      await first.moveBy(const Offset(-10, 0));
+      await tester.pump();
+      final offset = avatarLeft() - 14;
+      if (offset <= -110 && offset > -152) break;
+    }
+    await first.up();
+    await pumpSnap(tester);
+    expect(avatarLeft(), closeTo(14 - 152, 0.5));
+
+    // 落位后立刻发起第二次拖动。错误实现会在拖动起点把位置重置为
+    // 上一次松手位置（约 -120，向右跳 30+px）；正确实现应从
+    // 当前呈现位 -152 连续起步（首段过 slop 后只可能继续向左）。
+    final second = await tester.startGesture(const Offset(400, 36));
+    await tester.pump();
+    await second.moveBy(const Offset(-30, 0));
+    await tester.pump();
+    expect(
+      avatarLeft(),
+      closeTo(14 - 152, 0.6),
+      reason: '再次拖动不应跳回上一次松手位置',
+    );
+    await second.up();
   });
 
   testWidgets('左滑展开一行后，竖向滚动列表会自动收回操作区', (

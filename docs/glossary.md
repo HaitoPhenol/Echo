@@ -61,7 +61,7 @@
 | **会话行** | 聊天列表的一行（高 72px）：48px 空心圆头像框 + 昵称（tone4 16px）+ 消息预览（tone2 14px），行间为屏宽 80%、水平居中的 1px tone1 分隔线；数据来自 `ChatStore`，以会话 id 为行 key | `pages/chat_page.dart` 的 `ChatListRow`，数据在 `services/chat_store.dart` |
 | **空态「暂无消息」** | 会话列表为空时整屏居中的 13px tone2 小字提示；此时不构建 ListView，收到首条消息（`addIncoming()`）后切换为列表，删光全部会话后回到空态 | `pages/chat_page.dart` 的 `ChatPage.emptyHint` |
 | **未读绿点** | 未读会话行右上角的 8px 绿色呼吸点（anchorGreen，1.7s 往返 + 发光，与导航锚点同色同节奏）；点按该行使其已读、绿点消失 | `pages/chat_page.dart` 的 `UnreadDot` |
-| **左滑操作区** | 会话行向左拖动后从右侧露出的操作按钮组（每个宽 76px）：已读行有「未读」「删除」，未读行只有「删除」；全局只展开一行，竖滚列表自动收回 | `pages/chat_page.dart` 的 `_SwipeToReveal` |
+| **左滑操作区** | 会话行向左拖动后从右侧露出的操作按钮组（恒为两个、每个宽 76px、总宽恒定）：左为读状态切换（已读行显示「未读」、未读行显示「已读」，tone2 底/inverse 字），右为「删除」（anchorRed 底/tone4 字）；全局只展开一行，竖滚列表自动收回 | `pages/chat_page.dart` 的 `_SwipeToReveal` |
 
 ## 六、状态称呼
 

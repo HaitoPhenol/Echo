@@ -16,8 +16,8 @@ import '../theme/app_colors.dart';
 /// 昵称、消息预览，行间为屏宽 80%、水平居中的 1px 分隔线；
 /// 未读会话右上角有与导航消息锚点同色同节奏的呼吸绿点。交互：
 /// - 点按未读行：标记已读（绿点消失，全部已读后导航锚点恢复）；
-/// - 左滑行：露出操作区——已读行有「未读」（恢复未读态）与
-///   「删除」（红色，移除该行）；未读行只有「删除」。
+/// - 左滑行：恒露出等宽两个操作按钮——左为读状态切换（已读行
+///   显示「未读」、未读行显示「已读」），右为红色「删除」。
 class ChatPage extends StatefulWidget {
   const ChatPage({super.key});
 
@@ -39,7 +39,7 @@ class ChatPage extends StatefulWidget {
   /// 未读绿点直径。
   static const double unreadDotSize = 8;
 
-  /// 单个左滑操作按钮的宽度（操作区总宽 = 可见按钮数 × 本值）。
+  /// 单个左滑操作按钮的宽度（操作区恒为两个按钮，总宽 = 2 × 本值）。
   static const double actionButtonWidth = 76;
 
   /// 行间分隔线占屏幕宽度的比例（水平居中，两侧各留 10%）。
@@ -137,8 +137,9 @@ const TextStyle _emptyHintStyle = TextStyle(
 ///
 /// 由 [_SwipeToReveal] 承载左滑手势：底层是右对齐的操作按钮，
 /// 上层前景（不透明页面底色）跟手平移；分隔线画在前景底部、
-/// 随前景一起滑动。已读行不响应点按（没有可触发的行为，
-/// 不构成「死按钮」）；未读行点按即标记已读。
+/// 随前景一起滑动。操作区恒为两个按钮——左为读状态切换
+/// （已读行显示「未读」，未读行显示「已读」）、右为「删除」，
+/// 宽度不随已读状态变化；未读行点按前景同样是标记已读。
 class ChatListRow extends StatelessWidget {
   const ChatListRow({
     super.key,
@@ -158,26 +159,29 @@ class ChatListRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final store = ChatStoreScope.of(context);
-    final showUnreadAction = !conversation.unread;
-    final actionWidth = ChatPage.actionButtonWidth * (showUnreadAction ? 2 : 1);
+    // 操作区恒为「读状态切换 + 删除」两按钮、恒宽，读状态变化不引发布局跳动。
+    const actionWidth = ChatPage.actionButtonWidth * 2;
 
     return _SwipeToReveal(
       open: open,
       actionWidth: actionWidth.toDouble(),
       onOpenChanged: onOpenChanged,
-      // 操作区：右对齐，顺序为「未读」「删除」，删除在最右。
+      // 操作区：右对齐，左为读状态切换，「删除」恒在最右。
       actions: [
-        if (showUnreadAction)
-          _RowAction(
-            label: '未读',
-            color: AppColors.tone2,
-            foregroundColor: AppColors.inverse,
-            onTap: () {
-              Haptics.tick();
+        _RowAction(
+          label: conversation.unread ? '已读' : '未读',
+          color: AppColors.tone2,
+          foregroundColor: AppColors.inverse,
+          onTap: () {
+            Haptics.tick();
+            if (conversation.unread) {
+              store.markRead(conversation.id);
+            } else {
               store.markUnread(conversation.id);
-              onOpenChanged(false);
-            },
-          ),
+            }
+            onOpenChanged(false);
+          },
+        ),
         _RowAction(
           label: '删除',
           color: AppColors.anchorRed,
@@ -505,12 +509,17 @@ class _SwipeToRevealState extends State<_SwipeToReveal>
   }
 
   void _onDragStart(DragStartDetails _) {
+    // 必须在置起拖动标志之前抓住当前呈现位置：_dragging=true 后
+    // _currentOffset 改读 _dragOffset（上一次松手时的旧值，未必等于
+    // 吸附终态），先置标志再赋值等于自赋值——再次拖动的首帧会从
+    // 终态瞬间跳回上一次松手位置，表现为「弹回旧状态再播」。
+    final from = _currentOffset;
     _dragging = true;
     // 作废任何在途吸附动画的完成回调。
     _snapSeq++;
     _snapAnim = null;
     _controller.stop();
-    _dragOffset = _currentOffset;
+    _dragOffset = from;
   }
 
   void _onDragUpdate(DragUpdateDetails details) {
