@@ -3,7 +3,8 @@
 > 讨论界面时统一使用本表中的称呼，避免「那个东西」「下面那条」
 > 之类的歧义。每个称呼同时记录了代码中的对应文件，方便定位。
 >
-> 其他文档：[架构与接口说明](architecture.md) ·
+> 其他文档：**[使用与操作指南（含手势坐标）](usage-guide.md)** ·
+> [架构与接口说明](architecture.md) ·
 > [工程规范](engineering_standards.md) · [现状快照](current_state.md) ·
 > [问题清单](code_review_report.md) · [根目录工作提示](../AGENT.md)
 

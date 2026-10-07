@@ -19,6 +19,7 @@
 
 | 文档 | 什么时候读 |
 |---|---|
+| **[docs/usage-guide.md](docs/usage-guide.md)** | **上手第一件事**：软件怎么用、每个手势怎么操作、各按钮/热区的位置坐标与触发阈值，测试前必读 |
 | [docs/architecture.md](docs/architecture.md) | 了解目录结构、核心接口、扩展操作（加页面/快捷操作/搜索源等） |
 | [docs/engineering_standards.md](docs/engineering_standards.md) | **改动前必读**：工程原则、交付门禁、测试约定、历史事故档案 |
 | [docs/current_state.md](docs/current_state.md) | 了解当前实现手段（会变化，勿当教条）与已知债务 |
