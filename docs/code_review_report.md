@@ -450,7 +450,9 @@ PointerMove 事件在两帧之间也会到达（触控采样率通常 ≥ 120Hz�
 [nav_destination.dart:14](file:///home/phenol/Documents/GitHub/Echo/echo/lib/src/navigation/nav_destination.dart#L14)
 注释声称 `pageBuilder` "实现按需构建"。
 
-**影响**：当前 4 个 TemplatePage 无所谓；接入真实页面后：
+**影响**：控制台/日志/我 3 个 TemplatePage 无所谓；首个真实页面
+——聊天页 ChatPage（30 行空白 ListView）——现已进入常建行列，
+当前负载很轻，但该债务自此不再是纯理论问题；更多真实页面接入后：
 ① 首帧要构建所有页面（冷启动负载正是本项目已踩过的雷区）；
 ② 离屏页的动画/定时器/订阅全部在跑，耗电与内存随页面数线性增长；
 ③ 页面无法在离屏时释放资源。

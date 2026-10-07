@@ -38,6 +38,7 @@ echo/
 │       ├── theme/
 │       │   └── app_colors.dart            # 全局调色板
 │       ├── pages/
+│       │   ├── chat_page.dart             # 聊天页（无标题栏的会话列表骨架）
 │       │   ├── template_page.dart         # 空白占位页（只显示标题，可挂 footer）
 │       │   └── debug_badge_controls.dart  # 锚点通知/异常的测试按钮（脚手架）
 │       ├── services/                      # 与界面无关的能力层
@@ -62,7 +63,11 @@ echo/
 │               ├── ai_dialog.dart         # AI 对话框（聊天面板）
 │               └── side_drawer.dart       # 侧边抽屉（毛玻璃空壳）
 ├── test/
-│   └── widget_test.dart                   # Widget 测试（当前 11 个用例）
+│   ├── widget_test.dart                   # 导航/浮层 Widget 集成测试（11 个用例）
+│   ├── navigation/
+│   │   └── dock_geometry_test.dart        # 快捷弧布局纯函数测试（6 个用例）
+│   └── pages/
+│       └── chat_page_test.dart            # 聊天页骨架测试（2 个用例）
 └── README.md                              # Flutter 默认工程说明
 docs/
 ├── architecture.md                        # 本文档：架构与接口
@@ -107,6 +112,9 @@ AGENT.md                                   # 给开发 agent 的工作提示（�
 
 默认配置由 `buildDefaultDestinations()` 构建，当前为 4 页：
 控制台（console）、聊天（chat）、日志（notes）、我（me）。
+其中**聊天页已替换为真实页面** `ChatPage`（`pages/chat_page.dart`：
+无标题栏、整屏 ListView 铺满、30 个统一行高的空白会话行骨架，
+内边距避让状态栏与底部悬浮停靠条），其余三页仍是 TemplatePage。
 
 ### 3.2 快捷操作 `QuickAction`
 
