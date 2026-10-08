@@ -3,6 +3,24 @@
 你是接手 **Echo** 的开发 agent。本文件只有项目梗概与工作要求；
 动手前按下表读完 `docs/` 中的对应文档。
 
+## 🌙 夜间盲跑协议（2026-10-08 深夜生效，明早由用户撤除）
+
+今晚用户不在设备旁、无法亲自验收，**main 冻结**：
+
+1. **只在分支工作**：从最新 main 切 `night/<任务名>` 分支；禁止合并到 main、
+   禁止 rebase/改写他人提交、禁止 push、禁止改 `echo/pubspec.yaml` 版本号与打 tag
+   （版本号仍按老规矩由明早的合并者分配）。
+2. 一个任务完成 → 先跑 `scripts/nightly/verify.sh`（analyze + 全测试）；
+   **绿了**再跑 `scripts/nightly/pack.sh <标签>` 出包装机，脚本会自动完成
+   构建 → APK 归档 → 按 [docs/usage-guide.md](docs/usage-guide.md) 几何执行
+   手势序列 → 截图 + 录屏 → 写报告。
+3. **唯一一台手机正 USB 插在本机**：严禁绕过脚本直接 `adb install`、手动
+   screencap 或碰 USB/adb 服务；脚本已用文件锁串行占用设备。也禁止清应用数据。
+4. 门禁红、需要产品决策、架构级改动、发现分支分叉：**停下来**，在
+   `artifacts/LEDGER.md` 写一行原因（pack 失败也会自动登记），等明早用户处理。
+5. 明早验收入口：用户先看 `artifacts/LEDGER.md` 总台账，再打开各
+   `artifacts/reports/<时间>-<标签>/index.md` 看截图故事板和录屏。
+
 ## 项目梗概
 
 - Echo 是单人开发、处于 **0.x 实验期**的 Flutter App，核心是一套自研底部手势导航：
