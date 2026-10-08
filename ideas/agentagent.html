@@ -1,0 +1,1037 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no,viewport-fit=cover">
+<title>滚筒页码 · 机能风 · 工程稿</title>
+<style>
+:root{ --bg:#0c0c0c; --panel:#0f0f0f; --line:#262626; --ink:#e1e1e1; --dim:#646464; --hi:#d8d8d8;
+  --serif:"Songti SC","STSong","Noto Serif CJK SC","Noto Serif SC","SimSun",serif; }
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;overflow:hidden}
+body{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  background:var(--bg);color:var(--ink);
+  filter:grayscale(1) contrast(1.05);
+  user-select:none;-webkit-user-select:none;touch-action:none;
+
+  background-image:
+    radial-gradient(rgba(255,255,255,.22) 1px, transparent 1.5px),
+    linear-gradient(rgba(255,255,255,.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,.05) 1px, transparent 1px),
+    linear-gradient(rgba(255,255,255,.10) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,.10) 1px, transparent 1px);
+  background-size:
+    128px 128px, 32px 32px, 32px 32px, 128px 128px, 128px 128px;}
+
+#hatch{position:fixed;inset:0;z-index:0;pointer-events:none;background-repeat:no-repeat}
+
+#frame{position:fixed;inset:14px;border:1px solid rgba(255,255,255,.14);
+  pointer-events:none;z-index:1}
+#frame::before,#frame::after{content:"";position:absolute;width:22px;height:22px}
+#frame::before{top:-11px;left:-11px;
+  background:
+    linear-gradient(#fff,#fff) center/1px 22px no-repeat,
+    linear-gradient(#fff,#fff) center/22px 1px no-repeat;
+  opacity:.5}
+#frame::after{bottom:-11px;right:-11px;
+  background:
+    linear-gradient(#fff,#fff) center/1px 22px no-repeat,
+    linear-gradient(#fff,#fff) center/22px 1px no-repeat;
+  opacity:.5}
+
+#coords{position:fixed;top:20px;left:50%;transform:translateX(-50%);
+  font-size:9px;letter-spacing:.4em;color:rgba(255,255,255,.30);
+  pointer-events:none;z-index:1;white-space:nowrap}
+#coords i{font-style:normal;color:rgba(255,255,255,.55)}
+
+#track{display:flex;height:100vh;will-change:transform;z-index:2;position:relative}
+.pg{flex:0 0 100vw;height:100%;display:flex;align-items:center;padding-left:11vw;position:relative}
+.pg .kick{font-size:11px;font-weight:700;letter-spacing:.35em;color:var(--hi);margin-bottom:22px}
+.pg .kick i{font-style:normal;color:var(--dim);font-weight:400}
+.pg h2{font-size:clamp(40px,7vw,80px);font-weight:700;letter-spacing:.12em}
+.pg .dash{width:120px;border-top:1px dashed var(--line);margin:26px 0 22px;position:relative}
+.pg .dash::after{content:"";position:absolute;left:0;top:-2px;width:34px;border-top:2px solid var(--hi)}
+.pg .meta{margin-top:38px;font-size:10px;letter-spacing:.25em;color:var(--dim);display:flex;gap:2.8em;
+  text-shadow:0 1px 3px var(--bg)}
+.pg .meta b{color:var(--hi);font-weight:700}
+.pg .idx{position:absolute;top:5vh;right:8vw;font-size:120px;font-weight:700;
+  color:transparent;-webkit-text-stroke:1px rgba(255,255,255,.10);line-height:1;pointer-events:none}
+
+/* ---------- 第一页：IoT 控制台 ---------- */
+.cwrap{max-width:660px;width:100%}
+.cgrid{display:grid;grid-template-columns:1.35fr 1fr;gap:22px;text-shadow:0 1px 3px var(--bg)}
+.chead{display:flex;align-items:baseline;gap:1em;
+  font-size:9px;font-weight:700;letter-spacing:.3em;color:var(--dim);
+  padding-bottom:7px;margin-bottom:2px;border-bottom:1px solid var(--line)}
+.chead .csys{margin-left:auto;letter-spacing:.15em;color:#3d3d3d}
+.drow{display:grid;grid-template-columns:10px 1fr auto 42px;align-items:center;gap:10px;
+  padding:8px 2px;border-bottom:1px dashed #1c1c1c;
+  font-size:12px;color:#b5b5b5;cursor:pointer}
+.drow:active{background:rgba(255,255,255,.03)}
+.drow .st{width:6px;height:6px;background:#2f2f2f}
+.drow .dn i{font-style:normal;font-size:9px;color:#4a4a4a;margin-left:8px;letter-spacing:.1em}
+.drow .dv{font-variant-numeric:tabular-nums;font-size:11px;color:#8f8f8f}
+.drow .dsw{font-size:9px;font-weight:700;letter-spacing:.2em;color:#3d3d3d;text-align:right}
+.drow.on .st{background:var(--hi)}
+.drow.on .dn{color:var(--ink)}
+.drow.on .dsw{color:var(--hi)}
+.cfoot{margin-top:9px;font-size:9px;letter-spacing:.2em;color:var(--dim)}
+.cfoot b{color:var(--hi);font-weight:700;font-variant-numeric:tabular-nums}
+.env{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--line);border:1px solid var(--line)}
+.env>div{background:#0d0d0d;padding:11px 12px 9px}
+.env b{font-size:19px;font-weight:700;font-variant-numeric:tabular-nums;color:var(--ink)}
+.env i{font-style:normal;font-size:9px;color:var(--dim);margin-left:4px}
+.env em{display:block;font-style:normal;font-size:8px;letter-spacing:.25em;color:#4a4a4a;margin-top:4px}
+.scenes{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:14px}
+.scn{background:transparent;border:1px solid var(--line);color:var(--dim);
+  font-family:inherit;font-size:10px;letter-spacing:.2em;padding:10px 0 9px;cursor:pointer}
+.scn.on{border-color:var(--hi);color:var(--ink);background:rgba(255,255,255,.05)}
+
+/* ---------- 第二页：笔记 ---------- */
+.nwrap{max-width:640px;width:100%;text-shadow:0 1px 3px var(--bg)}
+.note-item{position:relative;padding:15px 34px 14px 4px;
+  border-bottom:1px dashed #1c1c1c;cursor:pointer}
+.note-item:active{background:rgba(255,255,255,.03)}
+.ni-head{display:flex;justify-content:space-between;
+  font-size:9px;letter-spacing:.22em;color:var(--hi);margin-bottom:8px}
+.ni-head .ni-date{color:#3d3d3d}
+.ni-title{font-family:var(--serif);
+  font-size:21px;font-weight:700;letter-spacing:.05em;color:#d5d5d5;
+  transition:color .15s}
+.note-item:hover .ni-title{color:#fff}
+.ni-abs{margin-top:6px;font-size:12px;color:#7a7a7a;line-height:1.8;
+  font-family:system-ui,sans-serif;max-width:34em}
+.ni-arrow{position:absolute;right:6px;bottom:18px;
+  font-size:12px;color:#3d3d3d;transition:color .15s,transform .15s}
+.note-item:hover .ni-arrow{color:var(--hi);transform:translateX(4px)}
+
+.note-view{position:absolute;inset:0;z-index:3;
+  background:var(--bg);
+  background-image:linear-gradient(rgba(255,255,255,.04) 1px,transparent 1px),
+                  linear-gradient(90deg,rgba(255,255,255,.04) 1px,transparent 1px);
+  background-size:32px 32px;
+  display:flex;flex-direction:column;
+  opacity:0;pointer-events:none;transition:opacity .22s}
+.note-view.open{opacity:1;pointer-events:auto}
+.nv-top{display:flex;align-items:center;gap:16px;
+  padding:5vh 8vw 14px 11vw;border-bottom:1px solid var(--line)}
+#nv-back{font-family:inherit;background:transparent;
+  border:1px solid var(--line);color:var(--dim);
+  font-size:10px;letter-spacing:.25em;padding:8px 14px;cursor:pointer;
+  transition:border-color .15s,color .15s}
+#nv-back:hover{border-color:var(--hi);color:var(--hi)}
+#nv-no{margin-left:auto;font-size:9px;letter-spacing:.25em;color:#3d3d3d}
+.note-scroll{flex:1;overflow-y:auto;
+  padding:30px 8vw 8vh 11vw;
+  touch-action:pan-y;
+  scrollbar-width:thin;scrollbar-color:#333 transparent}
+.note-scroll::-webkit-scrollbar{width:4px}
+.note-scroll::-webkit-scrollbar-thumb{background:#333}
+.note-scroll::-webkit-scrollbar-track{background:transparent}
+#nv-title{font-family:var(--serif);
+  font-size:clamp(24px,4vw,30px);font-weight:700;
+  letter-spacing:.06em;color:var(--ink);line-height:1.4}
+#nv-meta{margin:14px 0 10px;font-size:9px;letter-spacing:.3em;color:var(--dim)}
+#nv-meta i{font-style:normal;color:var(--hi)}
+#nv-body{margin-top:14px}
+#nv-body .txt{font-family:var(--serif);
+  font-size:15.5px;line-height:2.05;color:#c2c2c2;
+  margin:1.05em 0;max-width:36em;text-align:justify}
+#nv-body .sec-h{font-family:inherit;font-size:10px;font-weight:700;letter-spacing:.35em;
+  color:var(--hi);margin:2.1em 0 .9em}
+#nv-body blockquote{margin:1.5em 0;padding:2px 0 2px 18px;
+  border-left:2px solid var(--hi);
+  font-family:var(--serif);font-size:15px;line-height:2;color:#d6d6d6;max-width:34em}
+.nv-end{margin-top:40px;font-size:9px;letter-spacing:.3em;color:#3d3d3d}
+
+/* ---------- 第三页：消息 ---------- */
+.mwrap{max-width:580px;width:100%;text-shadow:0 1px 3px var(--bg)}
+.grp-h{font-size:9px;font-weight:700;letter-spacing:.3em;color:var(--dim);
+  margin:18px 0 2px;padding-bottom:6px;border-bottom:1px solid var(--line)}
+.grp-h:first-child{margin-top:0}
+.crow{display:grid;grid-template-columns:40px 1fr auto;gap:0 14px;align-items:center;
+  padding:11px 6px 11px 2px;border-bottom:1px dashed #1c1c1c;cursor:pointer}
+.crow:active{background:rgba(255,255,255,.03)}
+.crow .av{width:40px;height:40px;border:1px solid #2e2e2e;
+  background:rgba(255,255,255,.02);
+  display:flex;align-items:center;justify-content:center;
+  font-family:var(--serif);font-size:18px;font-weight:700;color:#c5c5c5;
+  transition:border-color .15s}
+.crow:hover .av{border-color:#5a5a5a}
+.crow .c1{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.crow .cname{font-family:var(--serif);font-size:17px;font-weight:700;color:#d5d5d5;
+  transition:color .15s}
+.crow:hover .cname{color:#fff}
+.crow .ccode{font-size:9px;color:#4a4a4a;letter-spacing:.12em}
+.bg8{font-size:8px;font-weight:700;letter-spacing:.14em;
+  border:1px solid #2a2a2a;color:#4f4f4f;padding:1px 5px 2px;white-space:nowrap}
+.bg8.on{color:var(--ink);border-color:#5a5a5a}
+.crow .c2{display:flex;align-items:center;gap:10px;margin-top:5px}
+.crow .clast{font-size:11.5px;color:#767676;font-family:var(--serif);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:26em}
+.crow .unread{width:17px;height:17px;flex:none;margin-left:auto;
+  background:var(--hi);color:#0c0c0c;
+  font-size:9px;font-weight:700;
+  display:flex;align-items:center;justify-content:center;
+  font-variant-numeric:tabular-nums}
+.crow .ctime{font-size:9px;color:#3d3d3d;letter-spacing:.05em;align-self:start;padding-top:6px}
+.mfoot{margin-top:12px;font-size:9px;letter-spacing:.2em;color:var(--dim)}
+.mfoot b{color:var(--hi);font-weight:700}
+
+.chat-view{position:absolute;inset:0;z-index:3;
+  background:var(--bg);
+  background-image:linear-gradient(rgba(255,255,255,.04) 1px,transparent 1px),
+                  linear-gradient(90deg,rgba(255,255,255,.04) 1px,transparent 1px);
+  background-size:32px 32px;
+  display:flex;flex-direction:column;
+  opacity:0;pointer-events:none;transition:opacity .22s}
+.chat-view.open{opacity:1;pointer-events:auto}
+.cv-top{display:flex;align-items:center;gap:14px;
+  padding:5vh 8vw 14px 11vw;border-bottom:1px solid var(--line)}
+#cv-back{font-family:inherit;background:transparent;
+  border:1px solid var(--line);color:var(--dim);
+  font-size:10px;letter-spacing:.25em;padding:8px 14px;cursor:pointer;
+  transition:border-color .15s,color .15s;flex:none}
+#cv-back:hover{border-color:var(--hi);color:var(--hi)}
+.cv-peer{display:flex;align-items:center;gap:12px;min-width:0}
+.cv-av{width:34px;height:34px;flex:none;border:1px solid #2e2e2e;
+  background:rgba(255,255,255,.02);
+  display:flex;align-items:center;justify-content:center;
+  font-family:var(--serif);font-size:16px;font-weight:700;color:#c5c5c5}
+.cv-name-line{display:flex;align-items:baseline;gap:10px;white-space:nowrap}
+#cv-name{font-family:var(--serif);font-size:17px;font-weight:700;color:var(--ink)}
+#cv-code{font-style:normal;font-size:9px;color:#4a4a4a;letter-spacing:.12em}
+#cv-share{margin-left:auto;font-size:9px;font-weight:700;letter-spacing:.18em;
+  color:#4a4a4a;white-space:nowrap}
+#cv-share i{font-style:normal;color:var(--hi)}
+
+.cv-scroll{flex:1;overflow-y:auto;
+  padding:20px 8vw 18px 11vw;
+  touch-action:pan-y;
+  scrollbar-width:thin;scrollbar-color:#333 transparent}
+.cv-scroll::-webkit-scrollbar{width:4px}
+.cv-scroll::-webkit-scrollbar-thumb{background:#333}
+.cv-scroll::-webkit-scrollbar-track{background:transparent}
+
+.day{font-size:8px;letter-spacing:.4em;color:#3d3d3d;text-align:center;margin:4px 0 16px}
+.msg{display:flex;align-items:flex-end;gap:8px;margin-bottom:13px}
+.msg .mb{max-width:62%;padding:9px 13px;
+  font-family:var(--serif);font-size:13.5px;line-height:1.8}
+.msg.them{justify-content:flex-start}
+.msg.them .mb{background:#161616;border:1px solid #232323;color:#c6c6c6}
+.msg.me{justify-content:flex-end}
+.msg.me .mb{background:#d8d8d8;color:#101010}
+.msg .mt{font-size:8px;color:#3d3d3d;letter-spacing:.08em;padding-bottom:3px}
+
+.share-card{border:1px solid var(--line);background:#101010;margin:0 0 16px}
+.sc-h{font-size:9px;font-weight:700;letter-spacing:.3em;color:var(--hi);
+  padding:8px 12px 7px;border-bottom:1px dashed #1c1c1c}
+.task{display:flex;gap:12px;align-items:baseline;
+  padding:9px 12px;border-bottom:1px dashed #1a1a1a;cursor:pointer}
+.task:last-child{border-bottom:none}
+.task .tk{width:11px;height:11px;flex:none;align-self:center;
+  border:1px solid #4a4a4a;transition:background .15s}
+.task.done .tk{background:var(--hi);border-color:var(--hi)}
+.task .tt{font-family:var(--serif);font-size:13px;color:#b5b5b5;transition:color .15s}
+.task.done .tt{color:#565656;text-decoration:line-through}
+.task .tb{margin-left:auto;font-size:9px;color:#3d3d3d;letter-spacing:.08em}
+.locrow{display:flex;align-items:baseline;gap:12px;
+  padding:8px 12px;border-bottom:1px dashed #1a1a1a}
+.locrow:last-child{border-bottom:none}
+.locrow span{font-family:var(--serif);font-size:13px;color:#b0b0b0}
+.locrow i{font-style:normal;margin-left:auto;font-size:9px;color:#8a8a8a;letter-spacing:.05em}
+.locrow.off span{color:#5a5a5a}
+.locrow.off i{color:#3d3d3d}
+
+.cv-input{display:flex;gap:10px;
+  padding:12px 8vw calc(14px + env(safe-area-inset-bottom,0px)) 11vw;
+  border-top:1px solid var(--line)}
+#cv-text{flex:1;min-width:0;background:#141414;border:1px solid var(--line);
+  color:var(--ink);font-family:var(--serif);font-size:14px;
+  padding:10px 14px;outline:none;transition:border-color .15s}
+#cv-text:focus{border-color:#5a5a5a}
+#cv-text::placeholder{color:#4a4a4a}
+#cv-send{background:transparent;border:1px solid var(--line);color:var(--dim);
+  font-family:inherit;font-size:10px;letter-spacing:.2em;
+  padding:0 18px;cursor:pointer;transition:border-color .15s,color .15s}
+#cv-send:hover{border-color:var(--hi);color:var(--hi)}
+
+/* ---------- 第四页：我的 ---------- */
+.pwrap{max-width:660px;width:100%;text-shadow:0 1px 3px var(--bg)}
+.pgrid{display:grid;grid-template-columns:1.25fr 1fr;gap:22px}
+.pcard{display:flex;align-items:center;gap:16px;
+  padding:14px 2px 16px;border-bottom:1px dashed #1c1c1c}
+.pav{width:54px;height:54px;flex:none;border:1px solid #2e2e2e;
+  background:rgba(255,255,255,.02);
+  display:flex;align-items:center;justify-content:center;
+  font-family:var(--serif);font-size:26px;font-weight:700;color:#c5c5c5}
+.pname{font-family:var(--serif);font-size:23px;font-weight:700;
+  letter-spacing:.06em;color:var(--ink);line-height:1.2}
+.pcode{margin-top:6px;font-size:9px;letter-spacing:.18em;color:#5a5a5a}
+.pcode i{font-style:normal;color:var(--hi)}
+.kv{display:flex;justify-content:space-between;align-items:baseline;
+  padding:8px 2px;border-bottom:1px dashed #1c1c1c;
+  font-size:10px;letter-spacing:.18em;color:#5a5a5a}
+.kv b{font-weight:400;font-size:11.5px;letter-spacing:.04em;color:#c0c0c0}
+.lvl{display:flex;align-items:center;gap:12px;padding:13px 2px 6px}
+.lvl .lt{font-size:26px;font-weight:700;color:var(--ink)}
+.lvl .segs{display:flex;gap:5px}
+.lvl .segs i{width:24px;height:9px;background:#242424}
+.lvl .segs i.on{background:var(--hi)}
+.lvl .lvr{margin-left:auto;font-size:9px;letter-spacing:.2em;color:#3d3d3d}
+.lvlnote{font-size:10.5px;color:#6e6e6e;line-height:1.8;margin:2px 0 6px;
+  font-family:system-ui,sans-serif;max-width:34em}
+.arow{display:flex;align-items:baseline;gap:10px;
+  padding:9px 2px;border-bottom:1px dashed #1c1c1c}
+.arow .an{font-family:var(--serif);font-size:14.5px;color:#c5c5c5;letter-spacing:.03em}
+.arow .an i{font-style:normal;font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  font-size:9px;color:#4a4a4a;letter-spacing:.12em;margin-left:8px}
+.arow .bg8{margin-left:auto}
+.sout{margin-top:18px;width:100%;background:transparent;border:1px solid #2c2c2c;
+  color:#7a7a7a;font-family:inherit;font-size:10px;font-weight:700;letter-spacing:.28em;
+  padding:12px 0 11px;cursor:pointer;
+  transition:border-color .15s,color .15s}
+.sout:hover{border-color:#5a5a5a;color:var(--hi)}
+
+@media (max-width:620px){
+  .cgrid,.pgrid{grid-template-columns:1fr}
+  .pg{padding-left:8vw;padding-right:6vw}
+  .ni-title{font-size:18px}
+  .note-view .nv-top,.note-scroll{padding-left:8vw;padding-right:6vw}
+  .chat-view .cv-top,.cv-scroll,.cv-input{padding-left:8vw;padding-right:6vw}
+  .msg .mb{max-width:76%}
+}
+
+/* ---------- 左下角：衬线大标题（带数字底色色块） ---------- */
+#pgname{position:fixed;left:5vw;bottom:calc(26px + env(safe-area-inset-bottom,0px));
+  pointer-events:none;z-index:9;
+  background:rgba(15,15,15,.90);
+  padding:12px 26px 14px;
+  opacity:0;transform:translateY(14px);
+  transition:opacity .25s,transform .3s cubic-bezier(.3,1.3,.4,1)}
+#pgname.up{opacity:1;transform:none}
+#pgname .zh{display:block;font-family:var(--serif);
+  font-size:clamp(64px,9vw,120px);font-weight:700;line-height:1;
+  letter-spacing:.08em;color:var(--ink);
+  text-shadow:0 2px 12px rgba(0,0,0,.6)}
+#pgname .zh::after{content:"";display:block;width:56px;border-top:3px solid var(--hi);margin-top:18px}
+
+/* ---------- 右下角：滚筒模块 ---------- */
+#ind{position:fixed;right:20px;bottom:calc(20px + env(safe-area-inset-bottom,0px));
+  background:var(--panel);border:1px solid var(--line);
+  padding:10px 14px 12px;
+  opacity:0;transform:translateY(14px);
+  transition:opacity .25s,transform .3s cubic-bezier(.3,1.3,.4,1);
+  pointer-events:none;z-index:9}
+#ind.up{opacity:1;transform:none}
+#ind::before,#ind::after{content:"";position:absolute;width:16px;height:16px;pointer-events:none}
+#ind::before{top:-2px;left:-2px;border-top:2px solid var(--hi);border-left:2px solid var(--hi)}
+#ind::after{bottom:-2px;right:-2px;border-bottom:2px solid var(--hi);border-right:2px solid var(--hi)}
+.ind-top{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.blip{width:6px;height:6px;background:var(--hi);animation:blip 1.2s steps(2,start) infinite}
+@keyframes blip{50%{opacity:0}}
+.ind-top .tag{font-size:10px;font-weight:700;letter-spacing:.3em;color:var(--dim)}
+.ind-top .unit{margin-left:auto;font-size:9px;letter-spacing:.15em;color:#3d3d3d}
+.ind-main{display:flex;align-items:center;gap:16px}
+#view{position:relative;width:148px;height:96px;overflow:hidden;perspective:520px;
+  border-left:1px dashed var(--line);border-right:1px dashed var(--line)}
+#drum{position:absolute;inset:0;transform-style:preserve-3d;will-change:transform}
+#drum span{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  font-family:inherit;font-size:56px;font-weight:700;letter-spacing:.04em;
+  line-height:1;color:var(--ink);backface-visibility:hidden}
+#ticks{display:flex;flex-direction:column;gap:7px}
+#ticks i{width:14px;height:4px;background:#272727;transition:background .25s}
+#ticks i.on{background:var(--hi)}
+.pbar{position:absolute;left:0;right:0;bottom:0;height:2px;background:rgba(255,255,255,.05)}
+#pfill{height:100%;background:var(--hi);transform:scaleX(0);transform-origin:0 50%;will-change:transform}
+</style>
+</head>
+<body>
+
+<div id="hatch"></div>
+<div id="frame"></div>
+<div id="coords">GRID <i>32 / 128</i> · HATCH <i>±45° · BRK</i> · SPEC <i>NO.04-REV.I</i></div>
+
+<div id="track">
+  <!-- SEC.01 控制台 -->
+  <section class="pg"><div class="idx">01</div><div class="cwrap">
+    <p class="kick">SEC.01 <i>//</i> CONSOLE</p>
+    <h2>控制台</h2>
+    <div class="dash"></div>
+    <div class="cgrid">
+      <div>
+        <p class="chead">DEVICES <span class="csys">06 NODES</span></p>
+        <div class="drow on"><span class="st"></span>
+          <span class="dn">客厅灯光 <i>LT-01</i></span><span class="dv">82%</span><span class="dsw">ON</span></div>
+        <div class="drow on"><span class="st"></span>
+          <span class="dn">卧室空调 <i>HV-02</i></span><span class="dv">24.5°C</span><span class="dsw">ON</span></div>
+        <div class="drow on"><span class="st"></span>
+          <span class="dn">新风系统 <i>FV-03</i></span><span class="dv">L2</span><span class="dsw">ON</span></div>
+        <div class="drow"><span class="st"></span>
+          <span class="dn">加湿器 <i>HU-04</i></span><span class="dv">46%</span><span class="dsw">OFF</span></div>
+        <div class="drow"><span class="st"></span>
+          <span class="dn">扫地机器人 <i>VC-05</i></span><span class="dv">DOCK</span><span class="dsw">OFF</span></div>
+        <div class="drow on"><span class="st"></span>
+          <span class="dn">客厅窗帘 <i>CR-06</i></span><span class="dv">76%</span><span class="dsw">ON</span></div>
+        <p class="cfoot">PWR <b id="v-pwr">486</b>W · TODAY <b>3.2</b>kWh · <span id="clock">--:--:--</span></p>
+      </div>
+      <div>
+        <p class="chead">ENV <i>·</i> INDOOR</p>
+        <div class="env">
+          <div><b id="v-temp">24.5</b><i>°C</i><em>TEMP</em></div>
+          <div><b id="v-hum">46</b><i>%</i><em>HUMIDITY</em></div>
+          <div><b id="v-co2">612</b><i>ppm</i><em>CO2</em></div>
+          <div><b>12</b><i>μg</i><em>PM2.5</em></div>
+        </div>
+        <p class="chead" style="margin-top:16px">SCENES</p>
+        <div class="scenes">
+          <button class="scn on">在家</button>
+          <button class="scn">离家</button>
+          <button class="scn">观影</button>
+          <button class="scn">睡眠</button>
+        </div>
+      </div>
+    </div>
+  </div></section>
+
+  <!-- SEC.02 笔记 -->
+  <section class="pg">
+    <div class="idx">02</div>
+    <div class="nwrap">
+      <p class="kick">SEC.02 <i>//</i> NOTES</p>
+      <h2>笔记</h2>
+      <div class="dash"></div>
+      <div id="notes-list"></div>
+    </div>
+    <div class="note-view" id="note-view">
+      <div class="nv-top">
+        <button id="nv-back">← 目录</button>
+        <span id="nv-no">NO.01</span>
+      </div>
+      <div class="note-scroll" id="note-scroll">
+        <h3 id="nv-title"></h3>
+        <p id="nv-meta"></p>
+        <div id="nv-body"></div>
+        <p class="nv-end">— EOF · SEC.02 —</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- SEC.03 消息 -->
+  <section class="pg">
+    <div class="idx">03</div>
+    <div class="mwrap">
+      <p class="kick">SEC.03 <i>//</i> MESSAGES</p>
+      <h2>消息</h2>
+      <div class="dash"></div>
+      <div id="chat-list"></div>
+      <p class="mfoot">LINKED <b>6</b> · LOC ON <b>3</b> · TSK SHARED <b>2</b> · HOST <b>HOME-SRV</b></p>
+    </div>
+    <div class="chat-view" id="chat-view">
+      <div class="cv-top">
+        <button id="cv-back">← 消息</button>
+        <div class="cv-peer">
+          <span class="cv-av" id="cv-av"></span>
+          <span class="cv-name-line"><b id="cv-name"></b><i id="cv-code"></i></span>
+        </div>
+        <span id="cv-share"></span>
+      </div>
+      <div class="cv-scroll" id="cv-scroll"></div>
+      <form class="cv-input" id="cv-form">
+        <input id="cv-text" autocomplete="off" placeholder="输入消息…">
+        <button type="submit" id="cv-send">SEND</button>
+      </form>
+    </div>
+  </section>
+
+  <!-- SEC.04 我的 -->
+  <section class="pg"><div class="idx">04</div><div class="pwrap">
+    <p class="kick">SEC.04 <i>//</i> PROFILE</p>
+    <h2>我的</h2>
+    <div class="dash"></div>
+    <div class="pgrid">
+      <div>
+        <p class="chead">PERSONAL <span class="csys">USR-001</span></p>
+        <div class="pcard">
+          <span class="pav">川</span>
+          <div>
+            <p class="pname">林川</p>
+            <p class="pcode">USR-001 · <i>OWNER</i> · ADMIN</p>
+          </div>
+        </div>
+        <div class="kv"><span>ROLE</span><b>所有者 · 管理员</b></div>
+        <div class="kv"><span>NODE</span><b>HOME-SRV · 本地</b></div>
+        <div class="kv"><span>JOINED</span><b>2024.03.15</b></div>
+        <div class="kv"><span>DEVICES</span><b>4 LINKED</b></div>
+        <div class="kv"><span>SESSION</span><b>27D 14H · 活跃</b></div>
+
+        <p class="chead" style="margin-top:18px">CLEARANCE <span class="csys">LEVEL 4 / 5</span></p>
+        <div class="lvl">
+          <span class="lt">L4</span>
+          <span class="segs"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i></span>
+          <span class="lvr">L5 PENDING</span>
+        </div>
+        <p class="lvlnote">已授权：设备控制 · 消息 · 群聊 · 任务共享 · 本地运维。L5（远程运维）需绑定恢复密钥后解锁。</p>
+        <div class="arow"><span class="an">设备控制 <i>DEV</i></span><span class="bg8 on">GRANTED</span></div>
+        <div class="arow"><span class="an">消息与聊天 <i>CHAT</i></span><span class="bg8 on">GRANTED</span></div>
+        <div class="arow"><span class="an">任务共享 <i>TSK</i></span><span class="bg8 on">GRANTED</span></div>
+        <div class="arow"><span class="an">位置共享 <i>LOC</i></span><span class="bg8 on">GRANTED</span></div>
+        <div class="arow"><span class="an">本地运维 <i>ADMIN</i></span><span class="bg8 on">GRANTED</span></div>
+        <div class="arow"><span class="an">远程访问 <i>REMOTE</i></span><span class="bg8">DENIED</span></div>
+      </div>
+      <div>
+        <p class="chead">SETTINGS <span class="csys">APP 2.4.1</span></p>
+        <div class="drow on"><span class="st"></span>
+          <span class="dn">推送通知 <i>PUSH</i></span><span class="dv">ALL</span><span class="dsw">ON</span></div>
+        <div class="drow"><span class="st"></span>
+          <span class="dn">声音提示 <i>SND</i></span><span class="dv">LOW</span><span class="dsw">OFF</span></div>
+        <div class="drow on"><span class="st"></span>
+          <span class="dn">夜间免打扰 <i>DND</i></span><span class="dv">22:00</span><span class="dsw">ON</span></div>
+        <div class="drow on"><span class="st"></span>
+          <span class="dn">自动同步 <i>SYNC</i></span><span class="dv">5MIN</span><span class="dsw">ON</span></div>
+        <div class="drow"><span class="st"></span>
+          <span class="dn">省流模式 <i>SAVE</i></span><span class="dv">WIFI</span><span class="dsw">OFF</span></div>
+        <div class="drow on"><span class="st"></span>
+          <span class="dn">位置上报 <i>LOC</i></span><span class="dv">10MIN</span><span class="dsw">ON</span></div>
+        <button class="sout" id="sout">SIGN OUT · 退出登录</button>
+        <p class="cfoot">VER <b>2.4.1</b> · BUILD <b>REV.I</b> · LANG <b>ZH-CN</b> · CACHE <b>OFF</b></p>
+      </div>
+    </div>
+  </div></section>
+</div>
+
+<!-- 左下角大标题 -->
+<div id="pgname">
+  <span class="zh" id="nm-zh">控制台</span>
+</div>
+
+<!-- 右下角滚筒模块 -->
+<div id="ind">
+  <div class="ind-top">
+    <span class="blip"></span>
+    <span class="tag">PAGE</span>
+    <span class="unit">MM.04</span>
+  </div>
+  <div class="ind-main">
+    <div id="view"><div id="drum"></div></div>
+    <div id="ticks"></div>
+  </div>
+  <div class="pbar"><div id="pfill"></div></div>
+</div>
+
+<script>
+(() => {
+  const track  = document.getElementById('track');
+  const drum   = document.getElementById('drum');
+  const ind    = document.getElementById('ind');
+  const pgname = document.getElementById('pgname');
+  const nmZh   = document.getElementById('nm-zh');
+  const ticks  = document.getElementById('ticks');
+  const pfill  = document.getElementById('pfill');
+  const hatch  = document.getElementById('hatch');
+  const N = track.children.length;
+
+  const PAGES = ['控制台', '笔记', '消息', '我的'];
+
+  /* ---------- 笔记数据 ---------- */
+  const NOTES = [
+    { no:'01', date:'2026.09.30', tag:'ORIGIN',
+      title:'缘起：把界面画成图纸',
+      abs:'这个原型从哪里来，“机能风”三个字在这里意味着什么。',
+      body:[
+        {h:'出发点'},
+        '这个原型最初只想解决一个很具体的问题：移动端的翻页指示器太无聊了。底部一排小圆点，既不能传达页码，也没有任何质感。于是我把它换成了一个会转的滚筒——像老式计数器那样，数字贴在圆柱面上，翻页时横着滚过去。',
+        {q:'与其做一个“看起来像 App”的界面，不如做一张“看起来被工程师画出来”的图纸。'},
+        '从这句话出发，整个视觉系统逐渐成形：等宽字体、黑白灰、网格底纹、断裂斜线、图纸编号。它不追求温度，只追求准确。',
+        {h:'边界'},
+        '机能风容易做过头。网格太密、字距太大、装饰太多，都会让页面从“克制”滑向“嘈杂”。这里的做法是给每个装饰设一个预算：斜线透明度不超过 0.10，点阵只出现在粗网格交点上，正文区域一律加深色投影保证可读。'
+      ]},
+    { no:'02', date:'2026.10.02', tag:'DESIGN',
+      title:'设计语言：黑、白、噪',
+      abs:'关于黑白灰的预算制度，以及等宽字与衬线大字的对撞。',
+      body:[
+        {h:'三种声音'},
+        '全站只用三种声音说话：等宽字负责机器的部分——编号、坐标、状态、开关；系统无衬线负责界面说明；衬线宋体只出现在两处——左下角的页面大字，和此刻你正在读的这些段落。',
+        '衬线是“人写的东西”的信号。当它出现在满屏等宽字之间，就像图纸角落里工程师手写的一行批注：整张图是机器输出的，只有这行字是人写的。',
+        {h:'灰阶预算'},
+        '颜色被限制在 #0c0c0c 到 #e1e1e1 之间，再叠一层 grayscale 滤镜兜底。层级靠亮度和字距区分，而不是色相。省下来的注意力，全部还给内容本身。'
+      ]},
+    { no:'03', date:'2026.10.04', tag:'DRUM',
+      title:'滚筒页码的手感',
+      abs:'一个 3D 圆柱，四个面，逐帧旋转，没有任何缓动库。',
+      body:[
+        {h:'结构'},
+        '四页对应圆柱的四个面，每面占 90°，数字离轴心 190px。翻页时页面位移 x 与滚筒角度实时绑定：rotateY 等于负的页进度乘以 90°。拖到一半松手，滚筒会连同页面一起吸附到最近的一格。',
+        '没有用任何缓动库。吸附动画是一个 340ms 的三次方 ease-out，写在二十行以内的 requestAnimationFrame 循环里。',
+        {h:'性能'},
+        '每帧只写两个 transform：页轨道一个，滚筒一个，其余 DOM 在页码跨过一半的瞬间才更新一次。数字背面被 backface-visibility 藏掉，合成层保持很小。'
+      ]},
+    { no:'04', date:'2026.10.06', tag:'HATCH',
+      title:'断裂斜线的生成',
+      abs:'Canvas 一次成图，之后零运行时开销。',
+      body:[
+        {h:'为什么不用 CSS'},
+        '渐变能画出均匀的斜线，但画不出“随机长短、随机断口、整条缺失”——这些是手绘图纸上才有的痕迹。所以两层斜线改为加载时用 Canvas 一次性生成，导出为静态背景贴在页面底层。',
+        {h:'参数'},
+        '线距维持 45px，与早期版本的连续斜线一致；每段长 16–110px，断口 14–100px；约 18% 的线整条跳过。透明度每段独立，在 0.03–0.10 之间浮动，避免出现色块感。',
+        '生成一次的成本是毫秒级，翻页循环完全不碰它。窗口 resize 时重绘，顺便换一批新的随机——图纸重新晒版。'
+      ]},
+  ];
+
+  /* ---------- 消息数据 ---------- */
+  const CHATS = [
+    { grp:'FAMILY', name:'妈妈', code:'MOM · 亲人', av:'妈',
+      loc:true, tsk:true, time:'21:42', unread:2,
+      last:'滤芯放购物车了，你看看型号',
+      msgs:[
+        ['them','21:38','晚上回来吃饭吗？'],
+        ['me','21:39','回，大概七点半'],
+        ['them','21:42','好。滤芯放购物车了，你看看型号对不对'],
+      ]},
+    { grp:'FAMILY', name:'爷爷', code:'GRANDPA · 亲人', av:'爷',
+      loc:true, tsk:false, time:'20:15', unread:0,
+      last:'散步呢，别等我吃饭',
+      msgs:[
+        ['them','20:15','散步呢，别等我吃饭。社区超市这边人少。'],
+        ['me','20:16','好的，注意台阶。传感器我周末来装。'],
+      ]},
+    { grp:'TEAM', name:'李工', code:'ENG · 授权', av:'李',
+      loc:false, tsk:true, time:'19:03', unread:0,
+      last:'RAID 迁移定在今晚 02:00 窗口',
+      msgs:[
+        ['them','18:55','RAID 迁移定在今晚 02:00 窗口，你值机吗？'],
+        ['me','18:58','我值。先跑一遍 dry-run。'],
+        ['them','19:03','行，脚本在 /opt/migrate，日志走 journald。'],
+      ]},
+    { grp:'TEAM', name:'小王', code:'OPS · 授权', av:'王',
+      loc:true, tsk:true, time:'19:44', unread:1,
+      last:'交换机固件升好了，压测没问题',
+      msgs:[
+        ['them','19:44','交换机固件升好了，跑了一轮压测没问题。'],
+      ]},
+    { grp:'GROUPS', name:'家庭群', code:'6 人 · 群聊', av:'家',
+      time:'20:02', unread:3,
+      last:'爸：周六大扫除别忘了',
+      tasks:[
+        {txt:'买新风滤芯（FV-03）', by:'妈妈', done:false},
+        {txt:'周六大扫除', by:'爸爸', done:false},
+        {txt:'给爷爷装跌倒传感器', by:'我', done:true},
+      ],
+      locList:[
+        ['妈妈','家 · 21:40',true],
+        ['爷爷','社区超市 · 20:12',true],
+        ['小王','书房 · 19:40',true],
+        ['李工','位置共享已关闭',false],
+      ],
+      msgs:[
+        ['them','19:58','爸：周六大扫除别忘了。'],
+        ['me','20:00','收到，我负责书房和阳台。'],
+        ['them','20:02','妈：滤芯型号我发群里了。'],
+      ]},
+    { grp:'GROUPS', name:'服务器运维', code:'3 人 · 群聊', av:'运',
+      time:'18:30', unread:0,
+      last:'李工：明天 02:00–04:00 停机换盘',
+      tasks:[
+        {txt:'迁移前全量备份', by:'李工', done:true},
+        {txt:'备份校验 SHA256', by:'小王', done:true},
+        {txt:'迁移后验证服务', by:'我', done:false},
+      ],
+      msgs:[
+        ['them','18:30','明天 02:00–04:00 停机换盘，任务清单共享在群里。'],
+        ['me','18:32','收到，我值机到验收完成。'],
+      ]},
+  ];
+  const REPLIES = ['收到','好，知道了','嗯，我看看','行','稍后回你','OK','这个可以','先这样'];
+
+  /* ---------- 随机断裂斜线纹理 ---------- */
+  function buildHatch() {
+    const dpr = Math.min(devicePixelRatio || 1, 2);
+    const W = innerWidth, H = innerHeight;
+    const cv = document.createElement('canvas');
+    cv.width = W * dpr; cv.height = H * dpr;
+    const g = cv.getContext('2d');
+    g.scale(dpr, dpr);
+    g.lineWidth = 1;
+    g.lineCap = 'butt';
+
+    const SP  = 45;
+    const rnd = (a, b) => a + Math.random() * (b - a);
+
+    for (const dir of [1, -1]) {
+      for (let c = -H; c < W + H; c += SP) {
+        if (Math.random() < 0.18) continue;
+        let x0, x1;
+        if (dir === 1) { x0 = Math.max(0, c - H); x1 = Math.min(W, c); }
+        else           { x0 = Math.max(0, -c);   x1 = Math.min(W, H - c); }
+        if (x1 - x0 < 20) continue;
+        let t = x0 + rnd(0, 60);
+        while (t < x1) {
+          const seg = Math.min(rnd(16, 110), x1 - t);
+          if (seg > 2) {
+            g.strokeStyle = `rgba(255,255,255,${rnd(.03, .10).toFixed(3)})`;
+            g.beginPath();
+            if (dir === 1) { g.moveTo(t, c - t); g.lineTo(t + seg, c - t - seg); }
+            else           { g.moveTo(t, t + c); g.lineTo(t + seg, t + seg + c); }
+            g.stroke();
+          }
+          t += seg + rnd(14, 100);
+        }
+      }
+    }
+    hatch.style.backgroundImage = `url(${cv.toDataURL()})`;
+    hatch.style.backgroundSize  = `${W}px ${H}px`;
+  }
+  buildHatch();
+
+  /* ---------- 滚筒 ---------- */
+  const SEG = 360 / N, R = 190;
+  const fmt = i => String(i + 1).padStart(2, '0');
+  for (let i = 0; i < N; i++) {
+    const s = document.createElement('span');
+    s.textContent = fmt(i);
+    s.style.transform = `rotateY(${i * SEG}deg) translateZ(${R}px)`;
+    drum.appendChild(s);
+  }
+  for (let i = 0; i < N; i++) ticks.appendChild(document.createElement('i'));
+
+  /* ---------- 控制台 ---------- */
+  const $ = id => document.getElementById(id);
+  const clock = $('clock');
+  const ev = { temp: 24.5, hum: 46, co2: 612, pwr: 486 };
+
+  function tickClock() {
+    const d = new Date();
+    clock.textContent = [d.getHours(), d.getMinutes(), d.getSeconds()]
+      .map(n => String(n).padStart(2, '0')).join(':');
+  }
+  tickClock();
+  setInterval(tickClock, 1000);
+
+  setInterval(() => {
+    ev.temp += (Math.random() - .5) * .2;
+    ev.hum  += (Math.random() - .5) * 1.4;
+    ev.co2  += (Math.random() - .5) * 24;
+    ev.pwr   = Math.max(120, ev.pwr + (Math.random() - .5) * 60);
+    $('v-temp').textContent = ev.temp.toFixed(1);
+    $('v-hum').textContent  = Math.round(ev.hum);
+    $('v-co2').textContent  = Math.round(ev.co2);
+    $('v-pwr').textContent  = Math.round(ev.pwr);
+  }, 2500);
+
+  /* ---------- 笔记 ---------- */
+  const notesList = $('notes-list');
+  const noteView  = $('note-view');
+  const noteScroll= $('note-scroll');
+
+  notesList.innerHTML = NOTES.map((n, i) => `
+    <div class="note-item" data-i="${i}">
+      <div class="ni-head"><span class="ni-no">NO.${n.no}</span><span class="ni-date">${n.date}</span></div>
+      <p class="ni-title">${n.title}</p>
+      <p class="ni-abs">${n.abs}</p>
+      <span class="ni-arrow">→</span>
+    </div>`).join('');
+
+  function openNote(i) {
+    const n = NOTES[i];
+    $('nv-no').textContent    = 'NO.' + n.no;
+    $('nv-title').textContent = n.title;
+    $('nv-meta').innerHTML    = `DATE <i>${n.date}</i> · TAG <i>${n.tag}</i> · SEC <i>02</i>`;
+    $('nv-body').innerHTML    = n.body.map(b =>
+      b.h ? `<p class="sec-h">// ${b.h}</p>` :
+      b.q ? `<blockquote>${b.q}</blockquote>` :
+            `<p class="txt">${b}</p>`).join('');
+    noteScroll.scrollTop = 0;
+    noteView.classList.add('open');
+  }
+  function closeNote() { noteView.classList.remove('open'); }
+
+  notesList.addEventListener('click', e => {
+    if (dragDist > 10) return;
+    const it = e.target.closest('.note-item');
+    if (it) openNote(+it.dataset.i);
+  });
+  $('nv-back').addEventListener('click', closeNote);
+
+  /* ---------- 消息 ---------- */
+  const chatList  = $('chat-list');
+  const chatView  = $('chat-view');
+  const cvScroll  = $('cv-scroll');
+  const cvText    = $('cv-text');
+
+  const GRP_LABEL = {
+    FAMILY:  'FAMILY · 家人',
+    TEAM:    'TEAM · 授权成员',
+    GROUPS:  'GROUPS · 群聊',
+  };
+
+  function renderChatList() {
+    chatList.innerHTML = ['FAMILY','TEAM','GROUPS'].map(g =>
+      `<p class="grp-h">${GRP_LABEL[g]}</p>` +
+      CHATS.map((c, i) => {
+        if (c.grp !== g) return '';
+        const badges = c.grp !== 'GROUPS'
+          ? `<span class="bg8 ${c.loc ? 'on' : ''}">LOC${c.loc ? '' : '·OFF'}</span>` +
+            `<span class="bg8 ${c.tsk ? 'on' : ''}">TSK</span>`
+          : `<span class="bg8 on">TSK</span>`;
+        return `
+        <div class="crow" data-i="${i}">
+          <span class="av">${c.av}</span>
+          <div class="cmid">
+            <p class="c1"><span class="cname">${c.name}</span><span class="ccode">${c.code}</span>${badges}</p>
+            <p class="c2"><span class="clast">${c.last}</span>${c.unread ? `<span class="unread">${c.unread}</span>` : ''}</p>
+          </div>
+          <span class="ctime">${c.time}</span>
+        </div>`;
+      }).join('')
+    ).join('');
+  }
+  renderChatList();
+
+  let curChat = null, replyT = 0;
+
+  const nowT = () => {
+    const d = new Date();
+    return String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
+  };
+
+  function openChat(i) {
+    curChat = CHATS[i];
+    curChat.unread = 0;
+    renderChatList();
+    $('cv-av').textContent   = curChat.av;
+    $('cv-name').textContent = curChat.name;
+    $('cv-code').textContent = curChat.code;
+    $('cv-share').innerHTML  = curChat.grp === 'GROUPS'
+      ? `LOC <i>${curChat.locList.filter(l => l[2]).length}/${curChat.locList.length}</i> · TSK <i>${curChat.tasks.length}</i>`
+      : `LOC ${curChat.loc ? '<i>ON</i>' : 'OFF'} · TSK ${curChat.tsk ? '<i>ON</i>' : 'OFF'}`;
+    renderMsgs();
+    chatView.classList.add('open');
+  }
+  function closeChat() {
+    chatView.classList.remove('open');
+    clearTimeout(replyT);
+    cvText.blur();
+  }
+
+  function renderMsgs() {
+    let h = '';
+    if (curChat.tasks) {
+      h += `<div class="share-card"><p class="sc-h">SHARED TASKS · 任务共享</p>` +
+        curChat.tasks.map((t, ti) => `
+          <div class="task ${t.done ? 'done' : ''}" data-t="${ti}">
+            <span class="tk"></span><span class="tt">${t.txt}</span><span class="tb">${t.by}</span>
+          </div>`).join('') + `</div>`;
+    }
+    if (curChat.locList) {
+      h += `<div class="share-card"><p class="sc-h">LOC SHARING · 位置共享</p>` +
+        curChat.locList.map(l => `
+          <p class="locrow ${l[2] ? '' : 'off'}"><span>${l[0]}</span><i>${l[1]}</i></p>`).join('') +
+        `</div>`;
+    }
+    h += `<p class="day">— TODAY —</p>`;
+    h += curChat.msgs.map(m => `
+      <div class="msg ${m[0]}">
+        ${m[0] === 'them' ? `<span class="mt">${m[1]}</span>` : ''}
+        <span class="mb">${m[2]}</span>
+        ${m[0] === 'me' ? `<span class="mt">${m[1]}</span>` : ''}
+      </div>`).join('');
+    cvScroll.innerHTML = h;
+    cvScroll.scrollTop = cvScroll.scrollHeight;
+  }
+
+  chatList.addEventListener('click', e => {
+    if (dragDist > 10) return;
+    const row = e.target.closest('.crow');
+    if (row) openChat(+row.dataset.i);
+  });
+  $('cv-back').addEventListener('click', closeChat);
+
+  cvScroll.addEventListener('click', e => {
+    const t = e.target.closest('.task');
+    if (!t || !curChat) return;
+    const task = curChat.tasks[+t.dataset.t];
+    task.done = !task.done;
+    t.classList.toggle('done', task.done);
+  });
+
+  $('cv-form').addEventListener('submit', e => {
+    e.preventDefault();
+    if (!curChat) return;
+    const v = cvText.value.trim();
+    if (!v) return;
+    curChat.msgs.push(['me', nowT(), v.replace(/</g,'&lt;')]);
+    cvText.value = '';
+    renderMsgs();
+    clearTimeout(replyT);
+    replyT = setTimeout(() => {
+      if (!chatView.classList.contains('open')) return;
+      curChat.msgs.push(['them', nowT(), REPLIES[Math.floor(Math.random() * REPLIES.length)]]);
+      renderMsgs();
+    }, 900 + Math.random() * 900);
+  });
+
+  /* ---------- 我的页：设置开关 + 退出登录 ---------- */
+  document.querySelectorAll('.drow').forEach(r => {
+    r.addEventListener('click', () => {
+      if (dragDist > 10) return;
+      r.classList.toggle('on');
+      r.querySelector('.dsw').textContent = r.classList.contains('on') ? 'ON' : 'OFF';
+    });
+  });
+  document.querySelectorAll('.scn').forEach(b => {
+    b.addEventListener('click', () => {
+      if (dragDist > 10) return;
+      document.querySelectorAll('.scn').forEach(o => o.classList.remove('on'));
+      b.classList.add('on');
+    });
+  });
+
+  const sout = $('sout');
+  let soutT = 0;
+  sout.addEventListener('click', () => {
+    if (dragDist > 10) return;
+    if (sout.dataset.armed) {
+      clearTimeout(soutT);
+      delete sout.dataset.armed;
+      sout.textContent = 'SESSION REVOKED · 演示';
+      soutT = setTimeout(() => { sout.textContent = 'SIGN OUT · 退出登录'; }, 2200);
+    } else {
+      sout.dataset.armed = '1';
+      sout.textContent = 'AGAIN TO CONFIRM · 再点一次确认';
+      soutT = setTimeout(() => {
+        delete sout.dataset.armed;
+        sout.textContent = 'SIGN OUT · 退出登录';
+      }, 2600);
+    }
+  });
+
+  /* ---------- 翻页 ---------- */
+  let W = innerWidth;
+  let x = 0, idx = 0;
+  let raf = 0, hideT = 0;
+  let dragDist = 0;
+
+  const clamp = v => Math.max(0, Math.min(N - 1, v));
+  const inOverlay = () => noteView.classList.contains('open') ||
+                          chatView.classList.contains('open');
+
+  function wake() {
+    ind.classList.add('up');
+    pgname.classList.add('up');
+    clearTimeout(hideT);
+    hideT = setTimeout(() => {
+      ind.classList.remove('up');
+      pgname.classList.remove('up');
+    }, 1200);
+  }
+
+  function render() {
+    raf = 0;
+    track.style.transform = `translate3d(${-x}px,0,0)`;
+    drum.style.transform  = `rotateY(${-(x / W) * SEG}deg)`;
+    pfill.style.transform = `scaleX(${x / ((N - 1) * W)})`;
+    const cur = Math.round(x / W);
+    if (cur !== idx) {
+      nmZh.textContent = PAGES[cur];
+      ticks.children[idx].classList.remove('on');
+      ticks.children[cur].classList.add('on');
+      idx = cur;
+    }
+    if (cur !== 1) closeNote();
+    if (cur !== 2) closeChat();
+  }
+  function schedule() { if (!raf) raf = requestAnimationFrame(render); }
+
+  /* ---------- 拖拽 ---------- */
+  let down = false, sx = 0, sy = 0, x0 = 0, lastX = 0, lastT = 0, vx = 0;
+
+  addEventListener('pointerdown', e => {
+    down = true;
+    sx = e.clientX; sy = e.clientY; lastX = e.clientX;
+    x0 = x;
+    lastT = performance.now();
+    vx = 0;
+    dragDist = 0;
+  });
+
+  addEventListener('pointermove', e => {
+    if (!down) return;
+    if (inOverlay()) return;
+    if (e.target.closest && e.target.closest('.note-scroll,.cv-scroll') &&
+        Math.abs(e.clientY - sy) > Math.abs(e.clientX - sx)) return;
+    dragDist += Math.abs(e.clientX - lastX);
+    if (dragDist > 8) wake();
+    x = clamp(x0 / W + (sx - e.clientX) / W * 1.1) * W;
+    const t = performance.now();
+    vx = (lastX - e.clientX) / Math.max(t - lastT, 1);
+    lastX = e.clientX; lastT = t;
+    schedule();
+  });
+
+  const release = () => {
+    if (!down) return;
+    down = false;
+    if (inOverlay()) return;
+    let target = Math.round(x / W);
+    const fling = Math.abs(vx) > 0.35;
+    if (fling) target = clamp(target + Math.sign(vx));
+    if (dragDist < 10 && !fling) {
+      x = target * W;
+      schedule();
+      return;
+    }
+    anim(target * W);
+  };
+  addEventListener('pointerup', release);
+  addEventListener('pointercancel', release);
+
+  function anim(to) {
+    const from = x, t0 = performance.now(), dur = 340;
+    (function step() {
+      const k = Math.min((performance.now() - t0) / dur, 1);
+      x = from + (to - from) * (1 - Math.pow(1 - k, 3));
+      wake(); schedule();
+      if (k < 1) requestAnimationFrame(step);
+    })();
+  }
+  function goto(i) { wake(); anim(clamp(i) * W); }
+
+  /* ---------- 滚轮 / 键盘 ---------- */
+  let lastW = 0;
+  addEventListener('wheel', e => {
+    if (inOverlay()) return;
+    const ns = e.target.closest && e.target.closest('.note-scroll,.cv-scroll');
+    if (ns && ns.scrollHeight > ns.clientHeight + 4) return;
+    const d = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+    if (!d) return;
+    e.preventDefault();
+    const now = performance.now();
+    if (now - lastW < 400) return;
+    lastW = now;
+    goto(idx + (d > 0 ? 1 : -1));
+  }, { passive: false });
+
+  addEventListener('keydown', e => {
+    if (inOverlay()) {
+      if (e.key === 'Escape') { closeNote(); closeChat(); }
+      return;
+    }
+    if (e.key === 'ArrowRight') goto(idx + 1);
+    if (e.key === 'ArrowLeft')  goto(idx - 1);
+  });
+
+  addEventListener('resize', () => {
+    W = innerWidth;
+    x = idx * W;
+    buildHatch();
+    schedule();
+  });
+
+  /* 初始亮相 */
+  ticks.children[0].classList.add('on');
+  render();
+  wake();
+})();
+</script>
+</body>
+</html>
