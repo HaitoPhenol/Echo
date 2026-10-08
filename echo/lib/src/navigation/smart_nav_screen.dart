@@ -18,6 +18,7 @@ import 'widgets/ai_bar.dart';
 import 'widgets/ai_dialog.dart';
 import 'widgets/handle_bar.dart';
 import 'widgets/handle_menu.dart';
+import 'widgets/mechanical_background.dart';
 import 'widgets/nav_roller.dart';
 import 'widgets/quick_action_arc.dart';
 import 'widgets/search_capsule.dart';
@@ -1085,6 +1086,12 @@ class _SmartNavScreenState extends State<SmartNavScreen>
             onPointerCancel: _handleRootPointerCancel,
             child: Stack(
               children: [
+                // -------- 机能风固定背景（实验层：纹理不随翻页移动）--------
+                const Positioned.fill(
+                  key: ValueKey<String>('mech-bg'),
+                  child: MechanicalBackground(),
+                ),
+
                 // -------- 横向页面轨道 --------
                 Positioned.fill(
                   key: const ValueKey<String>('pages'),

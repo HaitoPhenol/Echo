@@ -18,8 +18,10 @@ class TemplatePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // 底色透明：机能风实验期由主屏 Stack 底层的 MechanicalBackground
+    // 透出固定纹理；实验放弃时随相关改动一起还原。
     return ColoredBox(
-      color: AppColors.background,
+      color: Colors.transparent,
       child: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
