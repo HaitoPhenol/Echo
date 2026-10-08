@@ -55,10 +55,12 @@ abstract final class MechanicalStyle {
   static const Color dotColor = Color(0x38FFFFFF);
 
   // ================================================================
-  // 描边框与四角十字定位标记（稿 L28-40）
+  // 描边框与对角双十字定位标记（稿 L28-40）
   // ================================================================
 
-  /// 描边框距屏幕四周的内缩（dp，稿 inset:14px）
+  /// 描边框距屏幕四周的内缩（dp，稿 inset:14px）。
+  /// 注意：真机落地时上边距需与状态栏高度取大值避让时钟，
+  /// 见 MechanicalBackground 内的边距计算。
   static const double frameInset = 14;
 
   /// 描边框线宽（dp）
@@ -67,13 +69,15 @@ abstract final class MechanicalStyle {
   /// 描边框色（稿 rgba(255,255,255,.14)）
   static const Color frameColor = Color(0x24FFFFFF);
 
-  /// 四角十字边长（dp，稿 22px，由一条竖线与一条横线交叉）
+  /// 十字边长（dp，稿 22px，由一条竖线与一条横线交叉）。
+  /// 原型只有**左上、右下两个**对角十字（::before/::after），
+  /// 中心压在边框角点上，各向框内外延伸半个边长（11dp）。
   static const double crossSize = 22;
 
-  /// 四角十字线宽（dp）
+  /// 十字线宽（dp）
   static const double crossStrokeWidth = 1;
 
-  /// 四角十字色（稿 opacity:.5）
+  /// 十字色（稿 opacity:.5）
   static const Color crossColor = Color(0x80FFFFFF);
 
   // ================================================================
