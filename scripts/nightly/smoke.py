@@ -56,8 +56,10 @@ def metrics():
     scale = int(m.group(1)) / 160.0
     lw, lh = pw / scale, ph / scale
 
-    # 底部安全区：尝试从 WindowManager 的 stable inset 取，取不到退回 16dp。
-    sb = 16.0
+    # 底部安全区：尝试从 WindowManager 的 stable inset 取，取不到退回经验值。
+    # 19dp 为小米 MIX 2S（density 440）实测，见 engineering_standards 1.15
+    # 取证坐标反推（物理 y=2050 / 2.75 = 逻辑 745.5 = h−sb−21）；换设备重核。
+    sb = 19.0
     dump = text(["shell", "dumpsys", "window"], timeout=60)
     m = re.search(r"mStableInsets[^\n]*?bottom=(\d+)", dump)
     if m and int(m.group(1)) > 0:
@@ -167,15 +169,14 @@ def run(label, apk, report, shots, stamp, branch, sha):
     time.sleep(1.0)
 
     try:
-        step("01", "冷启动：唤醒、强停后重新拉起，停 3.5s", lambda: (
-            adb(["shell", "input", "keyevent", "224"]),
-            adb(["shell", "am", "force-stop", PKG]),
-            time.sleep(0.6),
+        def cold_boot():
+            adb(["shell", "input", "keyevent", "224"])
+            adb(["shell", "am", "force-stop", PKG])
+            time.sleep(0.6)
             adb(["shell", "monkey", "-p", PKG,
-                 "-c", "android.intent.category.LAUNCHER", "1"],
-                timeout=30),
-            time.sleep(3.5),
-        ))
+                 "-c", "android.intent.category.LAUNCHER", "1"], timeout=30)
+            time.sleep(4.2)  # MIX 2S 冷启动到可交互约 4~4.5s（1.15 实测）
+        step("01", "冷启动：强停后重新拉起（4.2s）", cold_boot)
         step("02", "点右圆点 → 聊天页", lambda: (tap("", dot_r, bar_cy),
                                                  time.sleep(1.2)))
         row_y = h * 0.45
@@ -197,10 +198,22 @@ def run(label, apk, report, shots, stamp, branch, sha):
         step("10", "右拖把手到停靠位 → 侧边抽屉", lambda: (
             swipe(handle_x, bar_cy, dock_x, bar_cy, 360), time.sleep(0.8)))
         step("11", "返回键 → 关闭抽屉", lambda: (back(), time.sleep(0.4)))
-        step("12", "导航条 1/4 处上甩 230 → 快捷操作弧", lambda: (
-            swipe(bar_l + (bar_r - bar_l) * 0.25, bar_cy,
-                  bar_l + (bar_r - bar_l) * 0.25, bar_cy - 230, 170),
-            time.sleep(0.9)))
+        def arc_hold_shot():
+            # 弧只在手指按住时存在，松手即收（或触发）。按 1.15 经验：
+            # 发起 2.6s 长甩、在按住相位截图、终点故意停在全部热区之外。
+            ax, ay = px(bar_l + (bar_r - bar_l) * 0.25, bar_cy)
+            ex, ey = px(bar_l + (bar_r - bar_l) * 0.25, bar_cy - 230)
+            held = subprocess.Popen(
+                ["adb", "shell", "input", "swipe",
+                 str(ax), str(ay), str(ex), str(ey), "2600"],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            time.sleep(1.3)
+            shot("12")  # 弧展开 + 最近按钮高亮（手指仍按住）
+            held.wait(timeout=10)
+            time.sleep(0.7)  # 终点在热区外 → 不触发，弧收起
+        print("· 12 上甩 → 快捷操作弧（按住相位抓拍）", flush=True)
+        steps.append(("12", "导航条 1/4 处上甩 230 → 快捷操作弧（按住相位抓拍，终点在热区外不触发）"))
+        arc_hold_shot()
         step("13", "返回键 → 收起快捷弧", lambda: (back(), time.sleep(0.5)))
         step("14", "长按 AI 条 550ms → AI 对话框与键盘", lambda: (
             tap("", ai_cx, bar_cy, 550), time.sleep(1.4)))
