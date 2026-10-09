@@ -103,11 +103,14 @@ void main() {
     await tester.pumpWidget(const EchoApp());
     await tester.pump();
 
-    // 滚筒整体显隐用的最外层 AnimatedOpacity
+    // 滚筒整体显隐骨架的 AnimatedOpacity（现收在
+    // MechanicalIndicatorLifecycle 内；瞬隐时外层 Offstage 离台，
+    // 必须 skipOffstage:false 才能取到 opacity 值）。
     Finder rollerOpacity() => find
         .descendant(
           of: find.byType(MechanicalPageDrum),
-          matching: find.byType(AnimatedOpacity),
+          matching: find.byType(AnimatedOpacity, skipOffstage: false),
+          skipOffstage: false,
         )
         .first;
 
@@ -256,7 +259,7 @@ void main() {
 
     /// 第 i 个目的地页的位置标记：聊天页（i=1）已换成 ChatPage，
     /// 用其 ListView；其余三页仍是 TemplatePage 标题。
-    /// 注意 TemplatePage 序列中终端/日志/我依次为 0/2/3（1 为聊天）
+    /// 注意 TemplatePage 序列中终端/日志/主页依次为 0/2/3（1 为聊天）
     /// （聊天页不在该序列内）。
     Finder pageMarker(int i) {
       if (i == 1) {

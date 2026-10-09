@@ -38,7 +38,7 @@
 
 ## 页面与导航
 
-- **4 个页面**：终端 / 聊天 / 日志 / 我（见 `navigation/nav_destination.dart`；
+- **4 个页面**：终端 / 聊天 / 日志 / 主页（见 `navigation/nav_destination.dart`；
   首页中文页名 v0.6.1 起由「控制台」改「终端」，英文 kicker 仍为 CONSOLE）。
   聊天页已替换为真实页面 `ChatPage`（`pages/chat_page.dart`，数据来自
   `services/chat_store.dart` 的 `ChatStore`）：**无标题栏**，

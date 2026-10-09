@@ -1201,8 +1201,9 @@ class _SmartNavScreenState extends State<SmartNavScreen>
                 // -------- 页码指示器：左下页名牌 + 右下 3D 转鼓（仅横滑唤醒）--------
                 Positioned(
                   key: const ValueKey<String>('page-name-plate'),
-                  left: screenSize.width *
-                      MechanicalStyle.namePlateLeftFactor,
+                  // 左边距与右下转鼓右边距同为 DockGeometry.sideMargin，
+                  // 两侧视觉对称（原 5vw 在 393dp 宽屏约 19.6dp，不对齐）。
+                  left: DockGeometry.sideMargin,
                   // 色块底边与右下转鼓面板底边对齐（同为 52+safeBottom）。
                   bottom: 52 + safeBottom,
                   child: MechanicalPageNamePlate(
@@ -1214,7 +1215,7 @@ class _SmartNavScreenState extends State<SmartNavScreen>
                 ),
                 Positioned(
                   key: const ValueKey<String>('roller'),
-                  right: 14,
+                  right: DockGeometry.sideMargin,
                   bottom: 52 + safeBottom,
                   child: MechanicalPageDrum(
                     controller: _nav,

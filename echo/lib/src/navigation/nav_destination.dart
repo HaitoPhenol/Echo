@@ -48,7 +48,7 @@ List<NavDestination> buildDefaultDestinations() {
     ('console', '终端'),
     ('chat', '聊天'),
     ('notes', '日志'),
-    ('me', '我'),
+    ('me', '主页'),
   ];
 
   return [

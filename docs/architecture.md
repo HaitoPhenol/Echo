@@ -119,7 +119,7 @@ AGENT.md                                   # 给开发 agent 的工作提示（�
 | `pageBuilder` | `WidgetBuilder` | 页面本体构建器，按需构建 |
 
 默认配置由 `buildDefaultDestinations()` 构建，当前为 4 页：
-终端（console）、聊天（chat）、日志（notes）、我（me）。
+终端（console）、聊天（chat）、日志（notes）、主页（me）。
 其中**聊天页已替换为真实页面** `ChatPage`（`pages/chat_page.dart`，
 会话数据来自 `ChatStore`，见 3.10）：无标题栏；列表初始为空，
 空态整屏居中显示 13px 小字「暂无消息」（tone2），有会话时切换为
@@ -466,17 +466,28 @@ Stack 分层在 `SmartNavScreen.build`（机能风层见 3.11）：
   w 侧；背面剔除（|world|≥90°）、远面先画近面后画；视窗左右为
   `mechDrumLine` 虚线竖边。底部 2px 进度条（轨道
   `mechDrumProgressTrack`、填充 `mechInk`）。显隐由
-  rollerVisible 驱动（IgnorePointer + AnimatedOpacity +
-  AnimatedSlide）：**仅横滑 dragStart 唤醒**；圆点点按 stepPage、
-  双击 snapTo 直达不显示转鼓。
+  rollerVisible 驱动，两个指示器统一走
+  `MechanicalIndicatorLifecycle`：**仅横滑 dragStart 唤醒**
+  （圆点点按 stepPage、双击 snapTo 直达不显示）；入场 fade 220ms
+  +rise 340ms；**正常收回**（落位 650ms 定时器）播 340ms
+  「水平百叶窗」故障退场——10 条横带按固定乱序错峰、每条两明两暗
+  后熄灭，前段叠 3px 衰减横抖，单 ClipPath 合成不倍增转鼓重绘；
+  **上甩切快捷弧 / 进入搜索态**（`rollerInstantHide`）为互斥瞬隐，
+  不播退场。
 - **左下页名牌** `MechanicalPageNamePlate`（稿 #pgname）：
-  `Positioned(left: 5vw, bottom: 52 + safeBottom)`——**色块底边
+  `Positioned(left: DockGeometry.sideMargin, bottom: 52 + safeBottom)`
+  ——**左右边距与转鼓同源**（均 14dp，原稿 left:5vw 在 393dp 宽屏
+  约 19.6dp 不与转鼓右边对齐，已改），**色块底边
   与转鼓面板底边对齐**（原稿 bottom:26px 未采用）。内容为 64sp
   w700、字距 5.12（.08em）的当前页名（带稿 0/2/12 柔和投影）+
   下方 56×3 的 `mechInk` 短横线，
   文字走系统 **serif 通用族**（`fontFamily: 'serif'`，不打包字体；
   Android 西文 NotoSerif、中文回退 NotoSerifCJK，Bold 面由引擎
   合成），即原型 `--serif` 栈的宋体效果；色块 panel α.90。
+  **面板框仿转鼓但向右开口**（`_PlateFramePainter`）：1px
+  `mechDrumLine` 细线左边通高、上边通宽、底边只画左半、右边不画
+  （视作被右侧内容挡住的延续面板）；左上与左下两个实角各加 16px/2px
+  `mechInk` 亮角标（参数同转鼓 `drumCorner*`，转鼓为左上/右下）。
   与转鼓共用同一 rollerVisible / 同一组时长曲线，同升同收；
   拖动跨过页中点时按 nearestPage 硬切页名；圆点/双击路径同样
   不显示。页名取自 `NavDestination.label`，3~4 字长名与转鼓的
@@ -489,7 +500,9 @@ Stack 分层在 `SmartNavScreen.build`（机能风层见 3.11）：
   白线横扫、下划线延迟展开（1.08 过冲）。
   触发只有两个边沿：**唤醒当帧播一次**；**可见期内 activePage
   硬切（成功翻页）立即从头重播**，连续跨页连击不断。首/末页边界
-  回弹 activePage 不变不触发；收回时故障即时回稳态，只留 fade/rise。
+  回弹 activePage 不变不触发；收回时入场故障即时回稳态，由共有的
+  MechanicalIndicatorLifecycle 接管「水平百叶窗」退场，
+  上甩/搜索路径仍瞬隐。
 - **保留项（验收时确认不动）**：粗网格 α 维持 .10（长列表灰色
   预览文案在粗线恰好穿字时略花、随滚动变化，整体可读）；kicker
   未打包真等宽字体（`fontFamily: monospace` 在 Flutter/Android

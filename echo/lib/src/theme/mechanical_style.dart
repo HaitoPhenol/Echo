@@ -161,13 +161,18 @@ abstract final class MechanicalStyle {
   static const Duration indicatorFadeDuration = Duration(milliseconds: 220);
   static const Duration indicatorRiseDuration = Duration(milliseconds: 340);
 
+  /// 退场「百叶窗故障」横带数（两个指示器共用）。
+  static const int indicatorExitBandCount = 10;
+
+  /// 退场前段整构件数码横抖最大幅度（px，快速衰减）。
+  static const double indicatorExitJitter = 3;
+
   // ================================================================
   // 左下角页名牌（稿 L305-317「#pgname」，与转鼓同时显隐）
   // ================================================================
 
-  /// 左边距为屏宽倍数（稿 left:5vw）；底边不另设常量——色块底边
-  /// 与右下转鼓面板底边对齐，定位在 smart_nav_screen 取同一 52dp。
-  static const double namePlateLeftFactor = 0.05;
+  // 页名牌不设独立左右边距常量：左边距与右下转鼓右边距同源，
+  // 都取 DockGeometry.sideMargin（14dp），定位在 smart_nav_screen。
 
   /// 色块内边距（稿 padding:12px 26px 14px）
   static const double namePlatePadTop = 12;
