@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/mechanical_style.dart';
 import '../nav_physics.dart';
+import 'mechanical_indicator_lifecycle.dart';
 
 /// 机能风 3D 页码转鼓指示器（右下角页码指示）。
 ///
@@ -17,8 +18,9 @@ import '../nav_physics.dart';
 /// - 底部 2px 进度条；面板左上/右下各一道直角亮线。
 /// （原稿视窗右侧的竖排刻度列已删，面板随之收窄，给左下页名牌让位。）
 ///
-/// 显隐由 rollerVisible 驱动（IgnorePointer + AnimatedOpacity +
-/// AnimatedSlide），手势唤醒机制不在本组件内；圆点 stepPage / snapTo
+/// 显隐由 rollerVisible 驱动，统一走 `MechanicalIndicatorLifecycle`
+/// （入场 fade+rise；退场垂直百叶窗故障熄灭，与页名牌同帧同节奏），
+/// 手势唤醒机制不在本组件内；圆点 stepPage / snapTo
 /// 路径不显示转鼓，只有横滑 dragStart 才唤醒。左下角的
 /// `MechanicalPageNamePlate` 与本组件共用同一显隐节奏。
 class MechanicalPageDrum extends StatelessWidget {
@@ -41,76 +43,62 @@ class MechanicalPageDrum extends StatelessWidget {
     return AnimatedBuilder(
       animation: controller,
       builder: (context, _) {
-        final visible = controller.rollerVisible;
-        return IgnorePointer(
-          ignoring: !visible,
-          child: AnimatedOpacity(
-            opacity: visible ? 1 : 0,
-            duration: MechanicalStyle.indicatorFadeDuration,
-            child: AnimatedSlide(
-              offset: visible ? Offset.zero : const Offset(0, 0.4),
-              duration: MechanicalStyle.indicatorRiseDuration,
-              curve: const Cubic(0.3, 1.4, 0.4, 1),
-              child: SizedBox(
-                width: panelWidth,
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: AppColors.mechDrumPanel,
-                    border: Border.all(color: AppColors.mechDrumLine),
+        return MechanicalIndicatorLifecycle(
+          visible: controller.rollerVisible,
+          instant: controller.rollerInstantHide,
+          child: SizedBox(
+            width: panelWidth,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: AppColors.mechDrumPanel,
+                border: Border.all(color: AppColors.mechDrumLine),
+              ),
+              child: Stack(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(
+                      left: MechanicalStyle.drumPadH,
+                      top: MechanicalStyle.drumPadTop,
+                      right: MechanicalStyle.drumPadH,
+                      bottom: MechanicalStyle.drumPadBottom,
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        const _DrumHead(),
+                        const SizedBox(height: MechanicalStyle.drumHeadGap),
+                        _DrumView(controller: controller, pageCount: pageCount),
+                      ],
+                    ),
                   ),
-                  child: Stack(
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.only(
-                          left: MechanicalStyle.drumPadH,
-                          top: MechanicalStyle.drumPadTop,
-                          right: MechanicalStyle.drumPadH,
-                          bottom: MechanicalStyle.drumPadBottom,
-                        ),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            const _DrumHead(),
-                            const SizedBox(height: MechanicalStyle.drumHeadGap),
-                            _DrumView(
-                              controller: controller,
-                              pageCount: pageCount,
-                            ),
-                          ],
-                        ),
-                      ),
-                      // 底部进度条：暗轨 + 跟手填充，贴面板最底边（稿 .pbar）。
-                      Positioned(
-                        left: 0,
-                        right: 0,
-                        bottom: 0,
-                        child: SizedBox(
-                          height: MechanicalStyle.drumProgressHeight,
-                          child: ColoredBox(
-                            color: AppColors.mechDrumProgressTrack,
-                          ),
-                        ),
-                      ),
-                      Positioned(
-                        left: 0,
-                        bottom: 0,
-                        height: MechanicalStyle.drumProgressHeight,
-                        child: _DrumProgressFill(
-                          controller: controller,
-                          trackWidth: panelWidth,
-                          pageCount: pageCount,
-                        ),
-                      ),
-                      // 左上/右下直角亮线。
-                      const Positioned.fill(
-                        child: IgnorePointer(
-                          child: CustomPaint(painter: _CornerPainter()),
-                        ),
-                      ),
-                    ],
+                  // 底部进度条：暗轨 + 跟手填充，贴面板最底边（稿 .pbar）。
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    child: SizedBox(
+                      height: MechanicalStyle.drumProgressHeight,
+                      child: ColoredBox(color: AppColors.mechDrumProgressTrack),
+                    ),
                   ),
-                ),
+                  Positioned(
+                    left: 0,
+                    bottom: 0,
+                    height: MechanicalStyle.drumProgressHeight,
+                    child: _DrumProgressFill(
+                      controller: controller,
+                      trackWidth: panelWidth,
+                      pageCount: pageCount,
+                    ),
+                  ),
+                  // 左上/右下直角亮线。
+                  const Positioned.fill(
+                    child: IgnorePointer(
+                      child: CustomPaint(painter: _CornerPainter()),
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
@@ -175,11 +163,7 @@ class _BlipState extends State<_Blip> with SingleTickerProviderStateMixin {
         return SizedBox(
           width: MechanicalStyle.drumBlipSize,
           height: MechanicalStyle.drumBlipSize,
-          child: ColoredBox(
-            color: on
-                ? AppColors.mechInk
-                : Colors.transparent,
-          ),
+          child: ColoredBox(color: on ? AppColors.mechInk : Colors.transparent),
         );
       },
     );
@@ -280,15 +264,28 @@ class _DrumPainter extends CustomPainter {
       // 这里把平移放到齐次 w 一侧，使 (0,0,R) 严格投影到 (cx,cy)，
       // 输出坐标 = c + v·persp/(persp-z)。
       final p = 1 / MechanicalStyle.drumPerspective;
-      final matrix = Matrix4(
-        1, 0, 0, 0, // col 0
-        0, 1, 0, 0, // col 1
-        -cx * p, -cy * p, 1, -p, // col 2
-        cx, cy, 0, 1, // col 3（屏幕平移）
-      )
-        ..rotateY(face.worldDeg * math.pi / 180)
-        ..translateByDouble(0, 0, MechanicalStyle.drumRadius, 1)
-        ..translateByDouble(dx, dy, 0, 1);
+      final matrix =
+          Matrix4(
+              1,
+              0,
+              0,
+              0, // col 0
+              0,
+              1,
+              0,
+              0, // col 1
+              -cx * p,
+              -cy * p,
+              1,
+              -p, // col 2
+              cx,
+              cy,
+              0,
+              1, // col 3（屏幕平移）
+            )
+            ..rotateY(face.worldDeg * math.pi / 180)
+            ..translateByDouble(0, 0, MechanicalStyle.drumRadius, 1)
+            ..translateByDouble(dx, dy, 0, 1);
 
       canvas.save();
       canvas.transform(matrix.storage);

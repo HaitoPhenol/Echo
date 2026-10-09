@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/mechanical_style.dart';
 import '../nav_physics.dart';
+import 'mechanical_indicator_lifecycle.dart';
 
 /// 机能风左下角页名牌（横滑唤醒时与转鼓同时浮现）。
 ///
@@ -19,12 +20,14 @@ import '../nav_physics.dart';
 /// - **唤醒期间成功翻页**：横滑跨过页中点、activePage 硬切的同一帧
 ///   立即从头重播；连续跨页时每次切换都重播，节奏天然连贯。
 ///
-/// 首/末页继续滑的边界回弹 activePage 不变，不触发故障；收回时也
-/// 不做故障：故障即时回到稳态，跟随转鼓同一 fade/rise 淡出。
+/// 首/末页继续滑的边界回弹 activePage 不变，不触发故障。**收回时**
+/// 入场故障即时回稳态，由两个指示器共用的
+/// [MechanicalIndicatorLifecycle] 播放「垂直百叶窗」退场（与入场的
+/// 水平切片做差异），详见该组件。
 ///
 /// 组件只负责内容与显隐；屏幕位置由调用方用 [Positioned] 给定：
-/// left:5vw，色块底边与右下转鼓面板底边对齐（52+安全区；
-/// 原稿 bottom:26 的定位未采用，以用户真机裁决的底对齐为准）。
+/// 左边距与转鼓右边距同源（DockGeometry.sideMargin），色块底边与
+/// 右下转鼓面板底边对齐（52+安全区）。
 class MechanicalPageNamePlate extends StatefulWidget {
   const MechanicalPageNamePlate({
     super.key,
@@ -78,7 +81,7 @@ class _MechanicalPageNamePlateState extends State<MechanicalPageNamePlate>
     super.dispose();
   }
 
-  /// 显隐/翻页事件转成故障时序。显隐骨架（AnimatedOpacity/AnimatedSlide）
+  /// 显隐/翻页事件转成故障时序。显隐骨架（MechanicalIndicatorLifecycle）
   /// 由 build 直接读 controller，与此处监听各自独立、同一帧生效。
   void _onController() {
     final visible = widget.controller.rollerVisible;
@@ -91,7 +94,8 @@ class _MechanicalPageNamePlateState extends State<MechanicalPageNamePlate>
         // _lastIndex 已同步当前页，之后只有真正翻过中点才会再播。
         _glitch.forward(from: 0);
       } else {
-        // 收回：不做故障，直接回稳态，只留与转鼓相同的 fade/rise。
+        // 收回：入场故障即时回稳态；退场百叶窗由
+        // MechanicalIndicatorLifecycle 统一播放。
         _glitch.value = 1;
       }
     } else if (visible && index != _lastIndex) {
@@ -123,55 +127,45 @@ class _MechanicalPageNamePlateState extends State<MechanicalPageNamePlate>
   }
 
   Widget _buildPlate(BuildContext context, bool visible, int index) {
-    return IgnorePointer(
-      ignoring: !visible,
-      child: AnimatedOpacity(
-        opacity: visible ? 1 : 0,
-        duration: MechanicalStyle.indicatorFadeDuration,
-        child: AnimatedSlide(
-          offset: visible ? Offset.zero : const Offset(0, 0.4),
-          duration: MechanicalStyle.indicatorRiseDuration,
-          curve: const Cubic(0.3, 1.4, 0.4, 1),
-          child: CustomPaint(
-            // 面板底色 + 仿转鼓边框/角标一体绘制（见 _PlateFramePainter）。
-            // 亮角标骑边框外扩 1px，CustomPaint 不裁剪，正常可见。
-            painter: const _PlateFramePainter(),
-            child: Stack(
-              children: [
-                // 非定位子：决定 Stack（即色块）的尺寸。
-                Padding(
-                  padding: const EdgeInsets.only(
-                    left: MechanicalStyle.namePlatePadH,
-                    top: MechanicalStyle.namePlatePadTop,
-                    right: MechanicalStyle.namePlatePadH,
-                    bottom: MechanicalStyle.namePlatePadBottom,
-                  ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _GlitchWord(word: widget.labels[index], glitch: _glitch),
-                      const SizedBox(
-                        height: MechanicalStyle.namePlateUnderlineGap,
-                      ),
-                      _GlitchUnderline(glitch: _glitch),
-                    ],
-                  ),
-                ),
-                // 故障白线压在最上层横切文字（不接手势）。
-                Positioned.fill(
-                  child: IgnorePointer(
-                    child: AnimatedBuilder(
-                      animation: _glitch,
-                      builder: (context, _) => CustomPaint(
-                        painter: _GlitchLinePainter(t: _glitch.value),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
+    return MechanicalIndicatorLifecycle(
+      visible: visible,
+      instant: widget.controller.rollerInstantHide,
+      child: CustomPaint(
+        // 面板底色 + 仿转鼓边框/角标一体绘制（见 _PlateFramePainter）。
+        // 亮角标骑边框外扩 1px，CustomPaint 不裁剪，正常可见。
+        painter: const _PlateFramePainter(),
+        child: Stack(
+          children: [
+            // 非定位子：决定 Stack（即色块）的尺寸。
+            Padding(
+              padding: const EdgeInsets.only(
+                left: MechanicalStyle.namePlatePadH,
+                top: MechanicalStyle.namePlatePadTop,
+                right: MechanicalStyle.namePlatePadH,
+                bottom: MechanicalStyle.namePlatePadBottom,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _GlitchWord(word: widget.labels[index], glitch: _glitch),
+                  const SizedBox(height: MechanicalStyle.namePlateUnderlineGap),
+                  _GlitchUnderline(glitch: _glitch),
+                ],
+              ),
             ),
-          ),
+            // 故障白线压在最上层横切文字（不接手势）。
+            Positioned.fill(
+              child: IgnorePointer(
+                child: AnimatedBuilder(
+                  animation: _glitch,
+                  builder: (context, _) => CustomPaint(
+                    painter: _GlitchLinePainter(t: _glitch.value),
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -230,8 +224,7 @@ class _GlitchWord extends StatelessWidget {
                         // 灰色重影副本（极简单色风）：横向错位、
                         // 仅故障包络内可见。
                         Opacity(
-                          opacity:
-                              chroma * _sliceAlpha[i].transform(t),
+                          opacity: chroma * _sliceAlpha[i].transform(t),
                           child: Transform.translate(
                             offset: const Offset(
                               MechanicalStyle.nameGlitchChromaShift,
@@ -247,8 +240,7 @@ class _GlitchWord extends StatelessWidget {
                           ),
                         ),
                         Opacity(
-                          opacity:
-                              chroma * _sliceAlpha[i].transform(t),
+                          opacity: chroma * _sliceAlpha[i].transform(t),
                           child: Transform.translate(
                             offset: const Offset(
                               -MechanicalStyle.nameGlitchChromaShift,
@@ -321,14 +313,8 @@ class _SliceClipper extends CustomClipper<Rect> {
     final (top, bottom) = _bands[index];
     // 下片底边外扩 12px：serif 合成粗体的下行笔画与文字柔和投影
     // （offset(0,2)+blur12）会画出行盒，不能卡在 1.0 处硬裁。
-    final bottomEdge =
-        size.height * bottom + (index == 2 ? 12.0 : 0.0);
-    return Rect.fromLTRB(
-      0,
-      size.height * top,
-      size.width,
-      bottomEdge,
-    );
+    final bottomEdge = size.height * bottom + (index == 2 ? 12.0 : 0.0);
+    return Rect.fromLTRB(0, size.height * top, size.width, bottomEdge);
   }
 
   @override
@@ -356,17 +342,9 @@ class _PlateFramePainter extends CustomPainter {
     // 1px 线骑像素中心。
     const hx = 0.5;
     // 左边（通高）。
-    canvas.drawLine(
-      const Offset(hx, 0),
-      Offset(hx, size.height),
-      line,
-    );
+    canvas.drawLine(const Offset(hx, 0), Offset(hx, size.height), line);
     // 上边（通宽）。
-    canvas.drawLine(
-      const Offset(0, hx),
-      Offset(size.width, hx),
-      line,
-    );
+    canvas.drawLine(const Offset(0, hx), Offset(size.width, hx), line);
     // 底边（左半）。
     canvas.drawLine(
       Offset(hx, size.height - hx),

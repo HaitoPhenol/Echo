@@ -117,6 +117,11 @@ class NavPhysicsController extends ChangeNotifier {
   /// 滚筒（及页名标签）是否可见。
   bool rollerVisible = false;
 
+  /// 下一次（或最近一次）隐藏是否要求**瞬隐**：true 时跳过退场
+  /// 百叶窗（上甩切快捷弧、进入搜索态，必须互斥不叠加）；正常
+  /// 落位定时器隐藏为 false，播故障风退场。[showRoller] 时复位。
+  bool rollerInstantHide = false;
+
   Timer? _rollerHideTimer;
 
   // ==================== 搜索态 ====================
@@ -402,26 +407,29 @@ class NavPhysicsController extends ChangeNotifier {
     _rollerHideTimer?.cancel();
     if (!rollerVisible) {
       rollerVisible = true;
+      rollerInstantHide = false;
       notifyListeners();
     }
   }
 
   /// 立即隐藏滚筒与页名标签（手势中途切换为上甩时调用，
-  /// 避免快捷操作弧直接叠在滚筒上）。
+  /// 避免快捷操作弧直接叠在滚筒上）；不播退场动画。
   void hideRoller() {
     _rollerHideTimer?.cancel();
     if (rollerVisible) {
       rollerVisible = false;
+      rollerInstantHide = true;
       notifyListeners();
     }
   }
 
-  /// 落位后延时隐藏滚筒（原型延时 650ms）。
+  /// 落位后延时隐藏滚筒（原型延时 650ms），走故障风退场百叶窗。
   void scheduleRollerHide() {
     _rollerHideTimer?.cancel();
     _rollerHideTimer = Timer(const Duration(milliseconds: 650), () {
       if (rollerVisible) {
         rollerVisible = false;
+        rollerInstantHide = false;
         notifyListeners();
       }
     });
@@ -436,6 +444,7 @@ class NavPhysicsController extends ChangeNotifier {
     searchState = SearchState.open;
     _rollerHideTimer?.cancel();
     rollerVisible = false;
+    rollerInstantHide = true;
     fuseProgress = 1;
     // 烧蚀基准在首个物理帧惰性记录（帧时间戳 + 0.65s 宽限）。
     _fuseBurnStart = null;

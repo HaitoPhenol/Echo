@@ -103,11 +103,14 @@ void main() {
     await tester.pumpWidget(const EchoApp());
     await tester.pump();
 
-    // 滚筒整体显隐用的最外层 AnimatedOpacity
+    // 滚筒整体显隐骨架的 AnimatedOpacity（现收在
+    // MechanicalIndicatorLifecycle 内；瞬隐时外层 Offstage 离台，
+    // 必须 skipOffstage:false 才能取到 opacity 值）。
     Finder rollerOpacity() => find
         .descendant(
           of: find.byType(MechanicalPageDrum),
-          matching: find.byType(AnimatedOpacity),
+          matching: find.byType(AnimatedOpacity, skipOffstage: false),
+          skipOffstage: false,
         )
         .first;
 
