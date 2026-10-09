@@ -204,10 +204,12 @@ class ChatListRow extends StatelessWidget {
   }
 }
 
-/// 行前景：不透明底色上的头像 + 文案 + 未读绿点 + 底部分隔线。
+/// 行前景：头像 + 文案 + 未读绿点 + 底部分隔线。
 ///
-/// 不透明底色负责在左滑时物理遮挡操作按钮（项目既有经验：
-/// 半透明遮挡会让下层内容透出）。
+/// 机能风实验期（feat/page-background-art）底色透明，让固定背景
+/// 纹理透到会话行；左滑操作按钮的遮挡改由 _SwipeToReveal 对操作区
+/// 按露出宽度裁剪实现（不再依赖本行不透明实底）。
+/// 实验放弃时：本行还原不透明底色、操作区裁剪同步移除。
 class _RowForeground extends StatelessWidget {
   const _RowForeground({required this.conversation});
 
@@ -216,7 +218,7 @@ class _RowForeground extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return DecoratedBox(
-      decoration: const BoxDecoration(color: AppColors.background),
+      decoration: const BoxDecoration(color: Colors.transparent),
       child: Stack(
         children: [
           Column(
@@ -560,20 +562,25 @@ class _SwipeToRevealState extends State<_SwipeToReveal>
     final offset = _currentOffset;
     return Stack(
       children: [
-        // 操作区：右对齐铺满行高，始终在树中（左滑跟手时要即时露出），
-        // 但被前景不透明物理遮挡时 hit test 落不到；同时用
-        // ExcludeSemantics 排除，避免无障碍读到「看不见的按钮」。
+        // 操作区：右对齐铺满行高，始终在树中（左滑跟手时要即时露出）。
+        // 机能风实验期行前景透明，遮挡方式从「前景不透明实底」改为
+        // 「按前景实时偏移裁剪操作区」：ClipRect + Align(widthFactor)
+        // 使操作区可见/可点宽度恒等于已露出宽度（0 ~ actionWidth），
+        // 收起时宽度为 0，按钮不可见也不参与 hit test。
         Positioned.fill(
           child: ExcludeSemantics(
             excluding: offset == _closedOffset,
-            child: Align(
-              alignment: Alignment.centerRight,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                // stretch：让操作按钮填满整行高度（Align 给的是
-                // 全高松散约束，不 stretch 会缩成文字高度）。
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: widget.actions,
+            child: ClipRect(
+              child: Align(
+                alignment: Alignment.centerRight,
+                widthFactor: (-offset / widget.actionWidth).clamp(0.0, 1.0),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  // stretch：让操作按钮填满整行高度（Align 给的是
+                  // 全高松散约束，不 stretch 会缩成文字高度）。
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: widget.actions,
+                ),
               ),
             ),
           ),
