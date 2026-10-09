@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="512" height="512">
+  <!-- 纯白底板（导出全出血版时删掉 rx 即可） -->
+  <rect width="1024" height="1024" rx="230" fill="#FFFFFF"/>
+
+  <!-- 三道涟漪：线宽 60/44/32，半径 190/310/412，缺口逐环偏移 30° -->
+  <g fill="none" stroke="#4C41E6" stroke-linecap="round">
+    <path d="M 695.5 561.2 A 190 190 0 1 1 462.8 328.5" stroke-width="60"/>
+    <path d="M 731.2 731.2 A 310 310 0 1 1 592.2 212.6" stroke-width="44"/>
+    <path d="M 618.6 910.0 A 412 412 0 1 1 803.3 220.7" stroke-width="32"/>
+  </g>
+
+  <!-- 中心点 -->
+  <circle cx="512" cy="512" r="90" fill="#4C41E6"/>
+</svg>
