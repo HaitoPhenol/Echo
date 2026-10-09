@@ -21,6 +21,7 @@ import 'widgets/handle_bar.dart';
 import 'widgets/handle_menu.dart';
 import 'widgets/mechanical_background.dart';
 import 'widgets/mechanical_coords_bar.dart';
+import 'widgets/mechanical_page_number.dart';
 import 'widgets/nav_roller.dart';
 import 'widgets/quick_action_arc.dart';
 import 'widgets/search_capsule.dart';
@@ -1120,16 +1121,35 @@ class _SmartNavScreenState extends State<SmartNavScreen>
                               top: 0,
                               bottom: 0,
                               width: screenSize.width * _destinations.length,
-                              child: Row(
-                                // 页面由导航配置驱动：每个目的地的 pageBuilder
-                                // 经 Builder 注入上下文，全部 Expanded 等宽。
+                              child: Stack(
                                 children: [
-                                  for (final destination in _destinations)
+                                  // 机能风大页码：每页一格、页面之下，随轨道横滑。
+                                  Row(
+                                    children: [
+                                      for (var i = 0;
+                                          i < _destinations.length;
+                                          i++)
                                     Expanded(
-                                      child: Builder(
-                                        builder: destination.pageBuilder,
+                                      child: Stack(
+                                        children: [
+                                          MechanicalPageNumber(index: i),
+                                        ],
                                       ),
                                     ),
+                                    ],
+                                  ),
+                                  Row(
+                                    // 页面由导航配置驱动：每个目的地的 pageBuilder
+                                    // 经 Builder 注入上下文，全部 Expanded 等宽。
+                                    children: [
+                                      for (final destination in _destinations)
+                                        Expanded(
+                                          child: Builder(
+                                            builder: destination.pageBuilder,
+                                          ),
+                                        ),
+                                    ],
+                                  ),
                                 ],
                               ),
                             ),

@@ -98,10 +98,21 @@
   📷 12.png 控制台整页（DEV MIX 2S · T 33.0°C · P 0.5W 实测）；
   13.png coordsTop=4 聊天页 5 条会话；14.png coordsTop=0 定稿。
 
-- [ ] **B2. 空心大页码 + SEC 分区小标题**
-  仅改造 TemplatePage（控制台/日志/我）：右上描边页码 + 标题上方 kicker。
-  标题样式暂不大改，先验证位置关系。横滑时页码随页滑动（页面自己的内容）。
-  📷 截图 15.png：四个页面各一张（聊天页此步保持原样作对照）。
+- [x] **B2. 空心大页码 + SEC 分区小标题** ✅ 2026-10-09
+  - **四页统一大页码**（用户裁决，聊天页也做）：新组件
+    `widgets/mechanical_page_number.dart`（120sp/w700/仅 1dp 白α.10
+    描边无填充/IgnorePointer）；挂在横滑轨道 translated 容器内的
+    Stack 最底层 Row，页码随页横滑，不碰四个页面文件。
+  - 位置按用户要求往中间收：稿 right:8vw 改为 **rightFactor .14**，
+    topFactor .05（稿 top:5vh）。
+  - kicker 仅 3 个模板页（聊天页无标题）：TemplatePage 新增
+    secCode/secName 可选参数，nav_destination 按 id 传
+    SEC.01//CONSOLE、SEC.03//LOGS、SEC.04//ME；稿样式 11sp/w700/
+    字距 3.85，仅 `//` 用 kickerDimColor。
+  - 踩坑：TextStyle 的 color 与 foreground 画笔不能并存（assert），
+    描边字只给 foreground stroke Paint。
+  📷 15.png 控制台 01；16.png 聊天 02（透明行透出页码，与前两行
+  文字同区但层级清晰）；17.png 日志 03；18.png 我 04。
 
 ### 阶段 C：融合度检查（本实验的核心问题）
 
@@ -118,12 +129,12 @@
 - [ ] **B3. 浮层与背景纹理的叠加检查**
   逐一看：搜索胶囊、快捷弧、把手竖单、AI 对话框、侧边抽屉在网格底上的
   观感（浮层自带深色表面，应压住纹理）。只调背景/浮层透明度，不改浮层结构。
-  📷 截图 16.png：五个浮层各一张。
+  📷 截图 19.png：五个浮层各一张。
 
 - [ ] **C2. 排印试验（可选，看前面效果再定）**
   模板页标题/文案试用等宽字体 + 大字距 + 虚线分隔等机能元素；
   聊天页文字不动。
-  📷 截图 17.png。
+  📷 截图 20.png。
 
 ### 阶段 D：评估与收尾
 

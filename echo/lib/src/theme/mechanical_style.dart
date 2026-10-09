@@ -114,6 +114,12 @@ abstract final class MechanicalStyle {
   /// 大页码描边色（稿 rgba(255,255,255,.10)，填充透明）
   static const Color pageNumberStrokeColor = Color(0x1AFFFFFF);
 
+  /// 大页码顶距比例（稿 top:5vh，相对屏高）
+  static const double pageNumberTopFactor = 0.05;
+
+  /// 大页码右边距比例。稿为 8vw，真机按用户意见往中间收一点（0.14）。
+  static const double pageNumberRightFactor = 0.14;
+
   // ================================================================
   // 分区小标题 kicker（稿 L49-50：SEC.01 // CONSOLE）
   // ================================================================
