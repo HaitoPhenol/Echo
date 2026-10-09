@@ -23,7 +23,7 @@
 | **页码转鼓 / 转鼓** | 横滑时在右下角浮现的机能风 3D 指示器（176dp 宽）：方边框面板内一条绕圆柱旋转的数字牌片序列，当前页牌片对齐视窗中心；顶行仅 blip + PAGE 标签（原稿 NO.0N 编号、右侧刻度列已精简删除），底部 2px 跟手进度条；替代旧横向圆点胶囊（NavRoller 已删）；**仅横滑唤醒**，圆点点按、双击直达不显示 | `widgets/mechanical_page_drum.dart` 的 `MechanicalPageDrum` |
 | **数字牌片** | 转鼓圆柱上每一页的一张大号数字片（两位页码 01～04），按页间距绕 R=190 圆柱做 rotateY，远面先画近面后画、背面剔除 | `mechanical_page_drum.dart` |
 | **页名牌** | 横滑时在左下角与转鼓同时浮现的衬线页名：半透明色块内 64sp w700 宋体（系统 serif 族）页名 + 56×3 短横线，色块底边与转鼓底边对齐；跨页中点硬切文字，与转鼓同显隐；叠加赛博故障动画（唤醒播一次、成功翻页重播、边界回弹不播），详见「赛博故障」 | `widgets/mechanical_page_name_plate.dart` 的 `MechanicalPageNamePlate` |
-| **赛博故障（glitch）** | 页名牌的故障风动画层：文字切三条水平片错时闪烁接通、整字数码抖动、红蓝色差副本、1px 白线横扫、下划线延迟展开；单控制器 620ms，t=1 稳态；唤醒边沿或可见期内 activePage 硬切时从头播，首/末页回弹与收回不播 | `mechanical_page_name_plate.dart` 内 `_Glitch*`、`MechanicalStyle.nameGlitch*` |
+| **赛博故障（glitch）** | 页名牌的故障风动画层：文字切三条水平片错时闪烁接通、整字数码抖动、mechInkDim 灰色重影副本（极简单色风）、1px 白线横扫、下划线延迟展开；单控制器 620ms，t=1 稳态；唤醒边沿或可见期内 activePage 硬切时从头播，首/末页回弹与收回不播 | `mechanical_page_name_plate.dart` 内 `_Glitch*`、`MechanicalStyle.nameGlitch*` |
 | **磁力曲线 / 吸附曲线** | 拖动时的非线性位置映射：靠近整页粘滞、两页之间滑落，产生吸附感；页面轨道、转鼓、滑块共用 | `nav_physics.dart` 的 `displayPosition` |
 
 ## 二、底部三条（把手 / AI）与侧边抽屉
