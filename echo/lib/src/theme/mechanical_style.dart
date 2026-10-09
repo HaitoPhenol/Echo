@@ -78,8 +78,8 @@ abstract final class MechanicalStyle {
   /// 十字线宽（dp）
   static const double crossStrokeWidth = 1;
 
-  /// 十字色（稿 opacity:.5）
-  static const Color crossColor = Color(0x80FFFFFF);
+  // 十字色直接复用 [coarseGridColor]（白 α.10）：α.50 过于显眼，
+  // 2026-10-09 用户裁决降到与粗网格同亮度，融入背景。
 
   // ================================================================
   // 顶部坐标读数条（稿 L42-45）

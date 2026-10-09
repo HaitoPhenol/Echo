@@ -127,7 +127,7 @@ class _MechanicalGridPainter extends CustomPainter {
     final crossPaint = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = MechanicalStyle.crossStrokeWidth
-      ..color = MechanicalStyle.crossColor
+      ..color = MechanicalStyle.coarseGridColor
       ..isAntiAlias = false;
     _paintCross(
       canvas,
