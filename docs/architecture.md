@@ -59,6 +59,7 @@ echo/
 │               ├── mechanical_coords_bar.dart  # 顶部设备状态读数条
 │               ├── mechanical_page_number.dart # 每页空心大页码 01-04
 │               ├── mechanical_page_drum.dart   # 3D 页码转鼓指示器
+│               ├── mechanical_page_name_plate.dart # 横滑时左下浮现的衬线页名牌
 │               ├── quick_action_arc.dart  # 快捷操作弧
 │               ├── search_capsule.dart    # 导航条 + 翻页圆点 + 搜索面板
 │               ├── fuse_border_painter.dart # 倒计时边框
@@ -114,11 +115,11 @@ AGENT.md                                   # 给开发 agent 的工作提示（�
 |---|---|---|
 | `id` | `String` | 程序内稳定标识，代码引用页面时用它，不依赖排列顺序 |
 | `label` | `String` | 页面名称（页名标签、搜索结果用） |
-| `icon` | `IconData?` | 页面图标；`null` 时滚筒显示数字序号 |
+| `icon` | `IconData?` | 页面图标；`null` 时搜索结果等位置显示数字序号 |
 | `pageBuilder` | `WidgetBuilder` | 页面本体构建器，按需构建 |
 
 默认配置由 `buildDefaultDestinations()` 构建，当前为 4 页：
-控制台（console）、聊天（chat）、日志（notes）、我（me）。
+终端（console）、聊天（chat）、日志（notes）、我（me）。
 其中**聊天页已替换为真实页面** `ChatPage`（`pages/chat_page.dart`，
 会话数据来自 `ChatStore`，见 3.10）：无标题栏；列表初始为空，
 空态整屏居中显示 13px 小字「暂无消息」（tone2），有会话时切换为
@@ -194,7 +195,7 @@ Android 端走原生 `Vibrator` 服务（通道 `echo/haptics`，见
 文件：`lib/src/navigation/nav_physics.dart`
 
 持有页面位置 `position`（线性物理位置）、速度、搜索状态
-（`off/open/input`）、倒计时进度 `fuseProgress`、滚筒可见性。
+（`off/open/input`）、倒计时进度 `fuseProgress`、转鼓/页名牌可见性。
 继承 `ChangeNotifier`，组件通过 `AnimatedBuilder` 监听刷新。
 
 渲染一律使用 `displayPosition`（橡胶带 + 页内磁力曲线）：靠近整页
@@ -280,7 +281,7 @@ GlobalKey 重挂载曾触发框架断言），而是由 `DockGeometry`（底部�
 - **锚点始终全部挂载、画在滑块下层，不做位置显隐**：当前页段被不透明
   滑块物理遮挡，拖动时从滑块边缘自然滑入滑出；常态色与滑块视觉一致
   （白 α.42 叠 tone1 ≈ 滑块灰），离开滑块时无色差（见规范事故 12/13）。
-- `pages/debug_badge_controls.dart` 为测试脚手架：控制台页可模拟
+- `pages/debug_badge_controls.dart` 为测试脚手架：终端页可模拟
   「聊天新消息」（调 `ChatStore.addIncoming()`，不再直接操作锚点）、
   「日志报错」，日志页有「处理异常」按钮。接入真实
   通知源后此脚手架应移除。脚手架在 `buildDefaultDestinations()` 中由
@@ -298,10 +299,10 @@ tone2、快捷弧选中按钮 = tone4**；**拇指滑块是特例**：使用不�
 结果（白量 ≈.513），之所以不用半透明 tone2，是因为滑块要不透明地物理
 遮挡下层锚点（见规范事故 12/13）。其余元素就近取阶：
 
-- **tone1**：圆点默认、滚筒/搜索胶囊/历史胶囊/弧按钮描边、搜索结果行底；
+- **tone1**：圆点默认、搜索胶囊/历史胶囊/弧按钮描边、搜索结果行底；
 - **tone2**：圆点按下、锚点常态本体、静态光晕、历史胶囊文字、未选中图标/次级文字；
-- **tone3**：页名标签、次级按钮文字；
-- **tone4**：主文字、滚筒选中页标、快捷弧选中项本体。
+- **tone3**：次级按钮文字；
+- **tone4**：主文字、快捷弧选中项本体。
 
 另有两类**并列**颜色，不并入阶梯：
 
@@ -313,18 +314,19 @@ tone2、快捷弧选中按钮 = tone4**；**拇指滑块是特例**：使用不�
 - **AI 虹彩色**：AI 条流动六色是该组件的专属识别色，不属于中性阶梯
   也不进共享色板，就地定义在 `widgets/ai_bar.dart`。
 - **机能风视觉层色组**（`mech*` 前缀，RCR-2026-001 收编）：
-  固定背景、三层纹理/点阵、读数条、空心大页码、kicker、3D 转鼓
-  共用的 15 个皮肤 token（`mechBackground` / `mechFineGrid`(α.05) /
+  固定背景、三层纹理/点阵、读数条、空心大页码、kicker、3D 转鼓、
+  页名牌共用的 13 个皮肤 token（`mechBackground` / `mechFineGrid`(α.05) /
   `mechCoarseGrid`(α.10) / `mechGridDot`(α.22) / `mechCoordsDim/Hi` /
   `mechPageNumberStroke` / `mechInk`(#D8D8D8) / `mechInkDim`(#646464) /
-  `mechDrum*` 系列），与四阶阶梯并列、互不混用，详见 3.11。
+  `mechDrumPanel` / `mechDrumLine` / `mechDrumNumber` /
+  `mechDrumProgressTrack`），与四阶阶梯并列、互不混用，详见 3.11。
 - SnackBar 不走 M3 默认反色浅底：`EchoApp` 主题统一为
   `overlaySurface` 底 + 白字、贴底固定（`snackBarTheme`）。
 
 取色规则：新增元素先判断是否状态语义（用功能色），否则按视觉亮度
 就近取阶，不自造白透明度；机能风视觉层元素（背景纹理/读数条/
 转鼓等）取 `mech*` 色组，不向 tone 阶归并。动画中的连续 alpha
-（滚筒中央刻度脉冲、锚点呼吸/急闪）允许跨阶插值。
+（锚点呼吸/急闪）允许跨阶插值。
 
 ### 3.9 底部三条、本页操作与侧边抽屉
 
@@ -441,8 +443,9 @@ Stack 分层在 `SmartNavScreen.build`（机能风层见 3.11）：
   （MainActivity.kt，零三方库零权限），5 秒轮询、异常降级显示
   「—」；`IgnorePointer` 不挡手势。
 - **页面层**：`TemplatePage` 底色透明，内容为机能风 kicker +
-  大标题——kicker（控制台 SEC.01 // CONSOLE、日志 SEC.03 // LOGS、
-  我 SEC.04 // ME；11sp w700、字距 3.85，`mechInk` / `mechInkDim`）
+  大标题——kicker（终端 SEC.01 // CONSOLE、日志 SEC.03 // LOGS、
+  我 SEC.04 // ME；11sp w700、字距 3.85，`mechInk` / `mechInkDim`；
+  中文页名已改「终端」，英文 kicker 保留 CONSOLE）
   与 48sp w700、字距 5.76（.12em）大标题；Flutter 在末字后也
   追加一个字距，用 −字距/2 的 `Transform.translate` 做光学居中
   （真机像素校验三/二/单字标题墨水中心均为屏中 540）。
@@ -452,20 +455,32 @@ Stack 分层在 `SmartNavScreen.build`（机能风层见 3.11）：
   同样透明，左滑操作区改由 `CustomClipper` 按露出宽度裁剪遮挡。
 - **3D 页码转鼓** `MechanicalPageDrum`（替代旧横向圆点胶囊，
   旧 NavRoller 已删除）：`Positioned(right: 14, bottom:
-  52 + safeBottom)`。面板为 `mechDrumPanel`(#0F0F0F) + 1px
-  `mechDrumLine`(#262626) 方边框，左上 / 右下各一道 16px、2px
-  直角亮线（`mechInk`）；顶行为 blip（6px 方块、1.2s steps(2)
-  闪烁）+ PAGE 标签（10sp、.3em、`mechInkDim`）+ 右上编号
-  NO.0N（9sp、.15em、`mechDrumUnit`）。主体是 148×96 视窗内
-  R=190 的圆柱（perspective 520）：贴 N 个 56sp w700、字距 2.24
-  的数字牌片做 rotateY 旋转，透视平移走齐次 w 侧；背面剔除
-  （|world|≥90°）、远面先画近面后画；视窗左右为 `mechDrumLine`
-  虚线竖边。右侧一列刻度（14×4、gap 7，激活 `mechInk`、未激活
-  `mechDrumTickOff`，.25s 过渡），底部 2px 进度条（轨道
+  52 + safeBottom)`，面板宽 176dp（视窗 148 + 左右内边距各 14；
+  早期稿右侧带刻度列时为 206dp，刻度列删除后收窄给页名牌让位）。
+  面板为 `mechDrumPanel`(#0F0F0F) + 1px `mechDrumLine`(#262626)
+  方边框，左上 / 右下各一道 16px、2px 直角亮线（`mechInk`）；
+  顶行只有 blip（6px 方块、1.2s steps(2) 闪烁）+ PAGE 标签
+  （10sp、.3em、`mechInkDim`），原稿右上 NO.0N 装饰编号已删。
+  主体是 148×96 视窗内 R=190 的圆柱（perspective 520）：贴 N 个
+  56sp w700、字距 2.24 的数字牌片做 rotateY 旋转，透视平移走齐次
+  w 侧；背面剔除（|world|≥90°）、远面先画近面后画；视窗左右为
+  `mechDrumLine` 虚线竖边。底部 2px 进度条（轨道
   `mechDrumProgressTrack`、填充 `mechInk`）。显隐由
   rollerVisible 驱动（IgnorePointer + AnimatedOpacity +
   AnimatedSlide）：**仅横滑 dragStart 唤醒**；圆点点按 stepPage、
   双击 snapTo 直达不显示转鼓。
+- **左下页名牌** `MechanicalPageNamePlate`（稿 #pgname）：
+  `Positioned(left: 5vw, bottom: 52 + safeBottom)`——**色块底边
+  与转鼓面板底边对齐**（原稿 bottom:26px 未采用）。内容为 64sp
+  w700、字距 5.12（.08em）的当前页名（带稿 0/2/12 柔和投影）+
+  下方 56×3 的 `mechInk` 短横线，
+  文字走系统 **serif 通用族**（`fontFamily: 'serif'`，不打包字体；
+  Android 西文 NotoSerif、中文回退 NotoSerifCJK，Bold 面由引擎
+  合成），即原型 `--serif` 栈的宋体效果；色块 panel α.90。
+  与转鼓共用同一 rollerVisible / 同一组时长曲线，同升同收；
+  拖动跨过页中点时按 nearestPage 硬切页名；圆点/双击路径同样
+  不显示。页名取自 `NavDestination.label`，3~4 字长名与转鼓的
+  横向避让目前靠字数短，未做截断/缩放（已知留白项）。
 - **保留项（验收时确认不动）**：粗网格 α 维持 .10（长列表灰色
   预览文案在粗线恰好穿字时略花、随滚动变化，整体可读）；kicker
   未打包真等宽字体（`fontFamily: monospace` 在 Flutter/Android
@@ -478,7 +493,7 @@ Stack 分层在 `SmartNavScreen.build`（机能风层见 3.11）：
 ### 新增一个页面
 在 `buildDefaultDestinations()` 列表中增加一个 `NavDestination`，
 写好 `id / label / pageBuilder`（`icon` 可后补）。
-导航线、滚筒、页面搜索会自动纳入，无需改动其他代码。
+导航线、转鼓、页名牌、页面搜索会自动纳入，无需改动其他代码。
 
 ### 把某个模板页替换为真实页面
 把该 `NavDestination` 的 `pageBuilder` 从 `TemplatePage` 换成真实页面
