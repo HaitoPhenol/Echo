@@ -132,11 +132,10 @@ class _MechanicalPageNamePlateState extends State<MechanicalPageNamePlate>
           offset: visible ? Offset.zero : const Offset(0, 0.4),
           duration: MechanicalStyle.indicatorRiseDuration,
           curve: const Cubic(0.3, 1.4, 0.4, 1),
-          child: DecoratedBox(
-            // 稿 rgba(15,15,15,.90)：基色用 mechDrumPanel 具名 token。
-            decoration: BoxDecoration(
-              color: AppColors.mechDrumPanel.withValues(alpha: 0.90),
-            ),
+          child: CustomPaint(
+            // 面板底色 + 仿转鼓边框/角标一体绘制（见 _PlateFramePainter）。
+            // 亮角标骑边框外扩 1px，CustomPaint 不裁剪，正常可见。
+            painter: const _PlateFramePainter(),
             child: Stack(
               children: [
                 // 非定位子：决定 Stack（即色块）的尺寸。
@@ -180,7 +179,7 @@ class _MechanicalPageNamePlateState extends State<MechanicalPageNamePlate>
 }
 
 /// 故障文字：三个水平切片叠放同一文字，各片独立闪烁/错位，
-/// 叠红蓝色差副本；外层再套整字数码抖动。
+/// 叠灰色重影副本；外层再套整字数码抖动。
 class _GlitchWord extends StatelessWidget {
   const _GlitchWord({required this.word, required this.glitch});
 
@@ -334,6 +333,73 @@ class _SliceClipper extends CustomClipper<Rect> {
 
   @override
   bool shouldReclip(_SliceClipper oldDelegate) => oldDelegate.index != index;
+}
+
+/// 页名牌面板边框：模仿转鼓面板（1px mechDrumLine 细框 +
+/// 16px/2px mechInk 亮角标），但面板向右开口——左边、上边通画，
+/// 底边只画左半，右边不画（视作被右侧内容挡住的延续面板）；
+/// 亮角标因此落在左上与左下两个实角上。
+class _PlateFramePainter extends CustomPainter {
+  const _PlateFramePainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    // 稿 rgba(15,15,15,.90)：基色用 mechDrumPanel 具名 token。
+    final fill = Paint()
+      ..color = AppColors.mechDrumPanel.withValues(alpha: 0.90);
+    canvas.drawRect(Offset.zero & size, fill);
+
+    final line = Paint()
+      ..color = AppColors.mechDrumLine
+      ..strokeWidth = 1
+      ..strokeCap = StrokeCap.square;
+    // 1px 线骑像素中心。
+    const hx = 0.5;
+    // 左边（通高）。
+    canvas.drawLine(
+      const Offset(hx, 0),
+      Offset(hx, size.height),
+      line,
+    );
+    // 上边（通宽）。
+    canvas.drawLine(
+      const Offset(0, hx),
+      Offset(size.width, hx),
+      line,
+    );
+    // 底边（左半）。
+    canvas.drawLine(
+      Offset(hx, size.height - hx),
+      Offset(size.width / 2, size.height - hx),
+      line,
+    );
+
+    // 亮角标：参数与转鼓 _CornerPainter 完全相同。
+    final corner = Paint()
+      ..color = AppColors.mechInk
+      ..strokeWidth = MechanicalStyle.drumCornerStrokeWidth
+      ..strokeCap = StrokeCap.square;
+    const s = MechanicalStyle.drumCornerSize;
+    final w = MechanicalStyle.drumCornerStrokeWidth / 2;
+
+    // 左上：横 + 竖（骑边框角，与转鼓同一定位）。
+    canvas.drawLine(Offset(-w, w), Offset(s, w), corner);
+    canvas.drawLine(Offset(w, -w), Offset(w, s), corner);
+    // 左下。
+    canvas.drawLine(
+      Offset(-w, size.height - w),
+      Offset(s, size.height - w),
+      corner,
+    );
+    canvas.drawLine(
+      Offset(w, size.height - s),
+      Offset(w, size.height + w),
+      corner,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_PlateFramePainter oldDelegate) => false;
 }
 
 /// 一条故障白线的出现窗口（时间均为相对动画 0..1）。
