@@ -31,6 +31,8 @@
 > 不走提案、直接执行的规则文档小改，在此追加一行（最新在上）。
 > 格式：日期 · 文件 · 一句话原因 · 提交。
 
+- 2026-10-09 · 新增 .trae/skills/echo-remote-report 技能 · 用户远程/夜间盲跑时移动端 Trae 收不到图片，固化飞书汇报流程：持设备锁截图→img_key→富文本 post 发「Echo 夜间报告」群，录屏/APK 归档云盘 Echo 文件夹附链接，含固定 chat_id/folder_token、幂等键与私聊回退 · 随本提交入库
+- 2026-10-09 · engineering_standards 1.15 · 合并 docs/device-testing-playbook：新增真机取证工具链（设备参数、exec-out 截图、screenrecord 360s 分段、ffmpeg 抽帧故事板、手势注入坑、临时探针纪律），1.12 与交付门禁第 3 条加引用 · 随合并提交入库
 - 2026-10-07 · architecture / current_state / glossary · 左滑操作区改恒为两个等宽按钮（已读行「未读」/未读行「已读」+ 恒在最右的「删除」，总宽 152 恒定）；修复吸附落位后再次拖动瞬间跳回上次松手位的穿帮（拖动起点抓取必须先于拖动标志置位）；聊天用例 6→7（新增再拖动连续性回归），半程阈值随恒宽改 -76/落位 -152 · 随本提交入库
 - 2026-10-07 · architecture / current_state / glossary / code_review_report · 聊天列表初始改空态（居中 13px「暂无消息」，ChatStore 去掉 seedCount 播种），行间分隔线改屏宽 80% 水平居中 1px（原 74px 缩进）；聊天页 5 个用例随之重写、widget_test 页面位置标记改由 ChatPage 组件承担 · 随本提交入库
 - 2026-10-07 · architecture / current_state / glossary / code_review_report · 会话列表数据化（ChatStore）：左滑删除/置未读、未读呼吸绿点、模拟新消息插入；聊天锚点改数据驱动（全部已读才恢复，停留 700ms 对聊天页失效）。新增 3.10 ChatStore 章节与术语表「聊天页」节，测试 19→22（聊天用例 2→5），更新 P2-10 证据（脚手架移除聊天序号硬编码） · 随本提交入库
