@@ -45,7 +45,7 @@ class NavDestination {
 List<NavDestination> buildDefaultDestinations() {
   /// (id, 标题) 列表。
   const specs = <(String, String)>[
-    ('console', '控制台'),
+    ('console', '终端'),
     ('chat', '聊天'),
     ('notes', '日志'),
     ('me', '我'),

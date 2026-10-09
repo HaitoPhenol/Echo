@@ -35,15 +35,15 @@ void main() {
     expect(find.byType(ChatPage), findsOneWidget);
     expect(find.byType(TemplatePage), findsNWidgets(3));
 
-    // 首个占位页内的标题文本为「控制台」（页内另有测试按钮文字，
+    // 首个占位页内的标题文本为「终端」（页内另有测试按钮文字，
     // 故按标题精确匹配）
     final firstPageText = tester.widget<Text>(
       find.descendant(
         of: find.byType(TemplatePage).first,
-        matching: find.text('控制台'),
+        matching: find.text('终端'),
       ),
     );
-    expect(firstPageText.data, '控制台');
+    expect(firstPageText.data, '终端');
   });
 
   testWidgets('搜索真实闭环：长按展开 → 输入页面名 → 点结果跳转', (tester) async {
@@ -215,7 +215,7 @@ void main() {
       expect(anchorLevel(i), NavBadgeLevel.normal);
     }
 
-    // ---- 控制台模拟：聊天新消息 + 日志报错 ----
+    // ---- 终端页模拟：聊天新消息 + 日志报错 ----
     await tester.tap(find.text('模拟：聊天新消息'));
     await tester.pump();
     expect(anchorLevel(1), NavBadgeLevel.notification);
@@ -256,7 +256,7 @@ void main() {
 
     /// 第 i 个目的地页的位置标记：聊天页（i=1）已换成 ChatPage，
     /// 用其 ListView；其余三页仍是 TemplatePage 标题。
-    /// 注意 TemplatePage 序列中控制台/日志/我依次为 0/1/2
+    /// 注意 TemplatePage 序列中终端/日志/我依次为 0/2/3（1 为聊天）
     /// （聊天页不在该序列内）。
     Finder pageMarker(int i) {
       if (i == 1) {

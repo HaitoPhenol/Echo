@@ -22,6 +22,7 @@ import 'widgets/handle_menu.dart';
 import 'widgets/mechanical_background.dart';
 import 'widgets/mechanical_coords_bar.dart';
 import 'widgets/mechanical_page_drum.dart';
+import 'widgets/mechanical_page_name_plate.dart';
 import 'widgets/mechanical_page_number.dart';
 import 'widgets/quick_action_arc.dart';
 import 'widgets/search_capsule.dart';
@@ -1197,7 +1198,20 @@ class _SmartNavScreenState extends State<SmartNavScreen>
                     ),
                   ),
 
-                // -------- 页码指示器：机能风 3D 页码转鼓（仅横滑唤醒）--------
+                // -------- 页码指示器：左下页名牌 + 右下 3D 转鼓（仅横滑唤醒）--------
+                Positioned(
+                  key: const ValueKey<String>('page-name-plate'),
+                  left: screenSize.width *
+                      MechanicalStyle.namePlateLeftFactor,
+                  // 色块底边与右下转鼓面板底边对齐（同为 52+safeBottom）。
+                  bottom: 52 + safeBottom,
+                  child: MechanicalPageNamePlate(
+                    controller: _nav,
+                    labels: [
+                      for (final d in _destinations) d.label,
+                    ],
+                  ),
+                ),
                 Positioned(
                   key: const ValueKey<String>('roller'),
                   right: 14,
