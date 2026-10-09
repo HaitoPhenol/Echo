@@ -85,9 +85,9 @@ abstract final class MechanicalStyle {
   // 顶部坐标读数条（稿 L42-45）
   // ================================================================
 
-  /// 读数条距顶部距离（dp，紧贴状态栏下方；真机还需叠加状态栏高度）。
+  /// 读数条距顶部距离（dp，贴死状态栏下沿 0；真机还需叠加状态栏高度）。
   /// 读数条居中、顶部十字在左右边缘，水平不相交，故可贴近。
-  static const double coordsTop = 4;
+  static const double coordsTop = 0;
 
   /// 读数条字号（稿 9px）
   static const double coordsFontSize = 9;
