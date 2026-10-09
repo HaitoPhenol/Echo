@@ -27,12 +27,13 @@ ARCS = [
     (412, 32, 75.0, 315.0),
 ]
 
-# 自适应前景缩放：涟漪外缘 428/512 超出 108dp 安全区（半径 33dp），
-# 33/54*512/428 ≈ 0.73 后外缘恰在安全圆内。
-FG_SCALE = 0.73
-# legacy 图标同样留白：MIUI 等启动器在自定义图标形状时直接取 legacy 位图
-# （绕过 adaptive），按原设计 0.836 半径会顶满边框。
-LEGACY_SCALE = 0.73
+# 自适应前景缩放：108dp 画布经系统遮罩后只显示中央 72dp。
+# 设计涟漪直径占画布 856/1024=0.836；scale=0.52 时涟漪在最终图标中
+# 约占 0.836*0.52*108/72 = 65%（与主流图标留白观感一致；0.73 会到 92%
+# 顶边——108 画布里的"安全圆"映射到成品图标本身就是 92%，不能当留白用）。
+FG_SCALE = 0.52
+# legacy 位图不经遮罩、整张即成品图标：scale=0.78 时涟漪约占 65%。
+LEGACY_SCALE = 0.78
 
 SS = 4  # 超采样倍数
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -48,9 +49,10 @@ DENSITIES = {
 LEGACY_DP = 48      # legacy 启动器图标 48dp
 FOREGROUND_DP = 108  # 自适应图标 108dp
 SPLASH_DP = 160     # 开屏 logo 宽 160dp
+SPLASH_INK = (255, 255, 255, 255)  # 开屏 logo 白色（App 为深色专用，背景 #0B0E12）
 
 
-def draw_logo(img, scale=1.0):
+def draw_logo(img, scale=1.0, ink=INK):
     """在给定（透明）画布上绘制涟漪+圆点，scale 相对 1024 设计坐标。
 
     不用 PIL 自带 arc(width=)：它对弧的折线采样很粗，粗线下末端会短一截，
@@ -74,24 +76,24 @@ def draw_logo(img, scale=1.0):
                  for i in range(steps + 1)]
         inner = [polar(r - w / 2, a1 - (a1 - a0) * i / steps)
                  for i in range(steps + 1)]
-        d.polygon(outer + inner, fill=INK)
+        d.polygon(outer + inner, fill=ink)
         # SVG stroke-linecap=round：弧两端补圆头
         cap = w / 2
         for deg in (a0, a1):
             ex, ey = polar(r, deg)
-            d.ellipse((ex - cap, ey - cap, ex + cap, ey + cap), fill=INK)
+            d.ellipse((ex - cap, ey - cap, ex + cap, ey + cap), fill=ink)
 
     dot = DOT_R * scale * s
-    d.ellipse((cx - dot, cy - dot, cx + dot, cy + dot), fill=INK)
+    d.ellipse((cx - dot, cy - dot, cx + dot, cy + dot), fill=ink)
 
 
-def render_master(size, with_plate, fg_scale=1.0):
+def render_master(size, with_plate, fg_scale=1.0, ink=INK):
     img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
     if with_plate:
         d = ImageDraw.Draw(img)
         d.rounded_rectangle((0, 0, size - 1, size - 1), radius=CORNER / CANVAS * size,
                             fill=(255, 255, 255, 255))
-    draw_logo(img, fg_scale)
+    draw_logo(img, fg_scale, ink)
     return img
 
 
@@ -103,7 +105,7 @@ def save_scaled(master, px, path):
 
 def main():
     full = render_master(CANVAS * SS, with_plate=True, fg_scale=LEGACY_SCALE)
-    logo = render_master(CANVAS * SS, with_plate=False)
+    logo = render_master(CANVAS * SS, with_plate=False, ink=SPLASH_INK)
     fg = render_master(CANVAS * SS, with_plate=False, fg_scale=FG_SCALE)
 
     for name, mult in DENSITIES.items():

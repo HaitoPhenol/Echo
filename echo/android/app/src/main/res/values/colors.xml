@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="ic_launcher_background">#FFFFFF</color>
+    <!-- 与 App 深色背景 AppColors.background (#0B0E12) 一致，开屏进入无白闪 -->
+    <color name="splash_background">#FF0B0E12</color>
 </resources>
