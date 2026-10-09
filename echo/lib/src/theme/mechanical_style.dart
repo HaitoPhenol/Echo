@@ -182,4 +182,20 @@ abstract final class MechanicalStyle {
   static const double namePlateUnderlineWidth = 56;
   static const double namePlateUnderlineHeight = 3;
   static const double namePlateUnderlineGap = 18;
+
+  // ---- 赛博故障（glitch）：稿外新增，真机验收值 ----
+
+  /// 赛博故障单段总时长：唤醒时播一次，唤醒期间每成功翻页
+  /// （activePage 硬切）重播一次；边界回弹不播。
+  static const Duration nameGlitchDuration =
+      Duration(milliseconds: 620);
+
+  /// 整字数码抖动最大位移（px，幅度按序列递减到 0）。
+  static const double nameGlitchShakeMax = 6;
+
+  /// 文字水平切片撕裂错位最大位移（px）。
+  static const double nameGlitchSliceShift = 9;
+
+  /// 红/蓝色差副本横向偏移（px；红 anchorRed、蓝 accentBlue）。
+  static const double nameGlitchChromaShift = 4;
 }
