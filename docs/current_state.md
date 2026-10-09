@@ -1,20 +1,22 @@
 # Echo 当前实现现状
 
-> 本文件是 **v0.6.0+28（main，tag `v0.6.0`）时点的现状快照**
+> 本文件是 **v0.6.1+29（main，tag `v0.6.1`）时点的现状快照**
 > ——底部三条（把手 / AI / 导航）、侧边抽屉，快捷弧沿手指轨迹
 > 椭圆弧的弧长等距布局（`DockGeometry.layoutQuickArc`，数量驱动），
-> 全屏套有机能风视觉层（固定背景/读数条/大页码/转鼓，见架构 3.11），
+> 全屏套有机能风视觉层（固定背景/读数条/大页码/转鼓/衬线页名牌，
+> 见架构 3.11），
 > 记录"今天代码实际是怎么实现的"。这些都不是规定——工具与手段可以换，
 > 但更换时必须满足 [engineering_standards.md](engineering_standards.md) 的原则、
 > 通过测试与真机验收，并更新本文件。机能风视觉层经 RCR-2026-001
 > 采纳转正，详见
 > [proposals/2026-10-09-mechanical-visual-tokens.md](proposals/2026-10-09-mechanical-visual-tokens.md)。
 >
-> **分支 `feat/drum-page-name`（已真机验收，待合并）**：首页中文页名
-> 控制台→**终端**（英文 kicker 保留 CONSOLE）；转鼓精简（删顶行右上
-> NO.0N 编号与视窗右侧刻度列，面板 206→176dp，mech 色组 15→13 token）；
-> 新增**左下衬线页名牌**（64sp 系统 serif、底边与转鼓对齐、同升同收，
-> 叠加赛博故障入场：唤醒播一次、成功翻页重播、边界回弹不播）。
+> **v0.6.1（patch，已合并 main）**：首页中文页名控制台→**终端**
+> （英文 kicker 保留 CONSOLE）；转鼓精简（删顶行右上 NO.0N 编号与
+> 视窗右侧刻度列，面板 206→176dp，mech 色组 15→13 token）；新增
+> **左下衬线页名牌**（64sp 系统 serif、底边与转鼓对齐、同升同收，
+> 叠加赛博故障入场：唤醒播一次、成功翻页重播、边界回弹不播，
+> 副本为 mechInkDim 灰色重影的极简单色风）。
 >
 > 相关文档：[架构与接口说明](architecture.md) ·
 > [工程规范](engineering_standards.md) · [规则演进机制](governance.md) ·
@@ -37,8 +39,7 @@
 ## 页面与导航
 
 - **4 个页面**：终端 / 聊天 / 日志 / 我（见 `navigation/nav_destination.dart`；
-  首页中文页名 v0.6.0 后在 `feat/drum-page-name` 分支由「控制台」改「终端」，
-  英文 kicker 仍为 CONSOLE）。
+  首页中文页名 v0.6.1 起由「控制台」改「终端」，英文 kicker 仍为 CONSOLE）。
   聊天页已替换为真实页面 `ChatPage`（`pages/chat_page.dart`，数据来自
   `services/chat_store.dart` 的 `ChatStore`）：**无标题栏**，
   列表初始为空，空态整屏居中显示 13px 小字「暂无消息」（tone2）；
