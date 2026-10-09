@@ -18,11 +18,12 @@
 | **导航条** | 屏幕右下角的圆角小条，导航线的主体；常规态视觉上仅 10px 高 | `widgets/search_capsule.dart` 的 `SearchCapsule`（本体为 `_navBar()`） |
 | **翻页圆点 / 圆点** | 导航条左右两端各一个的小圆点（直径 = 导航条高度）；点一下向左/右翻一页，按下即触发并振动、由 tone1 提亮到 tone2 | `search_capsule.dart` 的 `_NavDot` |
 | **拇指滑块** | 导航条内部的**不透明灰色**小块（0xFF838383，视觉亮度等同 tone1 底上叠 tone2），位置代表当前页、随手指移动；宽度 = 导航条长度 / 页面数，可大致反映总页数；**按下无外观变化** | `search_capsule.dart` 的 `_thumb()` |
-| **导航锚点 / 锚点** | 导航条内部、每一页对应一个的竖直小短条（稍短于导航条高度，样式类似转鼓刻度列）；始终挂载、画在滑块下层，常态为 tone2（白 α.42）且不发光，被不透明滑块物理遮挡；该页有通知时绿色呼吸、有异常时红色急闪；发光被裁剪在导航条内，不超出条外 | `search_capsule.dart` 的 `_anchors()` / `_NavAnchor`，状态来自 `services/nav_badge_service.dart` |
+| **导航锚点 / 锚点** | 导航条内部、每一页对应一个的竖直小短条（稍短于导航条高度）；始终挂载、画在滑块下层，常态为 tone2（白 α.42）且不发光，被不透明滑块物理遮挡；该页有通知时绿色呼吸、有异常时红色急闪；发光被裁剪在导航条内，不超出条外 | `search_capsule.dart` 的 `_anchors()` / `_NavAnchor`，状态来自 `services/nav_badge_service.dart` |
 | **隐形触控区** | 导航条/圆点上方约 32px、下方约 10px 的不可见纵向热区，视觉不变但更好按中；横向热区不扩展：圆点热区 = 自身直径 2 倍、导航条热区 = 自身长度 | `smart_nav_screen.dart` 的 `_navGeometry()` / `_handleRootPointerDown()` |
-| **页码转鼓 / 转鼓** | 横滑时在右下角浮现的机能风 3D 指示器：方边框面板内一条绕圆柱旋转的数字牌片序列，当前页牌片对齐视窗中心；替代旧横向圆点胶囊（NavRoller 已删）；**仅横滑唤醒**，圆点点按、双击直达不显示 | `widgets/mechanical_page_drum.dart` 的 `MechanicalPageDrum` |
-| **数字牌片** | 转鼓圆柱上每一页的一张大号数字片（NO.01～04 风格的两位数字），按页间距绕 R=190 圆柱做 rotateY，远面先画近面后画、背面剔除 | `mechanical_page_drum.dart` |
-| **转鼓刻度列** | 转鼓面板右侧的一列小短刻度，每页一道，当前页刻度提亮；导航锚点的视觉样式参照它 | `mechanical_page_drum.dart` |
+| **页码转鼓 / 转鼓** | 横滑时在右下角浮现的机能风 3D 指示器（176dp 宽）：方边框面板内一条绕圆柱旋转的数字牌片序列，当前页牌片对齐视窗中心；顶行仅 blip + PAGE 标签（原稿 NO.0N 编号、右侧刻度列已精简删除），底部 2px 跟手进度条；替代旧横向圆点胶囊（NavRoller 已删）；**仅横滑唤醒**，圆点点按、双击直达不显示 | `widgets/mechanical_page_drum.dart` 的 `MechanicalPageDrum` |
+| **数字牌片** | 转鼓圆柱上每一页的一张大号数字片（两位页码 01～04），按页间距绕 R=190 圆柱做 rotateY，远面先画近面后画、背面剔除 | `mechanical_page_drum.dart` |
+| **页名牌** | 横滑时在左下角与转鼓同时浮现的衬线页名：半透明色块内 64sp w700 宋体（系统 serif 族）页名 + 56×3 短横线，色块底边与转鼓底边对齐；跨页中点硬切文字，与转鼓同显隐；叠加赛博故障动画（唤醒播一次、成功翻页重播、边界回弹不播），详见「赛博故障」 | `widgets/mechanical_page_name_plate.dart` 的 `MechanicalPageNamePlate` |
+| **赛博故障（glitch）** | 页名牌的故障风动画层：文字切三条水平片错时闪烁接通、整字数码抖动、mechInkDim 灰色重影副本（极简单色风）、1px 白线横扫、下划线延迟展开；单控制器 620ms，t=1 稳态；唤醒边沿或可见期内 activePage 硬切时从头播，首/末页回弹与收回不播 | `mechanical_page_name_plate.dart` 内 `_Glitch*`、`MechanicalStyle.nameGlitch*` |
 | **磁力曲线 / 吸附曲线** | 拖动时的非线性位置映射：靠近整页粘滞、两页之间滑落，产生吸附感；页面轨道、转鼓、滑块共用 | `nav_physics.dart` 的 `displayPosition` |
 
 ## 二、底部三条（把手 / AI）与侧边抽屉
@@ -115,10 +116,11 @@
 
 ### 机能风 mech 色组
 
-`mech*` 前缀的 15 个 token 是**机能风视觉层专用皮肤色**（RCR-2026-001
-收编），与 tone1～tone4 **并列、互不归并**：tone 阶服务于导航/浮层体系，
-mech 色组服务于固定背景、读数条、大页码与转鼓。新增机能风元素取 mech 色组，
-不向 tone 阶自造映射；详见架构 3.11 与
+`mech*` 前缀的 13 个 token 是**机能风视觉层专用皮肤色**（RCR-2026-001
+收编时 15 个；转鼓精简后 `mechDrumUnit` / `mechDrumTickOff` 随 NO.0N
+编号与刻度列一并删除），与 tone1～tone4 **并列、互不归并**：tone 阶服务于
+导航/浮层体系，mech 色组服务于固定背景、读数条、大页码、转鼓与页名牌。
+新增机能风元素取 mech 色组，不向 tone 阶自造映射；详见架构 3.11 与
 [proposals/2026-10-09-mechanical-visual-tokens.md](proposals/2026-10-09-mechanical-visual-tokens.md)。
 
 | 分组 | token |
@@ -126,7 +128,7 @@ mech 色组服务于固定背景、读数条、大页码与转鼓。新增机能
 | 背景与纹理 | `mechBackground`(#0C0C0C)、`mechFineGrid`(白α.05)、`mechCoarseGrid`(白α.10)、`mechGridDot`(白α.22) |
 | 读数条/页码 | `mechCoordsDim`(白α.30)、`mechCoordsHi`(白α.55)、`mechPageNumberStroke`(白α.10) |
 | 墨水 | `mechInk`(#D8D8D8)、`mechInkDim`(#646464) |
-| 转鼓 | `mechDrumPanel`(#0F0F0F)、`mechDrumLine`(#262626)、`mechDrumUnit`(#3D3D3D)、`mechDrumNumber`(#E1E1E1)、`mechDrumTickOff`(#272727)、`mechDrumProgressTrack`(白α.05) |
+| 转鼓/页名牌 | `mechDrumPanel`(#0F0F0F，页名牌取同色 α.90)、`mechDrumLine`(#262626)、`mechDrumNumber`(#E1E1E1)、`mechDrumProgressTrack`(白α.05) |
 
 ---
 
@@ -138,13 +140,14 @@ mech 色组服务于固定背景、读数条、大页码与转鼓。新增机能
 
 | 称呼 | 说明 | 代码位置 |
 |---|---|---|
-| **机能风视觉层** | 整套机能风皮肤的总称：固定背景 + 读数条 + 透明页面层（kicker/大标题/空心大页码）+ 页码转鼓，与导航手势体系叠加共存 | `navigation/widgets/mechanical_*.dart`、`theme/mechanical_style.dart` |
+| **机能风视觉层** | 整套机能风皮肤的总称：固定背景 + 读数条 + 透明页面层（kicker/大标题/空心大页码）+ 页码转鼓与衬线页名牌，与导航手势体系叠加共存 | `navigation/widgets/mechanical_*.dart`、`theme/mechanical_style.dart` |
 | **固定背景** | 所有页面共用的静态 `CustomPaint` 底：#0C0C0C 上叠 32dp 细网格、128dp 粗网格、128 交点 r=1 点阵，整体右下偏移 16dp；外包 `RepaintBoundary`，翻页不重绘、不接手势 | `widgets/mechanical_background.dart` 的 `MechanicalBackground` |
 | **十字标定** | 背景顶部左右各一道的 22×1dp 直角十字线（状态栏下沿 +8dp、左右 inset 14dp，粗网格同色），无实体边框、无底部十字 | `mechanical_background.dart` |
 | **读数条 / 设备读数条** | 状态栏下沿居中的 9sp 大字距读数：`DEV 型号 · T 电池温度 · P 瞬时功耗`，MethodChannel `echo/device_stats` 每 5 秒轮询、异常显「—」，`IgnorePointer` 不挡手势 | `widgets/mechanical_coords_bar.dart` 的 `MechanicalCoordsBar` |
-| **SEC kicker** | 模板页大标题上方的 11sp w700 大字距小标签（控制台 SEC.01 // CONSOLE、日志 SEC.03 // LOGS、我 SEC.04 // ME），亮段 `mechInk`、暗段 `mechInkDim`；当前 `fontFamily: monospace` 在 Flutter/Android 不解析，并非真等宽 | `pages/template_page.dart` |
+| **SEC kicker** | 模板页大标题上方的 11sp w700 大字距小标签（终端 SEC.01 // CONSOLE、日志 SEC.03 // LOGS、我 SEC.04 // ME；中文页名改「终端」后英文仍为 CONSOLE），亮段 `mechInk`、暗段 `mechInkDim`；当前 `fontFamily: monospace` 在 Flutter/Android 不解析，并非真等宽 | `pages/template_page.dart` |
 | **空心大页码** | 每页轨道内随页面一起横滑的 01～04 描边数字：120sp、1dp `mechPageNumberStroke` 描边、无填充，top = 5vh、right = 0.14w − 32dp | `widgets/mechanical_page_number.dart` 的 `MechanicalPageNumber` |
 | **透明页面层** | 页面底色全部透明、让固定背景透出的约定；模板页如此，聊天页行前景也透明，左滑操作区改由 `CustomClipper` 按露出宽度裁剪遮挡 | `pages/template_page.dart`、`pages/chat_page.dart` 的 `_RevealClipper` |
+| **衬线页名牌 / 页名牌** | 横滑唤醒时左下角浮现的当前页名（稿 #pgname）：`mechDrumPanel` α.90 色块、64sp w700 系统 serif（Android 中文回退 NotoSerifCJK 即宋体效果）、字距 .08em、下配 56×3 mechInk 短横线；left:5vw、底边与转鼓底边对齐（52+safeBottom）；与转鼓同一 rollerVisible 同升同收，跨中点按 nearestPage 硬切；叠加赛博故障层（见第一节「赛博故障（glitch）」） | `widgets/mechanical_page_name_plate.dart` 的 `MechanicalPageNamePlate` |
 
 ---
 

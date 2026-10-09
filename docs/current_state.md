@@ -10,6 +10,12 @@
 > 采纳转正，详见
 > [proposals/2026-10-09-mechanical-visual-tokens.md](proposals/2026-10-09-mechanical-visual-tokens.md)。
 >
+> **分支 `feat/drum-page-name`（已真机验收，待合并）**：首页中文页名
+> 控制台→**终端**（英文 kicker 保留 CONSOLE）；转鼓精简（删顶行右上
+> NO.0N 编号与视窗右侧刻度列，面板 206→176dp，mech 色组 15→13 token）；
+> 新增**左下衬线页名牌**（64sp 系统 serif、底边与转鼓对齐、同升同收，
+> 叠加赛博故障入场：唤醒播一次、成功翻页重播、边界回弹不播）。
+>
 > 相关文档：[架构与接口说明](architecture.md) ·
 > [工程规范](engineering_standards.md) · [规则演进机制](governance.md) ·
 > [术语表](glossary.md) · [问题清单](code_review_report.md)
@@ -30,7 +36,9 @@
 
 ## 页面与导航
 
-- **4 个页面**：控制台 / 聊天 / 日志 / 我（见 `navigation/nav_destination.dart`）。
+- **4 个页面**：终端 / 聊天 / 日志 / 我（见 `navigation/nav_destination.dart`；
+  首页中文页名 v0.6.0 后在 `feat/drum-page-name` 分支由「控制台」改「终端」，
+  英文 kicker 仍为 CONSOLE）。
   聊天页已替换为真实页面 `ChatPage`（`pages/chat_page.dart`，数据来自
   `services/chat_store.dart` 的 `ChatStore`）：**无标题栏**，
   列表初始为空，空态整屏居中显示 13px 小字「暂无消息」（tone2）；
@@ -42,14 +50,16 @@
   已读行显示「未读」、未读行显示「已读」，tone2 底；右为「删除」anchorRed 底），
   按速度/半程 180ms 吸附、全局只开一行、竖滚自动收回；
   未读行右上角有**呼吸绿点**（anchorGreen，1.7s 往返，与导航锚点同参数），
-  点按未读行即已读；控制台「模拟：聊天新消息」经 `ChatStore.addIncoming()`
+  点按未读行即已读；终端页「模拟：聊天新消息」经 `ChatStore.addIncoming()`
   在最前插入未读会话。
-  其余三页仍是只显示标题的 TemplatePage，控制台、日志页挂有调试用模拟按钮。
+  其余三页仍是只显示标题的 TemplatePage，终端、日志页挂有调试用模拟按钮。
   **四页均套有机能风视觉层（v0.6.0 转正，RCR-2026-001）**：主屏 Stack
   最底层为固定的网格/点阵/十字背景（RepaintBoundary 静态层），状态栏下沿
   是设备读数条，页面底色透明；模板页带 SEC kicker 与 48sp w700 大字距标题，
-  每页轨道内有空心大页码；右下角页码指示器为 3D 数字转鼓（仅横滑唤醒，
-  圆点/双击路径不显示；旧横向圆点胶囊 NavRoller 已删除）。架构说明见 3.11。
+  每页轨道内有空心大页码；右下角为精简后的 3D 数字转鼓（176dp，顶行仅
+  blip+PAGE、底部跟手进度条，仅横滑唤醒，圆点/双击路径不显示；旧横向
+  圆点胶囊 NavRoller 与原稿 NO.0N 编号/右侧刻度列均已删），横滑时左下角
+  同步浮现衬线页名牌（与转鼓底边对齐、同升同收）。架构说明见 3.11。
 - 页面**全部常驻构建**（一个 Row 一次性 build）。注意这与 `pageBuilder`
   "按需构建"的注释意图不符，是已知债务（P2-08）；聊天页已成为首个
   常驻的真实页面（空态仅一个 Center+Text，有会话时为 itemExtent
@@ -108,7 +118,7 @@
 - 物理积分与搜索 fuse 烧蚀用**帧时间戳**（currentFrameTimeStamp）；
 - 另有若干**墙钟 Timer** 尚未统一：导航条长按 450ms、AI 条长按 450ms、
   焦点延时 150ms、圆点按压视觉 200ms、已读停留 700ms（仅非聊天页，
-  聊天页锚点改由 ChatStore 数据驱动）、滚筒延时隐藏
+  聊天页锚点改由 ChatStore 数据驱动）、转鼓/页名牌延时隐藏
   650ms、历史胶囊闪白 180ms；浮层时长（竖单 340ms、AI 对话框 320ms、
   抽屉开 420ms / 关 100ms、虹彩 7s 循环、会话行左滑吸附 180ms）
   走各自的 AnimationController 墙钟。

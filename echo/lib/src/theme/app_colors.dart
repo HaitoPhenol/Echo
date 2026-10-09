@@ -106,27 +106,21 @@ abstract final class AppColors {
   static const Color mechPageNumberStroke = Color(0x1AFFFFFF);
 
   /// 机能风主墨色（稿 --hi:#d8d8d8）：kicker 主文字、转鼓直角亮线 /
-  /// 刻度激活 / 进度条 / blip 高亮共用。
+  /// 进度条 / blip 高亮、页名牌文字与下划短线共用。
   static const Color mechInk = Color(0xFFD8D8D8);
 
   /// 机能风次墨色（稿 --dim:#646464）：kicker 的 // 与英文标注、
   /// 转鼓顶行标签共用。
   static const Color mechInkDim = Color(0xFF646464);
 
-  /// 转鼓面板底色（稿 --panel:#0f0f0f）
+  /// 转鼓面板与页名牌底色（稿 --panel:#0f0f0f；页名牌用时取 α.90）
   static const Color mechDrumPanel = Color(0xFF0F0F0F);
 
   /// 转鼓方边框与视窗左右虚线竖边（稿 --line:#262626）
   static const Color mechDrumLine = Color(0xFF262626);
 
-  /// 转鼓右上编号文字（稿 #3d3d3d）
-  static const Color mechDrumUnit = Color(0xFF3D3D3D);
-
   /// 转鼓大数字墨色（稿 --ink:#e1e1e1）
   static const Color mechDrumNumber = Color(0xFFE1E1E1);
-
-  /// 转鼓刻度未激活色（稿 #272727）
-  static const Color mechDrumTickOff = Color(0xFF272727);
 
   /// 转鼓底部进度条轨道色（白 α.05）
   static const Color mechDrumProgressTrack = Color(0x0DFFFFFF);

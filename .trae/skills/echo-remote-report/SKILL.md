@@ -67,9 +67,18 @@ description: Echo 远程汇报流程——把真机截图与测试/出包报告�
    如 `builder-smoke-<时间戳>`，避免并行 agent 撞键。
 
 4. **大文件（录屏 mp4、APK）按需上传，不是常规步骤**：只有用户明确要
-   （"把录屏/安装包发上来"）时才用云盘技能
+   （"把录屏/安装包发上来"）时才处理。录屏**优先直接作为视频消息发**
+   （`lark-cli im +messages-send --video <mp4> [--video-cover <png>]`，
+   已验证 1080p/8Mbps、约 18MB、21s 内的 mp4 可直接发，msg_type=media）；
+   视频消息发不出（超限/格式被拒）再回退云盘技能
    `lark-cli drive +upload --as user --folder-token Yz6bfJXmqlstNAdQaKScNblnn6c`
-   上传并在消息附返回的 url；普通截图汇报不触发此步。
+   上传并在消息附返回的 url。APK 走云盘。普通截图汇报不触发此步。
+
+   **抽帧/接触印样/帧拼接只是 agent 的自检手段，不是汇报产物**：
+   agent 看不了视频，用 ffmpeg `fps=…,tile=…` 抽帧拼图是为了自己核对
+   动画/落位效果；给用户发了录屏时**不要再把拼图作为图片附件发出**
+   （用户直接看视频即可）。没有录屏、只能发图片时，才精选 1~2 张
+   关键帧（而非整张故事板）。
 
 5. **验证**：需要确认落地时用
    `lark-cli im +messages-mget --as user --message-ids <id>`

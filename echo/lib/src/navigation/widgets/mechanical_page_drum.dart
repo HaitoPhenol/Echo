@@ -8,17 +8,19 @@ import '../nav_physics.dart';
 
 /// 机能风 3D 页码转鼓指示器（右下角页码指示）。
 ///
-/// 1:1 移植自设计工程稿 `ideas/mechanical_style_page.html` 的右下角
-/// 「滚筒模块」（稿 L304-345、L686-695、L918-939）：
-/// - 顶行：闪烁 blip + PAGE 标签 + 右上编号；
+/// 移植自设计工程稿 `ideas/mechanical_style_page.html` 的右下角
+/// 「滚筒模块」（稿 L319-345），相对原稿做了精简（导航线本身已传达
+/// 页位，冗余指示删除）：
+/// - 顶行：闪烁 blip + PAGE 标签（原稿右上 NO.0N 编号已删）；
 /// - 主体：贴了 N 个大数字牌片的圆柱（rotateY 转鼓），横滑时跟手
 ///   连续转动（吃 [NavPhysicsController.displayPosition]）；
-/// - 右侧一列竖排刻度指示当前页；底部 2px 进度条；
-/// - 面板左上/右下各一道直角亮线。
+/// - 底部 2px 进度条；面板左上/右下各一道直角亮线。
+/// （原稿视窗右侧的竖排刻度列已删，面板随之收窄，给左下页名牌让位。）
 ///
 /// 显隐由 rollerVisible 驱动（IgnorePointer + AnimatedOpacity +
 /// AnimatedSlide），手势唤醒机制不在本组件内；圆点 stepPage / snapTo
-/// 路径不显示转鼓，只有横滑 dragStart 才唤醒。
+/// 路径不显示转鼓，只有横滑 dragStart 才唤醒。左下角的
+/// `MechanicalPageNamePlate` 与本组件共用同一显隐节奏。
 class MechanicalPageDrum extends StatelessWidget {
   const MechanicalPageDrum({
     super.key,
@@ -28,16 +30,13 @@ class MechanicalPageDrum extends StatelessWidget {
 
   final NavPhysicsController controller;
 
-  /// 转鼓总页数（牌片/刻度数量）。
+  /// 转鼓总页数（牌片数量）。
   final int pageCount;
 
   @override
   Widget build(BuildContext context) {
     final panelWidth =
-        MechanicalStyle.drumPadH * 2 +
-        MechanicalStyle.drumViewWidth +
-        MechanicalStyle.drumTicksGap +
-        MechanicalStyle.drumTickWidth;
+        MechanicalStyle.drumPadH * 2 + MechanicalStyle.drumViewWidth;
 
     return AnimatedBuilder(
       animation: controller,
@@ -47,10 +46,10 @@ class MechanicalPageDrum extends StatelessWidget {
           ignoring: !visible,
           child: AnimatedOpacity(
             opacity: visible ? 1 : 0,
-            duration: const Duration(milliseconds: 220),
+            duration: MechanicalStyle.indicatorFadeDuration,
             child: AnimatedSlide(
               offset: visible ? Offset.zero : const Offset(0, 0.4),
-              duration: const Duration(milliseconds: 340),
+              duration: MechanicalStyle.indicatorRiseDuration,
               curve: const Cubic(0.3, 1.4, 0.4, 1),
               child: SizedBox(
                 width: panelWidth,
@@ -72,23 +71,11 @@ class MechanicalPageDrum extends StatelessWidget {
                           mainAxisSize: MainAxisSize.min,
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            _DrumHead(pageCount: pageCount),
+                            const _DrumHead(),
                             const SizedBox(height: MechanicalStyle.drumHeadGap),
-                            Row(
-                              crossAxisAlignment: CrossAxisAlignment.center,
-                              children: [
-                                _DrumView(
-                                  controller: controller,
-                                  pageCount: pageCount,
-                                ),
-                                const SizedBox(
-                                  width: MechanicalStyle.drumTicksGap,
-                                ),
-                                _DrumTicks(
-                                  controller: controller,
-                                  pageCount: pageCount,
-                                ),
-                              ],
+                            _DrumView(
+                              controller: controller,
+                              pageCount: pageCount,
                             ),
                           ],
                         ),
@@ -133,35 +120,24 @@ class MechanicalPageDrum extends StatelessWidget {
   }
 }
 
-/// 顶行：闪烁小方块 + PAGE 标签（左），总页编号（右）。
+/// 顶行：闪烁小方块 + PAGE 标签。
 class _DrumHead extends StatelessWidget {
-  const _DrumHead({required this.pageCount});
-
-  final int pageCount;
+  const _DrumHead();
 
   @override
   Widget build(BuildContext context) {
-    return Row(
+    return const Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        const _Blip(),
-        const SizedBox(width: 8),
-        const Text(
+        _Blip(),
+        SizedBox(width: 8),
+        Text(
           'PAGE',
           style: TextStyle(
             fontSize: MechanicalStyle.drumTagFontSize,
             fontWeight: FontWeight.w700,
             letterSpacing: MechanicalStyle.drumTagLetterSpacing,
             color: AppColors.mechInkDim,
-          ),
-        ),
-        const Spacer(),
-        Text(
-          'NO.${pageCount.toString().padLeft(2, '0')}',
-          style: const TextStyle(
-            fontSize: MechanicalStyle.drumUnitFontSize,
-            letterSpacing: MechanicalStyle.drumUnitLetterSpacing,
-            color: AppColors.mechDrumUnit,
           ),
         ),
       ],
@@ -331,43 +307,6 @@ class _DrumPainter extends CustomPainter {
   @override
   bool shouldRepaint(_DrumPainter oldDelegate) =>
       oldDelegate.pageCount != pageCount;
-}
-
-/// 竖排刻度：当前页亮、其余暗（稿 #ticks）。
-class _DrumTicks extends StatelessWidget {
-  const _DrumTicks({required this.controller, required this.pageCount});
-
-  final NavPhysicsController controller;
-  final int pageCount;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: MechanicalStyle.drumTickWidth,
-      height: MechanicalStyle.drumViewHeight,
-      child: AnimatedBuilder(
-        animation: controller,
-        builder: (context, _) {
-          return Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              for (var i = 0; i < pageCount; i++) ...[
-                if (i > 0) const SizedBox(height: MechanicalStyle.drumTickGap),
-                AnimatedContainer(
-                  duration: MechanicalStyle.drumTickDuration,
-                  width: MechanicalStyle.drumTickWidth,
-                  height: MechanicalStyle.drumTickHeight,
-                  color: i == controller.activePage
-                      ? AppColors.mechInk
-                      : AppColors.mechDrumTickOff,
-                ),
-              ],
-            ],
-          );
-        },
-      ),
-    );
-  }
 }
 
 /// 底部进度填充：宽度 = 面板宽 × 当前进度（稿 #pfill scaleX）。

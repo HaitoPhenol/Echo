@@ -139,10 +139,6 @@ abstract final class MechanicalStyle {
   static const double drumTagFontSize = 10;
   static const double drumTagLetterSpacing = 3;
 
-  /// 右上编号字号/字距（稿 .unit 9px .15em）
-  static const double drumUnitFontSize = 9;
-  static const double drumUnitLetterSpacing = 1.35;
-
   /// 顶行与转鼓主体的间距（稿 margin-bottom:8px）
   static const double drumHeadGap = 8;
 
@@ -158,17 +154,48 @@ abstract final class MechanicalStyle {
   static const double drumNumberFontSize = 56;
   static const double drumNumberLetterSpacing = 2.24;
 
-  /// 视窗与右侧刻度列的间距（稿 gap:16px）
-  static const double drumTicksGap = 16;
-
-  /// 单个刻度杠宽高（稿 14×4）与杠间距（稿 gap:7）
-  static const double drumTickWidth = 14;
-  static const double drumTickHeight = 4;
-  static const double drumTickGap = 7;
-
-  /// 刻度亮暗过渡时长（稿 transition:background .25s）
-  static const Duration drumTickDuration = Duration(milliseconds: 250);
-
   /// 底部进度条高度（稿 2px）
   static const double drumProgressHeight = 2;
+
+  /// 转鼓与页名牌共用的显隐节奏（稿 .25s/.3s；Flutter 端真机验收值）
+  static const Duration indicatorFadeDuration = Duration(milliseconds: 220);
+  static const Duration indicatorRiseDuration = Duration(milliseconds: 340);
+
+  // ================================================================
+  // 左下角页名牌（稿 L305-317「#pgname」，与转鼓同时显隐）
+  // ================================================================
+
+  /// 左边距为屏宽倍数（稿 left:5vw）；底边不另设常量——色块底边
+  /// 与右下转鼓面板底边对齐，定位在 smart_nav_screen 取同一 52dp。
+  static const double namePlateLeftFactor = 0.05;
+
+  /// 色块内边距（稿 padding:12px 26px 14px）
+  static const double namePlatePadTop = 12;
+  static const double namePlatePadH = 26;
+  static const double namePlatePadBottom = 14;
+
+  /// 页名字号/字距（稿 clamp(64,9vw,120) w700 .08em，手机端取 64）
+  static const double namePlateFontSize = 64;
+  static const double namePlateLetterSpacing = 5.12;
+
+  /// 名字下方短横线：宽/高/与文字间距（稿 56px、3px、margin-top:18px）
+  static const double namePlateUnderlineWidth = 56;
+  static const double namePlateUnderlineHeight = 3;
+  static const double namePlateUnderlineGap = 18;
+
+  // ---- 赛博故障（glitch）：稿外新增，真机验收值 ----
+
+  /// 赛博故障单段总时长：唤醒时播一次，唤醒期间每成功翻页
+  /// （activePage 硬切）重播一次；边界回弹不播。
+  static const Duration nameGlitchDuration =
+      Duration(milliseconds: 620);
+
+  /// 整字数码抖动最大位移（px，幅度按序列递减到 0）。
+  static const double nameGlitchShakeMax = 6;
+
+  /// 文字水平切片撕裂错位最大位移（px）。
+  static const double nameGlitchSliceShift = 9;
+
+  /// 灰色重影副本横向偏移（px；副本取 mechInkDim）。
+  static const double nameGlitchChromaShift = 4;
 }
