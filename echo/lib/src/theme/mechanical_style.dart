@@ -137,6 +137,19 @@ abstract final class MechanicalStyle {
   static const Color kickerDimColor = Color(0xFF646464);
 
   // ================================================================
+  // 模板页大标题排印（C2 试验，稿 L51：h2 700 / letter-spacing .12em）
+  // ================================================================
+
+  /// 大标题字号（现状 48，落在稿 clamp(40px,7vw,80px) 区间内）
+  static const double pageTitleFontSize = 48;
+
+  /// 大标题字重：稿 h2 为 700（现状细体 w200，C2 改粗对标稿）
+  static const FontWeight pageTitleFontWeight = FontWeight.w700;
+
+  /// 大标题字距（稿 .12em = 48 × .12）
+  static const double pageTitleLetterSpacing = 5.76;
+
+  // ================================================================
   // 右下角 3D 页码转鼓指示器（稿 L318-345「滚筒模块」）
   // ================================================================
 

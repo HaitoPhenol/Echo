@@ -67,12 +67,22 @@ class TemplatePage extends StatelessWidget {
               ),
               const SizedBox(height: 22),
             ],
-            Text(
-              title,
-              style: const TextStyle(
-                fontSize: 48,
-                fontWeight: FontWeight.w200,
-                color: AppColors.textPrimary,
+            // 大字距下 Flutter 仍在末字后追加一个字距，布局盒比墨水
+            // 实际宽出一个 letterSpacing，居中时墨水整体左偏（单字标题
+            // 「我」尤其明显）；向左补偿半个字距做光学居中。
+            Transform.translate(
+              offset: const Offset(
+                -MechanicalStyle.pageTitleLetterSpacing / 2,
+                0,
+              ),
+              child: Text(
+                title,
+                style: const TextStyle(
+                  fontSize: MechanicalStyle.pageTitleFontSize,
+                  fontWeight: MechanicalStyle.pageTitleFontWeight,
+                  letterSpacing: MechanicalStyle.pageTitleLetterSpacing,
+                  color: AppColors.textPrimary,
+                ),
               ),
             ),
             if (footer != null) const SizedBox(height: 48),
