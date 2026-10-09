@@ -1,15 +1,19 @@
 import 'package:flutter/material.dart';
 
 import '../../theme/mechanical_style.dart';
+import '../dock_geometry.dart';
 
 /// 机能风固定背景：实验底色 + 三层工程纹理（细网格 / 粗网格 / 点阵）
-/// + 描边框与左上/右下对角十字定位标记。
+/// + 四角十字定位标记。
 ///
 /// 实验隔离组件（feat/page-background-art）：数值全部取自
 /// [MechanicalStyle]，方案验收/放弃时随实验层整体处理。
 ///
-/// 行为约定（A2/A3，与设计稿 viewport 固定背景一致）：
-/// * 纹理与边框**固定在屏幕上**，不随横向翻页移动，页面内容从其上方滑过；
+/// 行为约定：
+/// * 纹理与十字**固定在屏幕上**，不随横向翻页移动，页面内容从其上方滑过；
+/// * 不画实体描边框（实验改版）：四角十字标定一条虚拟边界——
+///   顶边在状态栏下沿（+8dp 呼吸位）、底边即底部停靠三条的共同顶线
+///   （[DockGeometry] 事实来源）、左右各内缩 14dp；
 /// * 静态绘制，外包 [RepaintBoundary]，导航动画不会引发背景重绘；
 /// * 只画"表皮"，不承载任何交互。
 class MechanicalBackground extends StatelessWidget {
@@ -17,21 +21,29 @@ class MechanicalBackground extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 状态栏高度（dp）：描边框上边距要避开左上角时钟。
-    final statusBarTop = MediaQuery.viewPaddingOf(context).top;
-    final inset = MechanicalStyle.frameInset;
-    final framePadding = EdgeInsets.fromLTRB(
-      inset,
-      statusBarTop + 8 > inset ? statusBarTop + 8 : inset,
-      inset,
-      inset,
-    );
+    final mq = MediaQuery.of(context);
+    final size = mq.size;
+
+    // 虚拟顶边：状态栏下沿 + 8dp 呼吸位（顶部十字位置 A3 起保持不变）。
+    final topBoundary = mq.viewPadding.top + 8 > MechanicalStyle.frameInset
+        ? mq.viewPadding.top + 8
+        : MechanicalStyle.frameInset;
+
+    // 虚拟底边：底部停靠三条（把手/AI/导航）的共同顶线。
+    final bottomBoundary = size.height -
+        mq.viewPadding.bottom -
+        DockGeometry.bottomMargin -
+        DockGeometry.barHeight;
 
     return RepaintBoundary(
       child: ColoredBox(
         color: MechanicalStyle.baseBackground,
         child: CustomPaint(
-          painter: _MechanicalGridPainter(framePadding: framePadding),
+          painter: _MechanicalGridPainter(
+            sideInset: MechanicalStyle.frameInset,
+            topBoundary: topBoundary,
+            bottomBoundary: bottomBoundary,
+          ),
           size: Size.infinite,
         ),
       ),
@@ -39,15 +51,25 @@ class MechanicalBackground extends StatelessWidget {
   }
 }
 
-/// 背景绘制器：细网格 → 粗网格 → 点阵 → 描边框 → 对角双十字。
+/// 背景绘制器：细网格 → 粗网格 → 点阵 → 四角十字。
 ///
 /// 网格用单个 Path 收集全部线段后一次描边，点阵逐交点画圆；
-/// 唯二入参是边框内边距，[shouldRepaint] 仅在边距变化时为 true。
+/// 入参仅为虚拟边界坐标，[shouldRepaint] 只在边界变化时为 true。
 class _MechanicalGridPainter extends CustomPainter {
-  const _MechanicalGridPainter({required this.framePadding});
+  const _MechanicalGridPainter({
+    required this.sideInset,
+    required this.topBoundary,
+    required this.bottomBoundary,
+  });
 
-  /// 描边框相对屏幕四边的内边距（上边距已避让状态栏）。
-  final EdgeInsets framePadding;
+  /// 虚拟边界左右内缩（14dp）。
+  final double sideInset;
+
+  /// 虚拟顶边 y（状态栏下沿 + 呼吸位）。
+  final double topBoundary;
+
+  /// 虚拟底边 y（停靠三条的共同顶线）。
+  final double bottomBoundary;
 
   void _addGrid(Path path, Size size, double spacing) {
     // 竖线。
@@ -119,34 +141,23 @@ class _MechanicalGridPainter extends CustomPainter {
       }
     }
 
-    // -------- 描边框（内缩 14dp，白 α.14）--------
-    final frameRect = Rect.fromLTWH(
-      framePadding.left,
-      framePadding.top,
-      size.width - framePadding.horizontal,
-      size.height - framePadding.vertical,
-    );
-    canvas.drawRect(
-      frameRect,
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = MechanicalStyle.frameStrokeWidth
-        ..color = MechanicalStyle.frameColor
-        ..isAntiAlias = false,
-    );
-
-    // -------- 左上 / 右下对角双十字（22dp，白 α.50）--------
-    // 与原稿一致：十字中心精确压在边框角点上。
+    // -------- 四角十字（标定虚拟边界，无实体框线）--------
     final crossPaint = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = MechanicalStyle.crossStrokeWidth
       ..color = MechanicalStyle.crossColor
       ..isAntiAlias = false;
-    _paintCross(canvas, frameRect.topLeft, crossPaint);
-    _paintCross(canvas, frameRect.bottomRight, crossPaint);
+    final left = sideInset;
+    final right = size.width - sideInset;
+    _paintCross(canvas, Offset(left, topBoundary), crossPaint);
+    _paintCross(canvas, Offset(right, topBoundary), crossPaint);
+    _paintCross(canvas, Offset(left, bottomBoundary), crossPaint);
+    _paintCross(canvas, Offset(right, bottomBoundary), crossPaint);
   }
 
   @override
   bool shouldRepaint(covariant _MechanicalGridPainter oldDelegate) =>
-      oldDelegate.framePadding != framePadding;
+      oldDelegate.sideInset != sideInset ||
+      oldDelegate.topBoundary != topBoundary ||
+      oldDelegate.bottomBoundary != bottomBoundary;
 }
