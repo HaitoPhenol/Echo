@@ -144,7 +144,7 @@
 | **固定背景** | 所有页面共用的静态 `CustomPaint` 底：#0C0C0C 上叠 32dp 细网格、128dp 粗网格、128 交点 r=1 点阵，整体右下偏移 16dp；外包 `RepaintBoundary`，翻页不重绘、不接手势 | `widgets/mechanical_background.dart` 的 `MechanicalBackground` |
 | **十字标定** | 背景顶部左右各一道的 22×1dp 直角十字线（状态栏下沿 +8dp、左右 inset 14dp，粗网格同色），无实体边框、无底部十字 | `mechanical_background.dart` |
 | **读数条 / 设备读数条** | 状态栏下沿居中的 9sp 大字距读数：`DEV 型号 · T 电池温度 · P 瞬时功耗`，MethodChannel `echo/device_stats` 每 5 秒轮询、异常显「—」，`IgnorePointer` 不挡手势 | `widgets/mechanical_coords_bar.dart` 的 `MechanicalCoordsBar` |
-| **SEC kicker** | 模板页大标题上方的 11sp w700 大字距小标签（终端 SEC.01 // CONSOLE、日志 SEC.03 // LOGS、我 SEC.04 // ME；中文页名改「终端」后英文仍为 CONSOLE），亮段 `mechInk`、暗段 `mechInkDim`；当前 `fontFamily: monospace` 在 Flutter/Android 不解析，并非真等宽 | `pages/template_page.dart` |
+| **SEC kicker** | 模板页大标题上方的 11sp w700 大字距小标签（终端 SEC.01 // CONSOLE、日志 SEC.03 // LOGS、主页 SEC.04 // ME；中文页名改「终端」后英文仍为 CONSOLE），亮段 `mechInk`、暗段 `mechInkDim`；当前 `fontFamily: monospace` 在 Flutter/Android 不解析，并非真等宽 | `pages/template_page.dart` |
 | **空心大页码** | 每页轨道内随页面一起横滑的 01～04 描边数字：120sp、1dp `mechPageNumberStroke` 描边、无填充，top = 5vh、right = 0.14w − 32dp | `widgets/mechanical_page_number.dart` 的 `MechanicalPageNumber` |
 | **透明页面层** | 页面底色全部透明、让固定背景透出的约定；模板页如此，聊天页行前景也透明，左滑操作区改由 `CustomClipper` 按露出宽度裁剪遮挡 | `pages/template_page.dart`、`pages/chat_page.dart` 的 `_RevealClipper` |
 | **衬线页名牌 / 页名牌** | 横滑唤醒时左下角浮现的当前页名（稿 #pgname）：`mechDrumPanel` α.90 色块、64sp w700 系统 serif（Android 中文回退 NotoSerifCJK 即宋体效果）、字距 .08em、下配 56×3 mechInk 短横线；边框仿转鼓而向右开口：左/上 1px 通线、底边只画左半、右边不画，左上与左下各 16px/2px mechInk 亮角标；左边距与转鼓右边距同源（DockGeometry.sideMargin 14dp，原 5vw 已改）、底边与转鼓底边对齐（52+safeBottom）；与转鼓同一 rollerVisible 同升同收，跨中点按 nearestPage 硬切；叠加赛博故障层（见第一节「赛博故障（glitch）」） | `widgets/mechanical_page_name_plate.dart` 的 `MechanicalPageNamePlate` |

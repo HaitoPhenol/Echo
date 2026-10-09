@@ -119,7 +119,7 @@ AGENT.md                                   # 给开发 agent 的工作提示（�
 | `pageBuilder` | `WidgetBuilder` | 页面本体构建器，按需构建 |
 
 默认配置由 `buildDefaultDestinations()` 构建，当前为 4 页：
-终端（console）、聊天（chat）、日志（notes）、我（me）。
+终端（console）、聊天（chat）、日志（notes）、主页（me）。
 其中**聊天页已替换为真实页面** `ChatPage`（`pages/chat_page.dart`，
 会话数据来自 `ChatStore`，见 3.10）：无标题栏；列表初始为空，
 空态整屏居中显示 13px 小字「暂无消息」（tone2），有会话时切换为
