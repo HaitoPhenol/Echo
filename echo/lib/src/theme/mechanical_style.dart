@@ -196,6 +196,6 @@ abstract final class MechanicalStyle {
   /// 文字水平切片撕裂错位最大位移（px）。
   static const double nameGlitchSliceShift = 9;
 
-  /// 红/蓝色差副本横向偏移（px；红 anchorRed、蓝 accentBlue）。
+  /// 灰色重影副本横向偏移（px；副本取 mechInkDim）。
   static const double nameGlitchChromaShift = 4;
 }

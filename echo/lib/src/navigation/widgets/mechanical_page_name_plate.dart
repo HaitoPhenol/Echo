@@ -13,7 +13,7 @@ import '../nav_physics.dart';
 /// 「分开的整体」；在此之上，页名叠加一层赛博故障（glitch）效果。
 ///
 /// 故障在两个时机播放，都是整段约 620ms（三水平切片错时闪烁接通、
-/// 整字幅度递减的数码抖动、红蓝色差副本、若干 1px 故障白线扫过、
+/// 整字幅度递减的数码抖动、灰色重影副本、若干 1px 故障白线扫过、
 /// 下划线重新展开）：
 /// - **唤醒时**：rollerVisible false→true 的同一帧播一次入场；
 /// - **唤醒期间成功翻页**：横滑跨过页中点、activePage 硬切的同一帧
@@ -228,9 +228,11 @@ class _GlitchWord extends StatelessWidget {
                     offset: _sliceShift[i].transform(t),
                     child: Stack(
                       children: [
-                        // 红/蓝色差副本：横向错位、仅故障包络内可见。
+                        // 灰色重影副本（极简单色风）：横向错位、
+                        // 仅故障包络内可见。
                         Opacity(
-                          opacity: chroma * _sliceAlpha[i].transform(t),
+                          opacity:
+                              chroma * _sliceAlpha[i].transform(t),
                           child: Transform.translate(
                             offset: const Offset(
                               MechanicalStyle.nameGlitchChromaShift,
@@ -239,14 +241,15 @@ class _GlitchWord extends StatelessWidget {
                             child: Text(
                               word,
                               style: baseStyle.copyWith(
-                                color: AppColors.anchorRed,
+                                color: AppColors.mechInkDim,
                                 shadows: null,
                               ),
                             ),
                           ),
                         ),
                         Opacity(
-                          opacity: chroma * _sliceAlpha[i].transform(t),
+                          opacity:
+                              chroma * _sliceAlpha[i].transform(t),
                           child: Transform.translate(
                             offset: const Offset(
                               -MechanicalStyle.nameGlitchChromaShift,
@@ -255,7 +258,7 @@ class _GlitchWord extends StatelessWidget {
                             child: Text(
                               word,
                               style: baseStyle.copyWith(
-                                color: AppColors.accentBlue,
+                                color: AppColors.mechInkDim,
                                 shadows: null,
                               ),
                             ),
@@ -317,11 +320,15 @@ class _SliceClipper extends CustomClipper<Rect> {
   @override
   Rect getClip(Size size) {
     final (top, bottom) = _bands[index];
+    // 下片底边外扩 12px：serif 合成粗体的下行笔画与文字柔和投影
+    // （offset(0,2)+blur12）会画出行盒，不能卡在 1.0 处硬裁。
+    final bottomEdge =
+        size.height * bottom + (index == 2 ? 12.0 : 0.0);
     return Rect.fromLTRB(
       0,
       size.height * top,
       size.width,
-      size.height * bottom,
+      bottomEdge,
     );
   }
 
