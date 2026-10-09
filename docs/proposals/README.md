@@ -20,7 +20,7 @@
 
 | 编号 | 日期 | 域 | 标题 | 状态 | 落地版本 | 文件 |
 |---|---|---|---|---|---|---|
-| RCR-2026-001 | 2026-10-09 | 前端美术 | 机能风视觉层色值收编进 AppColors（18 实验色 → 15 个 `mech*` token） | 已采纳-待应用 | 未发版（分支 `feat/page-background-art`，暂缓合并） | [2026-10-09-mechanical-visual-tokens.md](2026-10-09-mechanical-visual-tokens.md) |
+| RCR-2026-001 | 2026-10-09 | 前端美术 | 机能风视觉层色值收编进 AppColors（18 实验色 → 15 个 `mech*` token） | 已采纳-已应用 | v0.6.0 | [2026-10-09-mechanical-visual-tokens.md](2026-10-09-mechanical-visual-tokens.md) |
 
 <!-- 登记示例（复制此行）：
 | RCR-2026-001 | 2026-10-08 | 前端美术 | 新增第五亮度阶 tone5 | 已采纳-已应用 | v0.6.0 | [2026-10-08-tone5-surface-level.md](2026-10-08-tone5-surface-level.md) |
