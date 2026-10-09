@@ -22,8 +22,8 @@ import 'mechanical_indicator_lifecycle.dart';
 ///
 /// 首/末页继续滑的边界回弹 activePage 不变，不触发故障。**收回时**
 /// 入场故障即时回稳态，由两个指示器共用的
-/// [MechanicalIndicatorLifecycle] 播放「垂直百叶窗」退场（与入场的
-/// 水平切片做差异），详见该组件。
+/// [MechanicalIndicatorLifecycle] 播放「水平百叶窗」退场，
+/// 详见该组件。
 ///
 /// 组件只负责内容与显隐；屏幕位置由调用方用 [Positioned] 给定：
 /// 左边距与转鼓右边距同源（DockGeometry.sideMargin），色块底边与

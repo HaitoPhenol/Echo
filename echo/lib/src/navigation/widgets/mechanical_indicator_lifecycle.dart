@@ -10,12 +10,11 @@ import '../../theme/mechanical_style.dart';
 /// **入场**（沿用旧节奏）：[AnimatedOpacity] 220ms 淡入 +
 /// [AnimatedSlide] 340ms 上浮（带回弹曲线）。
 ///
-/// **退场**（赛博故障风，与页名入场的水平切片撕裂刻意做差异）：
-/// 垂直「百叶窗」——构件切成
-/// [MechanicalStyle.indicatorExitBandCount] 条竖带，按固定乱序
+/// **退场**（赛博故障风）：水平「百叶窗」——构件切成
+/// [MechanicalStyle.indicatorExitBandCount] 条横带，按固定乱序
 /// 错峰熄灭，每带在自己的窗口内快速两明两暗后彻底消失；前半段
 /// 叠加整构件小幅数码横抖（快速衰减）。总时长仍是
-/// [MechanicalStyle.indicatorRiseDuration] 340ms，所有竖带在
+/// [MechanicalStyle.indicatorRiseDuration] 340ms，所有横带在
 /// 约 300ms 前灭完，干脆不拖尾。用单个 [ClipPath] 合成（子树
 /// 每帧只绘一次），转鼓的 3D painter 也不会乘 N 倍重绘。
 class MechanicalIndicatorLifecycle extends StatefulWidget {
@@ -134,14 +133,14 @@ class _MechanicalIndicatorLifecycleState
   }
 }
 
-/// 退场百叶窗裁剪：t=0 全显，t 推进时各竖带按固定乱序错峰，
+/// 退场百叶窗裁剪：t=0 全显，t 推进时各横带按固定乱序错峰，
 /// 在自身窗口内两明两暗后熄灭，t=1 全灭。
 class _ExitBlindsClipper extends CustomClipper<Path> {
   const _ExitBlindsClipper(this.t);
 
   final double t;
 
-  /// 竖带熄灭次序（0..9 的一个固定置换，乘 7 取模得到的伪随机序；
+  /// 横带熄灭次序（0..9 的一个固定置换，乘 7 取模得到的伪随机序；
   /// 不使用 Random——同一次退场必须逐帧确定、可复现）。
   static const List<int> _order = [0, 7, 4, 1, 8, 5, 2, 9, 6, 3];
 
@@ -175,15 +174,15 @@ class _ExitBlindsClipper extends CustomClipper<Path> {
       );
       return path;
     }
-    final bandW = size.width / n;
+    final bandH = size.height / n;
     for (var i = 0; i < n; i++) {
       if (_bandOn(i, t)) {
         path.addRect(
           Rect.fromLTRB(
-            i * bandW - bleed,
             -bleed,
-            (i + 1) * bandW + bleed,
-            size.height + bleed,
+            i * bandH - bleed,
+            size.width + bleed,
+            (i + 1) * bandH + bleed,
           ),
         );
       }

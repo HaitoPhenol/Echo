@@ -161,7 +161,7 @@ abstract final class MechanicalStyle {
   static const Duration indicatorFadeDuration = Duration(milliseconds: 220);
   static const Duration indicatorRiseDuration = Duration(milliseconds: 340);
 
-  /// 退场「百叶窗故障」竖条数（两个指示器共用）。
+  /// 退场「百叶窗故障」横带数（两个指示器共用）。
   static const int indicatorExitBandCount = 10;
 
   /// 退场前段整构件数码横抖最大幅度（px，快速衰减）。

@@ -19,7 +19,7 @@ import 'mechanical_indicator_lifecycle.dart';
 /// （原稿视窗右侧的竖排刻度列已删，面板随之收窄，给左下页名牌让位。）
 ///
 /// 显隐由 rollerVisible 驱动，统一走 `MechanicalIndicatorLifecycle`
-/// （入场 fade+rise；退场垂直百叶窗故障熄灭，与页名牌同帧同节奏），
+/// （入场 fade+rise；退场水平百叶窗故障熄灭，与页名牌同帧同节奏），
 /// 手势唤醒机制不在本组件内；圆点 stepPage / snapTo
 /// 路径不显示转鼓，只有横滑 dragStart 才唤醒。左下角的
 /// `MechanicalPageNamePlate` 与本组件共用同一显隐节奏。
