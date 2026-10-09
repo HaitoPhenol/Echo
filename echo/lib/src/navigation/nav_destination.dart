@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 
+import '../pages/chat_page.dart';
 import '../pages/debug_badge_controls.dart';
 import '../pages/template_page.dart';
 
@@ -36,8 +37,8 @@ class NavDestination {
 
 /// 构建默认导航配置（当前 4 个页面，顺序即导航轨道顺序）。
 ///
-/// 页面本体暂时全部是只显示标题的 [TemplatePage]，
-/// 后续逐个替换为真实页面。
+/// 聊天页已替换为真实页面 [ChatPage]（无标题栏的会话列表骨架）；
+/// 其余三页暂时仍是只显示标题的 [TemplatePage]，后续逐个替换。
 ///
 /// 新增页面的标准做法：在本列表末尾（或合适位置）增加一个
 /// [NavDestination]，导航线、滚筒、搜索会自动纳入，无需改动其他代码。
@@ -56,19 +57,36 @@ List<NavDestination> buildDefaultDestinations() {
         id: id,
         label: label,
         icon: null, // TODO: 各页面定型后在此填入图标
-        // 控制台/日志页挂测试按钮（锚点通知验收用，正式功能接入后移除）。
-        // kDebugMode 守卫：debug 构建可见，release/profile 构建 footer 为 null，
-        // 调试组件随树摇移除，不会进入发布包。
-        pageBuilder: (_) => TemplatePage(
-          title: label,
-          footer: kDebugMode
-              ? switch (id) {
-                  'console' => const ConsoleBadgeControls(),
-                  'notes' => const LogBadgeControls(),
-                  _ => null,
-                }
-              : null,
-        ),
+        // 聊天页已进入真实页面开发（无标题栏的会话列表骨架）。
+        pageBuilder: (_) => switch (id) {
+          'chat' => const ChatPage(),
+          // 控制台/日志页挂测试按钮（锚点通知验收用，正式功能接入后移除）。
+          // kDebugMode 守卫：debug 构建可见，release/profile 构建 footer 为
+          // null，调试组件随树摇移除，不会进入发布包。
+          _ => TemplatePage(
+            title: label,
+            // 机能风模板页分区小标题（编号与轨道顺序一致）。
+            secCode: switch (id) {
+              'console' => 'SEC.01',
+              'notes' => 'SEC.03',
+              'me' => 'SEC.04',
+              _ => null,
+            },
+            secName: switch (id) {
+              'console' => 'CONSOLE',
+              'notes' => 'LOGS',
+              'me' => 'ME',
+              _ => null,
+            },
+            footer: kDebugMode
+                ? switch (id) {
+                    'console' => const ConsoleBadgeControls(),
+                    'notes' => const LogBadgeControls(),
+                    _ => null,
+                  }
+                : null,
+          ),
+        },
       ),
   ];
 }

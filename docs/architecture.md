@@ -36,11 +36,14 @@ echo/
 │       ├── app/
 │       │   └── echo_app.dart              # MaterialApp、主题装配
 │       ├── theme/
-│       │   └── app_colors.dart            # 全局调色板
+│       │   ├── app_colors.dart            # 全局调色板（tone 四阶 + 机能风 mech 色组）
+│       │   └── mechanical_style.dart      # 机能风几何/排印/时长常量（颜色在 AppColors）
 │       ├── pages/
-│       │   ├── template_page.dart         # 空白占位页（只显示标题，可挂 footer）
+│       │   ├── chat_page.dart             # 聊天页（数据驱动会话列表：左滑操作/未读绿点）
+│       │   ├── template_page.dart         # 模板页（大标题 + SEC kicker，可挂 footer）
 │       │   └── debug_badge_controls.dart  # 锚点通知/异常的测试按钮（脚手架）
 │       ├── services/                      # 与界面无关的能力层
+│       │   ├── chat_store.dart            # 聊天会话数据：增删/已读未读 + 未读聚合
 │       │   ├── haptics.dart               # 触感反馈统一入口
 │       │   ├── nav_badge_service.dart     # 导航锚点状态：通知/异常接口
 │       │   └── search_service.dart        # 搜索服务/数据源/历史接口
@@ -52,7 +55,10 @@ echo/
 │           ├── nav_physics.dart           # 滚动/吸附物理引擎
 │           ├── smart_nav_screen.dart      # 主屏：手势识别 + 组装
 │           └── widgets/
-│               ├── nav_roller.dart        # 滚筒指示器 + 页名标签
+│               ├── mechanical_background.dart  # 机能风固定背景（网格/点阵/十字）
+│               ├── mechanical_coords_bar.dart  # 顶部设备状态读数条
+│               ├── mechanical_page_number.dart # 每页空心大页码 01-04
+│               ├── mechanical_page_drum.dart   # 3D 页码转鼓指示器
 │               ├── quick_action_arc.dart  # 快捷操作弧
 │               ├── search_capsule.dart    # 导航条 + 翻页圆点 + 搜索面板
 │               ├── fuse_border_painter.dart # 倒计时边框
@@ -62,7 +68,11 @@ echo/
 │               ├── ai_dialog.dart         # AI 对话框（聊天面板）
 │               └── side_drawer.dart       # 侧边抽屉（毛玻璃空壳）
 ├── test/
-│   └── widget_test.dart                   # Widget 测试（当前 11 个用例）
+│   ├── widget_test.dart                   # 导航/浮层 Widget 集成测试（11 个用例）
+│   ├── navigation/
+│   │   └── dock_geometry_test.dart        # 快捷弧布局纯函数测试（6 个用例）
+│   └── pages/
+│       └── chat_page_test.dart            # 会话列表交互测试（7 个用例）
 └── README.md                              # Flutter 默认工程说明
 docs/
 ├── architecture.md                        # 本文档：架构与接口
@@ -73,14 +83,16 @@ docs/
 ├── governance.md                         # 规则演进机制（RCR 流程、级别、复审）
 ├── maintainer-charter.md                 # AI 维护者常设职责（审查/问题登记/文档维护）
 ├── proposals/                            # 规则变更提案与登记册（永不删除）
-│   └── README.md
+│   ├── README.md
+│   └── 2026-10-09-mechanical-visual-tokens.md # RCR-2026-001 机能风视觉层
 ├── templates/
 │   └── rule-proposal.md                  # RCR 提案模板
 └── component-reports/                     # 组件阶段开发总结（归档，只增不改）
     └── smart-nav-line-v0.4.10-2026-10-06.md
 ideas/
 ├── smart_line.html                        # 原型：导航线设计与手感基准
-└── another_two_lines.html                 # 原型：把手条 / AI 条 / 抽屉基准
+├── another_two_lines.html                 # 原型：把手条 / AI 条 / 抽屉基准
+└── mechanical_style_page.html             # 原型：机能风页面背景与转鼓（稿号 Lxx 出处）
 AGENT.md                                   # 给开发 agent 的工作提示（入口）
 ```
 
@@ -107,6 +119,26 @@ AGENT.md                                   # 给开发 agent 的工作提示（�
 
 默认配置由 `buildDefaultDestinations()` 构建，当前为 4 页：
 控制台（console）、聊天（chat）、日志（notes）、我（me）。
+其中**聊天页已替换为真实页面** `ChatPage`（`pages/chat_page.dart`，
+会话数据来自 `ChatStore`，见 3.10）：无标题栏；列表初始为空，
+空态整屏居中显示 13px 小字「暂无消息」（tone2），有会话时切换为
+铺满轨道的 ListView。会话行高 72px——每行含 48px 圆形头像占位框
+（tone1 空心圆描边）、昵称（tone4 16px）与消息预览（tone2 14px，
+均单行省略），行间分隔线为屏宽 80%、水平居中的 1px tone1 细线，
+内边距避让状态栏与底部悬浮停靠条。行交互：
+
+- **未读绿点**：未读会话行右上角显示 8px 呼吸绿点（anchorGreen，
+  1.7s 缓动往返 + 同色发光，参数与导航锚点 `_NavAnchor` 完全一致）；
+  点按未读行即标记已读、绿点消失（已读行点按无行为）。
+- **左滑操作区**：行内向左拖动露出右侧操作按钮（恒为两个、每个宽
+  76px，总宽不随读状态变化）——左为读状态切换（已读行显示「未读」、
+  未读行显示「已读」，tone2 底/inverse 字），右为「删除」
+  （anchorRed 底/tone4 字，移除该会话）。
+  拖动按速度（>300/s）或半程吸附开合（180ms easeOut），同屏全局
+  只展开一行（展开另一行先收回），竖向滚动列表时自动收回。
+  操作按钮常驻树中、由不透明行前景物理遮挡（与锚点/滑块同思路）。
+
+其余三页仍是 TemplatePage。
 
 ### 3.2 快捷操作 `QuickAction`
 
@@ -218,7 +250,7 @@ GlobalKey 重挂载曾触发框架断言），而是由 `DockGeometry`（底部�
   | `levelOf(page)` | 读取某页当前锚点状态 |
   | `postNotification(page)` | 置为通知态（绿色呼吸） |
   | `reportException(page)` | 置为异常态（红色急闪） |
-  | `markViewed(page)` | 仅 `notification → normal`：在该页连续停留 700ms 才已读 |
+  | `markViewed(page)` | 仅 `notification → normal`：默认在该页连续停留 700ms 才已读；聊天页例外（见下） |
   | `resolveException(page)` | 仅 `exception → normal`：显式处理完成才恢复 |
 
   异常优先级高于通知：异常未处理时查看页面不会改变状态。
@@ -227,6 +259,11 @@ GlobalKey 重挂载曾触发框架断言），而是由 `DockGeometry`（底部�
   `Timer(_readDwell = 700ms)`，只有连续停留满 700ms 才调
   `markViewed(page)`。快速扫过（按住圆点连续翻页）、双击导航条
   直达末页时途经的中转页不会被标为已读。
+- **聊天页例外：锚点由会话未读数据驱动**。聊天页锚点不走停留计时
+  （激活到该页时不启动 700ms 计时器），而由装配层监听 `ChatStore`
+  的 `_syncChatBadge()` 同步：存在任意未读会话即
+  `postNotification`，**聊天页内所有会话都已读时**才 `markViewed`
+  恢复默认；左滑「设为未读」会重新点亮锚点。异常态优先级不变。
 - **帧时钟**：导航物理不使用墙钟（`Stopwatch`），而以物理帧的
   `currentFrameTimeStamp` 为时间源（在 tick 回调内缓存）。真机上与
   真实时间一致；测试中随 `pump` 推进，停留/倒计时逻辑可确定性验证。
@@ -244,7 +281,8 @@ GlobalKey 重挂载曾触发框架断言），而是由 `DockGeometry`（底部�
   滑块物理遮挡，拖动时从滑块边缘自然滑入滑出；常态色与滑块视觉一致
   （白 α.42 叠 tone1 ≈ 滑块灰），离开滑块时无色差（见规范事故 12/13）。
 - `pages/debug_badge_controls.dart` 为测试脚手架：控制台页可模拟
-  「聊天新消息」「日志报错」，日志页有「处理异常」按钮。接入真实
+  「聊天新消息」（调 `ChatStore.addIncoming()`，不再直接操作锚点）、
+  「日志报错」，日志页有「处理异常」按钮。接入真实
   通知源后此脚手架应移除。脚手架在 `buildDefaultDestinations()` 中由
   `kDebugMode` 守卫：仅 debug 构建挂入页面，release/profile 构建
   footer 为 null、组件随树摇移除，不会出现在发布包中。
@@ -274,12 +312,19 @@ tone2、快捷弧选中按钮 = tone4**；**拇指滑块是特例**：使用不�
   状态语义（搜索、通知、异常）。
 - **AI 虹彩色**：AI 条流动六色是该组件的专属识别色，不属于中性阶梯
   也不进共享色板，就地定义在 `widgets/ai_bar.dart`。
+- **机能风视觉层色组**（`mech*` 前缀，RCR-2026-001 收编）：
+  固定背景、三层纹理/点阵、读数条、空心大页码、kicker、3D 转鼓
+  共用的 15 个皮肤 token（`mechBackground` / `mechFineGrid`(α.05) /
+  `mechCoarseGrid`(α.10) / `mechGridDot`(α.22) / `mechCoordsDim/Hi` /
+  `mechPageNumberStroke` / `mechInk`(#D8D8D8) / `mechInkDim`(#646464) /
+  `mechDrum*` 系列），与四阶阶梯并列、互不混用，详见 3.11。
 - SnackBar 不走 M3 默认反色浅底：`EchoApp` 主题统一为
   `overlaySurface` 底 + 白字、贴底固定（`snackBarTheme`）。
 
 取色规则：新增元素先判断是否状态语义（用功能色），否则按视觉亮度
-就近取阶，不自造白透明度。动画中的连续 alpha（滚筒中央刻度脉冲、
-锚点呼吸/急闪）允许跨阶插值。
+就近取阶，不自造白透明度；机能风视觉层元素（背景纹理/读数条/
+转鼓等）取 `mech*` 色组，不向 tone 阶归并。动画中的连续 alpha
+（滚筒中央刻度脉冲、锚点呼吸/急闪）允许跨阶插值。
 
 ### 3.9 底部三条、本页操作与侧边抽屉
 
@@ -333,11 +378,98 @@ tone2、快捷弧选中按钮 = tone4**；**拇指滑块是特例**：使用不�
 `buildDefaultPageActions()` 当前为刷新 / 分享 / 置顶三个占位，
 `onSelect` 统一弹「「X」功能开发中」SnackBar（1s，先清旧条）。
 
-Stack 分层在 `SmartNavScreen.build`：页面 → 搜索 scrim → 快捷弧 →
-涟漪 → 滚筒 → AI 条 → 把手条 → 搜索胶囊 →（条件）抽屉 + 停靠把手
-→（条件）竖单 scrim + 竖单 →（条件）AI scrim + 对话框；所有条件
-插入节点带稳定 `ValueKey`，逐帧层只动 transform/opacity，
-虹彩/抽屉/竖单各自 `RepaintBoundary` 隔离。
+Stack 分层在 `SmartNavScreen.build`（机能风层见 3.11）：
+固定背景（MechanicalBackground）→ 顶部读数条 → 横向页面轨道
+（轨道内每页一层空心大页码、页面本体透明） → 搜索 scrim → 快捷弧 →
+涟漪 → 3D 页码转鼓 → AI 条 → 把手条 → 搜索胶囊
+→（条件）抽屉 + 停靠把手 →（条件）竖单 scrim + 竖单
+→（条件）AI scrim + 对话框；所有条件插入节点带稳定 `ValueKey`，
+逐帧层只动 transform/opacity，背景/虹彩/抽屉/竖单各自
+`RepaintBoundary` 隔离。
+
+### 3.10 聊天会话服务 `ChatStore`
+
+文件：`lib/src/services/chat_store.dart`
+
+聊天列表的数据层，页面只依赖本服务读写会话，不直接操作导航锚点
+（页面层不反向依赖 navigation 层）：
+
+- **`ChatConversation`**：不可变值对象，字段 `id`（稳定标识，
+  列表 key 与定向更新都以它为准、不用下标）、`nickname`、`preview`、
+  `unread`；状态变更走 `copyWith({bool? unread})`。
+- **`ChatStore extends ChangeNotifier`**：构造即空列表
+  （页面展示「暂无消息」空态），会话只能经 `addIncoming()` 产生。方法：
+
+  | 方法 | 含义 |
+  |---|---|
+  | `conversations` | 当前会话（新消息在最前），unmodifiable 视图 |
+  | `hasUnread` | 是否存在任意未读会话（锚点联动的聚合依据） |
+  | `addIncoming()` | 列表最前插入一条未读会话（id `incoming-N`） |
+  | `remove(id)` | 删除指定会话 |
+  | `markRead(id)` / `markUnread(id)` | 置已读 / 置未读 |
+
+  当前为内存实现、重启清空；接入消息模块时替换实现（或持久化），
+  `ChatPage` 无需改动。
+- **`ChatStoreScope`**（`InheritedNotifier<ChatStore>`）：
+  `ChatStoreScope.of(context)` / `.maybeOf(context)`；由
+  `SmartNavScreen` 创建实例并包在 `NavBadgeScope` 外层。
+- **锚点桥接**：`SmartNavScreen` 在 initState 中以
+  `indexWhere(id == 'chat')` 找到聊天页下标并 `addListener`
+  （见 3.7 聊天页例外）；聊天页停留不启动 700ms 已读计时器。
+
+### 3.11 机能风视觉层
+
+原型：`ideas/mechanical_style_page.html`（稿标题「滚筒页码 ·
+机能风」，注释中「稿 Lxx」为该文件行号）。经 RCR-2026-001
+采纳为正式皮肤，由**固定层 / 页面层 / 指示器层**三部分组成；
+颜色全部在 [AppColors] 的 `mech*` 色组（全量迁移表见提案第 3 节），
+几何 / 排印 / 时长在 `theme/mechanical_style.dart` 的
+`MechanicalStyle`。
+
+- **固定背景** `MechanicalBackground`（widgets/mechanical_background.dart）：
+  `mechBackground`(#0C0C0C) 底上叠三层纹理——细网格 32dp
+  （1dp，白 α.05）、粗网格 128dp（1dp，白 α.10）、128dp 交点
+  r=1 点阵（白 α.22）；三层相对屏左上整体右下偏移 16dp（负向起点
+  循环保证铺满）。顶部一对十字标定：中心在「状态栏下沿 + 8dp 与
+  frameInset 取大」高度、左右各 14dp 处，边长 22、1dp、与粗网格
+  同色；无实体描边框、无底部十字。静态 `CustomPaint` 外包
+  `RepaintBoundary`，`shouldRepaint` 仅随顶部边界变化，翻页动画
+  不引发背景重绘；只画表皮、不接手势。
+- **顶部读数条** `MechanicalCoordsBar`：状态栏下沿（coordsTop=0）
+  居中，9sp、字距 3.6（.4em），文案 `DEV 型号 · T 电池温度 ·
+  P 瞬时功耗`；数据来自原生 MethodChannel `echo/device_stats`
+  （MainActivity.kt，零三方库零权限），5 秒轮询、异常降级显示
+  「—」；`IgnorePointer` 不挡手势。
+- **页面层**：`TemplatePage` 底色透明，内容为机能风 kicker +
+  大标题——kicker（控制台 SEC.01 // CONSOLE、日志 SEC.03 // LOGS、
+  我 SEC.04 // ME；11sp w700、字距 3.85，`mechInk` / `mechInkDim`）
+  与 48sp w700、字距 5.76（.12em）大标题；Flutter 在末字后也
+  追加一个字距，用 −字距/2 的 `Transform.translate` 做光学居中
+  （真机像素校验三/二/单字标题墨水中心均为屏中 540）。
+  横向轨道内每页另铺一个空心大页码 `MechanicalPageNumber`
+  （120sp、1dp `mechPageNumberStroke` 描边、填充透明；top =
+  5vh、right = 0.14w − 32dp），随页面一起横滑。聊天页行前景
+  同样透明，左滑操作区改由 `CustomClipper` 按露出宽度裁剪遮挡。
+- **3D 页码转鼓** `MechanicalPageDrum`（替代旧横向圆点胶囊，
+  旧 NavRoller 已删除）：`Positioned(right: 14, bottom:
+  52 + safeBottom)`。面板为 `mechDrumPanel`(#0F0F0F) + 1px
+  `mechDrumLine`(#262626) 方边框，左上 / 右下各一道 16px、2px
+  直角亮线（`mechInk`）；顶行为 blip（6px 方块、1.2s steps(2)
+  闪烁）+ PAGE 标签（10sp、.3em、`mechInkDim`）+ 右上编号
+  NO.0N（9sp、.15em、`mechDrumUnit`）。主体是 148×96 视窗内
+  R=190 的圆柱（perspective 520）：贴 N 个 56sp w700、字距 2.24
+  的数字牌片做 rotateY 旋转，透视平移走齐次 w 侧；背面剔除
+  （|world|≥90°）、远面先画近面后画；视窗左右为 `mechDrumLine`
+  虚线竖边。右侧一列刻度（14×4、gap 7，激活 `mechInk`、未激活
+  `mechDrumTickOff`，.25s 过渡），底部 2px 进度条（轨道
+  `mechDrumProgressTrack`、填充 `mechInk`）。显隐由
+  rollerVisible 驱动（IgnorePointer + AnimatedOpacity +
+  AnimatedSlide）：**仅横滑 dragStart 唤醒**；圆点点按 stepPage、
+  双击 snapTo 直达不显示转鼓。
+- **保留项（验收时确认不动）**：粗网格 α 维持 .10（长列表灰色
+  预览文案在粗线恰好穿字时略花、随滚动变化，整体可读）；kicker
+  未打包真等宽字体（`fontFamily: monospace` 在 Flutter/Android
+  不解析，要真等宽需引 Roboto Mono 等字体，包体/许可另议）。
 
 ---
 
@@ -380,9 +512,11 @@ Stack 分层在 `SmartNavScreen.build`：页面 → 搜索 scrim → 快捷弧 �
 取得 `NavBadgeService`（经 `NavBadgeScope.of(context)` 或由上层注入）：
 消息到达时调 `postNotification(页索引)`，日志监控捕获错误时调
 `reportException(页索引)`，问题修复流程完成时调 `resolveException(页索引)`。
-「停留 700ms 即已读」与锚点动画无需接入方处理。需要持久化时，新建一个
-`NavBadgeService` 实现替换 `InMemoryNavBadgeService`，并移除
-`debug_badge_controls.dart` 测试脚手架。
+「停留 700ms 即已读」与锚点动画无需接入方处理；**聊天页是数据驱动
+例外**——接入真实消息模块时实现/替换 `ChatStore`（见 3.10），锚点
+联动由 `SmartNavScreen` 的监听完成，不要直接 post 聊天页通知。
+需要持久化时，新建一个 `NavBadgeService` 实现替换
+`InMemoryNavBadgeService`，并移除 `debug_badge_controls.dart` 测试脚手架。
 
 ---
 

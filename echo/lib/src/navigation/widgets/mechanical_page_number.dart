@@ -1,0 +1,47 @@
+import 'package:flutter/material.dart';
+
+import '../../theme/app_colors.dart';
+import '../../theme/mechanical_style.dart';
+
+/// 每页随横滑移动的空心大页码（机能风视觉层组件）。
+///
+/// 120sp 白描边空心数字（稿 .idx：top:5vh/right 靠中间收，
+/// 填充透明、1dp 白α.10 描边），IgnorePointer 不挡手势；
+/// 画在页面轨道内、与页面一起横滑，固定背景与读数条不动。
+class MechanicalPageNumber extends StatelessWidget {
+  const MechanicalPageNumber({super.key, required this.index});
+
+  /// 页码序号（0 起），显示为两位数 01、02……
+  final int index;
+
+  @override
+  Widget build(BuildContext context) {
+    final screenSize = MediaQuery.sizeOf(context);
+    // 真机微调：在比例位置基础上再向右挪（减小右边距），
+    // 累计 −2dp − 30dp = 32dp（用户逐次裁决 2026-10-09）。
+    final rightInset =
+        screenSize.width * MechanicalStyle.pageNumberRightFactor - 32;
+    return Positioned(
+      top: screenSize.height * MechanicalStyle.pageNumberTopFactor,
+      right: rightInset,
+      child: IgnorePointer(
+        child: Text(
+          (index + 1).toString().padLeft(2, '0'),
+          style: TextStyle(
+            fontSize: MechanicalStyle.pageNumberFontSize,
+            fontWeight: FontWeight.w700,
+            height: 1,
+            letterSpacing: 0,
+            // 只描边不填充（稿 -webkit-text-stroke；不能再给 color，
+            // TextStyle 不允许 color 与 foreground 并存）。
+            foreground:
+                Paint()
+                  ..style = PaintingStyle.stroke
+                  ..strokeWidth = MechanicalStyle.pageNumberStrokeWidth
+                  ..color = AppColors.mechPageNumberStroke,
+          ),
+        ),
+      ),
+    );
+  }
+}

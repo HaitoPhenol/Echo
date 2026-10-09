@@ -6,9 +6,10 @@ import 'package:echo/src/app/echo_app.dart';
 import 'package:echo/src/navigation/smart_nav_screen.dart';
 import 'package:echo/src/navigation/widgets/ai_dialog.dart';
 import 'package:echo/src/navigation/widgets/handle_menu.dart';
-import 'package:echo/src/navigation/widgets/nav_roller.dart';
+import 'package:echo/src/navigation/widgets/mechanical_page_drum.dart';
 import 'package:echo/src/navigation/widgets/quick_action_arc.dart';
 import 'package:echo/src/navigation/widgets/side_drawer.dart';
+import 'package:echo/src/pages/chat_page.dart';
 import 'package:echo/src/pages/template_page.dart';
 import 'package:echo/src/services/nav_badge_service.dart';
 
@@ -24,14 +25,15 @@ Future<void> pumpFramesMs(WidgetTester tester, int ms) async {
 }
 
 void main() {
-  testWidgets('初始展示 4 个占位页，且首页标题为「控制台」', (tester) async {
+  testWidgets('初始展示 4 页：聊天页为会话列表骨架，其余 3 页为占位页', (tester) async {
     // 构建应用
     await tester.pumpWidget(const EchoApp());
     await tester.pump();
 
-    // 智能导航屏与 4 个占位页均在树上
+    // 智能导航屏在树上；聊天页已换成 ChatPage，其余 3 页仍是占位页
     expect(find.byType(SmartNavScreen), findsOneWidget);
-    expect(find.byType(TemplatePage), findsNWidgets(4));
+    expect(find.byType(ChatPage), findsOneWidget);
+    expect(find.byType(TemplatePage), findsNWidgets(3));
 
     // 首个占位页内的标题文本为「控制台」（页内另有测试按钮文字，
     // 故按标题精确匹配）
@@ -49,13 +51,11 @@ void main() {
     await tester.pumpWidget(const EchoApp());
     await tester.pump();
 
-    // 第 2 个占位页（聊天）的标题
-    final chatPageText = find.descendant(
-      of: find.byType(TemplatePage).at(1),
-      matching: find.byType(Text),
-    );
+    // 第 2 页（聊天）已是 ChatPage，用页面组件本身作为位置标记
+    // （列表初始为空、ListView 不构建，不能拿列表当标记）
+    final chatPageMarker = find.byType(ChatPage);
     // 初始时聊天页虽在树上但在屏幕右侧（中心 x≈1200）
-    expect(tester.getCenter(chatPageText).dx, greaterThan(800));
+    expect(tester.getCenter(chatPageMarker).dx, greaterThan(800));
 
     // 长按胶囊区域 → 展开搜索（倒计时 ticker 会持续运行，
     // 因此这里手动推进时间而不用 pumpAndSettle）
@@ -79,7 +79,7 @@ void main() {
     // → 跳转到聊天页（中心 x 应≈400）
     await tester.tap(find.text('页面'));
     // 手动推进，等待吸附物理完全落位（最长约 5 秒）
-    double pageCenterX() => tester.getCenter(chatPageText).dx;
+    double pageCenterX() => tester.getCenter(chatPageMarker).dx;
     var settled = false;
     for (var i = 0; i < 300 && !settled; i++) {
       await tester.pump(const Duration(milliseconds: 16));
@@ -90,10 +90,9 @@ void main() {
     // 再次长按展开搜索：结果点击已记入历史。
     await tester.longPressAt(const Offset(600, 560));
     await tester.pump(const Duration(milliseconds: 500));
-    // 「聊天」应恰好出现于两处：当前页标题（TemplatePage 内）与一个
-    // 历史胶囊（带省略号样式）；滚筒页名标签常驻树上但不属于这两者，
-    // 故分别断言，不用全树 findsNWidgets。
-    expect(chatPageText, findsOneWidget);
+    // 聊天页仍在树上；且「聊天」历史胶囊（带省略号样式）出现一次。
+    // 滚筒页名标签常驻树上但不属于历史胶囊，故按样式谓词精确断言。
+    expect(chatPageMarker, findsOneWidget);
     final historyChip = find.byWidgetPredicate(
       (w) => w is Text && w.data == '聊天' && w.overflow == TextOverflow.ellipsis,
     );
@@ -107,7 +106,7 @@ void main() {
     // 滚筒整体显隐用的最外层 AnimatedOpacity
     Finder rollerOpacity() => find
         .descendant(
-          of: find.byType(NavRoller),
+          of: find.byType(MechanicalPageDrum),
           matching: find.byType(AnimatedOpacity),
         )
         .first;
@@ -163,17 +162,16 @@ void main() {
     await tester.pumpWidget(const EchoApp());
     await tester.pump();
 
-    final chatPageText = find.descendant(
-      of: find.byType(TemplatePage).at(1),
-      matching: find.byType(Text),
-    );
-    expect(tester.getCenter(chatPageText).dx, greaterThan(800));
+    // 聊天页（第 2 页）已是 ChatPage，用页面组件本身作为位置标记
+    // （列表初始为空、ListView 不构建，不能拿列表当标记）
+    final chatPageMarker = find.byType(ChatPage);
+    expect(tester.getCenter(chatPageMarker).dx, greaterThan(800));
 
     // 右圆点中心≈(781, 579)，热区 20 宽；点其热区（按下即触发）
     await tester.tapAt(const Offset(781, 560));
 
     // 等待吸附落位
-    double pageCenterX() => tester.getCenter(chatPageText).dx;
+    double pageCenterX() => tester.getCenter(chatPageMarker).dx;
     var settled = false;
     for (var i = 0; i < 300 && !settled; i++) {
       await tester.pump(const Duration(milliseconds: 16));
@@ -182,7 +180,8 @@ void main() {
     expect(pageCenterX(), closeTo(400, 0.5));
   });
 
-  testWidgets('导航锚点：停留才算已读，快速扫过/双击跳转不读中转页；'
+  testWidgets('导航锚点：聊天锚点由会话未读数据驱动（点未读行才恢复），'
+      '其余页停留才算已读，快速扫过/双击跳转不读中转页；'
       '异常须处理完成才恢复', (tester) async {
     await tester.pumpWidget(const EchoApp());
     await tester.pump();
@@ -255,19 +254,32 @@ void main() {
       await tester.pump(const Duration(milliseconds: 16));
     }
 
-    /// 第 i 页 TemplatePage 内的标题 Text。
-    Finder pageTitle(int i) => find
-        .descendant(
-          of: find.byType(TemplatePage).at(i),
-          matching: find.byType(Text),
-        )
-        .first;
+    /// 第 i 个目的地页的位置标记：聊天页（i=1）已换成 ChatPage，
+    /// 用其 ListView；其余三页仍是 TemplatePage 标题。
+    /// 注意 TemplatePage 序列中控制台/日志/我依次为 0/1/2
+    /// （聊天页不在该序列内）。
+    Finder pageMarker(int i) {
+      if (i == 1) {
+        return find.byKey(const ValueKey<String>('chat-page-list'));
+      }
+      final templateIndex = switch (i) {
+        0 => 0,
+        2 => 1,
+        _ => 2,
+      };
+      return find
+          .descendant(
+            of: find.byType(TemplatePage).at(templateIndex),
+            matching: find.byType(Text),
+          )
+          .first;
+    }
 
     // ---- 双击导航条直达末页：途中经过的页面不算已读 ----
     await tester.tapAt(const Offset(700, 580));
     await tester.tapAt(const Offset(700, 580));
-    await settlePage(pageTitle(3));
-    expect(tester.getCenter(pageTitle(3)).dx, closeTo(400, 0.5));
+    await settlePage(pageMarker(3));
+    expect(tester.getCenter(pageMarker(3)).dx, closeTo(400, 0.5));
     expect(
       anchorLevel(1),
       NavBadgeLevel.notification,
@@ -282,7 +294,7 @@ void main() {
       await tester.tapAt(const Offset(391, 560));
       for (
         var i = 0;
-        i < 60 && tester.getCenter(pageTitle(destination)).dx < 0;
+        i < 60 && tester.getCenter(pageMarker(destination)).dx < 0;
         i++
       ) {
         await tester.pump(const Duration(milliseconds: 8));
@@ -293,24 +305,40 @@ void main() {
     await fastStepLeft(2);
     await fastStepLeft(1);
     await fastStepLeft(0);
-    await settlePage(pageTitle(0));
+    await settlePage(pageMarker(0));
     await tester.pump(const Duration(milliseconds: 750));
     expect(anchorLevel(1), NavBadgeLevel.notification, reason: '快速扫过不应判定已读');
     expect(anchorLevel(2), NavBadgeLevel.exception);
 
-    // ---- 真正翻到聊天页并停留：落位时仍未读，停留够久才已读 ----
+    // ---- 真正翻到聊天页：锚点由未读数据驱动，停留再久也不自动恢复 ----
     await tester.tapAt(const Offset(781, 560));
-    await settlePage(pageTitle(1));
-    expect(anchorLevel(1), NavBadgeLevel.notification, reason: '刚落位、停留未达阈值');
+    await settlePage(pageMarker(1));
+    expect(anchorLevel(1), NavBadgeLevel.notification, reason: '刚落位仍未读');
     // 当前页锚点仍挂载，只是被不透明滑块物理遮挡（无显隐逻辑）
     expect(find.byKey(const ValueKey<String>('nav-anchor-1')), findsOneWidget);
     await tester.pump(const Duration(milliseconds: 750));
-    expect(anchorLevel(1), NavBadgeLevel.normal);
+    expect(
+      anchorLevel(1),
+      NavBadgeLevel.notification,
+      reason: '聊天锚点改为全部已读才恢复，停留计时不清除',
+    );
+
+    // 新消息行在列表最前（800×600 测试表面无安全区：首行中心 y=36），
+    // 行内呼吸绿点在树；点按该行 → 全部已读 → 锚点恢复、绿点消失。
+    final incomingRow = find.byKey(
+      const ValueKey<String>('chat-row-incoming-1'),
+    );
+    expect(incomingRow, findsOneWidget);
+    expect(find.byType(UnreadDot), findsOneWidget);
+    await tester.tap(incomingRow);
+    await tester.pump();
+    expect(anchorLevel(1), NavBadgeLevel.normal, reason: '点按未读行后全部已读，锚点恢复默认');
+    expect(find.byType(UnreadDot), findsNothing);
     expect(anchorLevel(2), NavBadgeLevel.exception);
 
     // ---- 再翻到日志页：仅查看不解除异常，按钮可处理 ----
     await tester.tapAt(const Offset(781, 560));
-    await settlePage(pageTitle(2));
+    await settlePage(pageMarker(2));
     // 离开聊天页：锚点始终在树上（覆盖/揭示都靠物理遮挡）
     expect(find.byKey(const ValueKey<String>('nav-anchor-1')), findsOneWidget);
     await tester.pump(const Duration(milliseconds: 750));

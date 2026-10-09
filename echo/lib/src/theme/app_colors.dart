@@ -72,4 +72,62 @@ abstract final class AppColors {
 
   /// 导航锚点：异常闪烁红
   static const Color anchorRed = Color(0xFFFF453A);
+
+  // ================================================================
+  // 机能风视觉层（RCR-2026-001 收编）
+  //
+  // 工程稿 ideas/mechanical_style_page.html 的皮肤 token：固定背景
+  // 纹理、顶部读数条、空心大页码 / kicker、3D 页码转鼓。
+  // 与上方亮度四阶阶梯**并列、互不混用**（网格纹理需要独立的低 α
+  // 白系列，不就近归并 tone 阶）；几何 / 排印 / 时长数值不属于颜色，
+  // 仍在 `theme/mechanical_style.dart` 的 MechanicalStyle。
+  // ================================================================
+
+  /// 机能风固定背景底色（近黑中性灰）。主屏全程被背景层覆盖，
+  /// 冷灰 [background]（Scaffold 底色）不外露。
+  static const Color mechBackground = Color(0xFF0C0C0C);
+
+  /// 背景细网格线（白 α.05，32dp 格距）
+  static const Color mechFineGrid = Color(0x0DFFFFFF);
+
+  /// 背景粗网格线与顶部十字标定（白 α.10，128dp 格距）
+  static const Color mechCoarseGrid = Color(0x1AFFFFFF);
+
+  /// 背景点阵圆点（白 α.22，128dp 间距）
+  static const Color mechGridDot = Color(0x38FFFFFF);
+
+  /// 顶部读数条普通文字（白 α.30）
+  static const Color mechCoordsDim = Color(0x4DFFFFFF);
+
+  /// 顶部读数条强调文字（白 α.55）
+  static const Color mechCoordsHi = Color(0x8CFFFFFF);
+
+  /// 空心大页码描边（白 α.10，填充透明）
+  static const Color mechPageNumberStroke = Color(0x1AFFFFFF);
+
+  /// 机能风主墨色（稿 --hi:#d8d8d8）：kicker 主文字、转鼓直角亮线 /
+  /// 刻度激活 / 进度条 / blip 高亮共用。
+  static const Color mechInk = Color(0xFFD8D8D8);
+
+  /// 机能风次墨色（稿 --dim:#646464）：kicker 的 // 与英文标注、
+  /// 转鼓顶行标签共用。
+  static const Color mechInkDim = Color(0xFF646464);
+
+  /// 转鼓面板底色（稿 --panel:#0f0f0f）
+  static const Color mechDrumPanel = Color(0xFF0F0F0F);
+
+  /// 转鼓方边框与视窗左右虚线竖边（稿 --line:#262626）
+  static const Color mechDrumLine = Color(0xFF262626);
+
+  /// 转鼓右上编号文字（稿 #3d3d3d）
+  static const Color mechDrumUnit = Color(0xFF3D3D3D);
+
+  /// 转鼓大数字墨色（稿 --ink:#e1e1e1）
+  static const Color mechDrumNumber = Color(0xFFE1E1E1);
+
+  /// 转鼓刻度未激活色（稿 #272727）
+  static const Color mechDrumTickOff = Color(0xFF272727);
+
+  /// 转鼓底部进度条轨道色（白 α.05）
+  static const Color mechDrumProgressTrack = Color(0x0DFFFFFF);
 }

@@ -7,6 +7,14 @@
 > 但更换时必须满足 [engineering_standards.md](engineering_standards.md) 的原则、
 > 通过测试与真机验收，并更新本文件。
 >
+> **分支态（2026-10-09）**：`feat/page-background-art` 已完成机能风
+> 视觉层（固定背景纹理 / 顶部读数条 / 空心大页码 / SEC kicker / 3D 页码
+> 转鼓，页面底色透明）并经用户真机验收采纳，色值经 RCR-2026-001 收编
+> 进 `AppColors.mech*`；**尚未合并 main、未升版**（本条与下文相关描述
+> 在合并后改写成 main 常态）。详见
+> [proposals/2026-10-09-mechanical-visual-tokens.md](proposals/2026-10-09-mechanical-visual-tokens.md)
+> 与架构 3.11。
+>
 > 相关文档：[架构与接口说明](architecture.md) ·
 > [工程规范](engineering_standards.md) · [规则演进机制](governance.md) ·
 > [术语表](glossary.md) · [问题清单](code_review_report.md)
@@ -27,11 +35,31 @@
 
 ## 页面与导航
 
-- **4 个占位页**：控制台 / 聊天 / 日志 / 我（见 `navigation/nav_destination.dart`），
-  页面本体是只显示标题的 TemplatePage；控制台、日志页挂有调试用模拟按钮。
+- **4 个页面**：控制台 / 聊天 / 日志 / 我（见 `navigation/nav_destination.dart`）。
+  聊天页已替换为真实页面 `ChatPage`（`pages/chat_page.dart`，数据来自
+  `services/chat_store.dart` 的 `ChatStore`）：**无标题栏**，
+  列表初始为空，空态整屏居中显示 13px 小字「暂无消息」（tone2）；
+  有会话时整页 ListView 铺满轨道（会话行高 72px：48px 圆形头像占位框
+  （tone1 空心描边）+ 昵称 tone4 16px + 消息预览 tone2 14px 单行省略，
+  行间分隔线为屏宽 80%、水平居中的 1px tone1 细线；顶部避让状态栏、
+  底部预留 26px 停靠条高度）。行交互已接通数据：
+  **左滑**露出右侧操作区（恒为两个等宽按钮、总宽恒定：左为读状态切换，
+  已读行显示「未读」、未读行显示「已读」，tone2 底；右为「删除」anchorRed 底），
+  按速度/半程 180ms 吸附、全局只开一行、竖滚自动收回；
+  未读行右上角有**呼吸绿点**（anchorGreen，1.7s 往返，与导航锚点同参数），
+  点按未读行即已读；控制台「模拟：聊天新消息」经 `ChatStore.addIncoming()`
+  在最前插入未读会话。
+  其余三页仍是只显示标题的 TemplatePage，控制台、日志页挂有调试用模拟按钮。
+  **（分支态）**四页均已套上机能风视觉层：主屏 Stack 最底层为固定的
+  网格/点阵/十字背景（RepaintBoundary 静态层），状态栏下沿是设备读数条，
+  页面底色透明；模板页带 SEC kicker 与 48sp w700 大字距标题，每页轨道内
+  有空心大页码；右下角页码指示器为 3D 数字转鼓（仅横滑唤醒，圆点/双击
+  路径不显示；旧横向圆点胶囊 NavRoller 已删除）。架构说明见 3.11。
 - 页面**全部常驻构建**（一个 Row 一次性 build）。注意这与 `pageBuilder`
-  "按需构建"的注释意图不符，是已知债务；接入真实页面前需评估窗口化懒加载
-  （activePage±1）方案，离屏页 State 销毁重建的接受度需用户确认。
+  "按需构建"的注释意图不符，是已知债务（P2-08）；聊天页已成为首个
+  常驻的真实页面（空态仅一个 Center+Text，有会话时为 itemExtent
+  定高 ListView，负载很轻），更多真实页面接入前需评估
+  窗口化懒加载（activePage±1）方案，离屏页 State 销毁重建的接受度需用户确认。
 - 导航物理为自研 `NavPhysicsController`：`position`（线性物理）与
   `displayPosition`（橡胶带 + Hermite 磁力曲线）两层分离；fling 指数摩擦、
   snap 弹簧、速度自适应增益等参数均为 **4 页场景下手调验收值**，页面数变化需整体重评。
@@ -61,11 +89,19 @@
 - 搜索历史（`InMemorySearchHistoryStore`）与锚点状态
   （`InMemoryNavBadgeService`）均为**内存实现，重启清空**；抽象接口已定义，
   待业务接入时换持久化实现。
+- **聊天会话数据 `ChatStore`**（`services/chat_store.dart`，ChangeNotifier，
+  经 `ChatStoreScope` 提供）：内存保存会话列表，支持新消息插入 / 删除 /
+  已读 / 置未读，`hasUnread` 聚合未读态；重启清空。
+- **聊天页锚点为数据驱动例外**：`SmartNavScreen` 监听 `ChatStore`
+  （`_syncChatBadge`）——有未读即绿色呼吸，**页内所有会话已读才恢复**，
+  停留 700ms 计时器对聊天页不启动；「置未读」会重新点亮锚点。
+  其余页面仍是「停留 700ms 即已读」。
 - 搜索数据源仅接入了"页面搜索"一个；`SearchProvider.search` 当前为同步接口。
 - 锚点状态**按页序号 int 索引**，与 NavDestination 稳定 id 的设计相矛盾；
 - 做任何锚点持久化之前，必须先改为按 destinationId 索引。
 - 调试模拟按钮（模拟聊天新消息 / 日志报错 / 处理异常）由 `kDebugMode`
-  守卫（v0.4.11 起），release/profile 包不挂载。
+  守卫（v0.4.11 起），release/profile 包不挂载；「聊天新消息」改为调
+  `ChatStore.addIncoming()`，脚手架内不再硬编码聊天页序号（仅日志页仍写死 2）。
 - 返回键（v0.4.12 起）由根 `PopScope` 统一拦截：任一浮层（搜索 / 快捷弧
   / 竖单 / AI 对话框 / 抽屉）存在时先关浮层不退出 App；`feat/handle-ai-bars`
   分支把新浮层全部纳入同一 canPop 判定。
@@ -76,9 +112,11 @@
 
 - 物理积分与搜索 fuse 烧蚀用**帧时间戳**（currentFrameTimeStamp）；
 - 另有若干**墙钟 Timer** 尚未统一：导航条长按 450ms、AI 条长按 450ms、
-  焦点延时 150ms、圆点按压视觉 200ms、已读停留 700ms、滚筒延时隐藏
+  焦点延时 150ms、圆点按压视觉 200ms、已读停留 700ms（仅非聊天页，
+  聊天页锚点改由 ChatStore 数据驱动）、滚筒延时隐藏
   650ms、历史胶囊闪白 180ms；浮层时长（竖单 340ms、AI 对话框 320ms、
-  抽屉开 420ms / 关 100ms、虹彩 7s 循环）走各自的 AnimationController 墙钟。
+  抽屉开 420ms / 关 100ms、虹彩 7s 循环、会话行左滑吸附 180ms）
+  走各自的 AnimationController 墙钟。
 - 两套时间线在 App 后台 / 测试 pump 时行为不同，改动时需分别考虑。
 
 ## 平台与适配
@@ -92,16 +130,28 @@
 
 ## 测试现状
 
-- 11 个 widget 测试：初始渲染、搜索闭环、滚筒/快捷弧互斥、圆点翻页、
-  锚点状态机、返回键顺序，以及把手竖单（生长/按钮 SnackBar）、AI 条
-  （不误触/长按可输入/遮罩关闭）、抽屉（跟手吸附/返回键）、浮层互斥。
-  全部 pump 整个 EchoApp，表面固定 800×600、坐标硬编码；锚点用例含
-  "锚点始终在树上、仅被物理遮挡"的断言。动画类用例必须逐帧 pump
-  （单次 `pump(Duration)` 不驱动挂载当帧启动的 Ticker，见测试文件头注释）。
+- 共 24 个测试，分三个文件：`widget_test.dart` 11 个导航/浮层集成用例
+  （初始渲染、搜索闭环、转鼓/快捷弧互斥、圆点翻页、**双击导航条直达且
+  中转页不算已读**、锚点状态机、返回键顺序，以及把手竖单、AI 条、抽屉、
+  浮层互斥；锚点用例覆盖「聊天页停留不清除、全部已读才恢复」的数据驱动
+  机制），全部 pump 整个 EchoApp、表面固定 800×600、坐标硬编码；
+  `navigation/dock_geometry_test.dart` 6 个快捷弧布局纯函数用例；
+  `pages/chat_page_test.dart` 7 个聊天页用例（初始空态、滚动避让、
+  新消息插入与点按已读、左滑双按钮/置未读/删除、吸附重播不弹回、
+  再次拖动连续性、竖滚自动收回，直接 pump ChatPage + ChatStore）。
+  锚点用例含"锚点始终在树上、仅被物理遮挡"的断言。动画类用例必须逐帧
+  pump（单次 `pump(Duration)` 不驱动挂载当帧启动的 Ticker，见测试文件
+  头注释）；呼吸绿点是无限动画，相关用例不能用 `pumpAndSettle`
+  （永久超时），以固定帧数 pump 等待 180ms 吸附完成。
 - 物理引擎、搜索服务、锚点服务等纯逻辑尚无直接单元测试。
 - 真机回归：MIUI 真机（1080×2160/440dpi）debug 包已过六条旧手势 +
   三条新组件全流程；`gfxinfo` 对 Flutter 自渲染管线只记录到 1 帧，
   不是有效的帧率指标，精测需 profile 模式。
+  **（分支态 D1）**机能风版本六手势回归：横滑（转鼓跟手）/圆点点按/
+  上甩快捷弧（含热区外反悔）/长按搜索胶囊真机通过；双击直达与多指边界
+  因 user 版无 root、adb 无法在 300ms 窗内有序注入双击/多指，以
+  widget 双击用例 + pointer 过滤代码走查兜底，**留人工真机复核**；
+  背景静态层重绘隔离经结构核查 + 密集交互录屏无肉眼掉帧。
 
 ---
 
@@ -112,6 +162,12 @@
 需要用户拍板、agent 不得自行决定的开放问题见该报告第 4 节 Q1~Q9
 （目标设备形态、懒加载策略、持久化时点、快捷弧数量、语言等）。
 其中 Q1（按压色意图）已在 v0.4.9/v0.4.10 拍板：圆点按下 tone2、滑块无变化。
+
+**分支态待办**（feat/page-background-art，随合并处理）：
+① RCR-2026-001 状态改「已采纳-已应用」、按版本纪律排号升版；
+② 人工真机复核双击导航条直达与双指同按边界；
+③ 可选项（用户已看过未要求）：粗网格 α .10→.08 微调（长列表灰文案
+偶被穿线）、打包 Roboto Mono 让 kicker 真等宽（包体/许可另议）。
 
 **本文件的维护规则**：实现手段变化并合并后，立即更新对应条目并在提交信息中说明；
 问题修复后从问题清单移除，不要让本文件描述一个已经不存在的现状。

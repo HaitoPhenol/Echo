@@ -45,6 +45,15 @@
   - 例外：单个 agent 在 main 流上快速闭环（建分支→修→立刻合回，无其他并行
     任务）时，可在修复提交中直接升 PATCH，不必等合并时再改。
 
+**远程仓库与 tag 推送**（origin = `https://github.com/HaitoPhenol/Echo.git`）：
+
+- `git push`（任何形式，含首次推送）仍须用户明确授权后执行。
+- 远程只保留功能里程碑：**只推 MINOR tag（`vX.Y.0`），patch tag 留本地**。
+  用 `git push origin $(git tag -l 'v*.*.0')` 逐个推，
+  **禁止 `git push --tags` / `--follow-tags` 一把梭**（会把 patch tag 全推上去）。
+- 分支全部同步到远程（含已合并的功能分支；远程分支同样不删除）。
+- 一旦推送，tag 与公共提交视为**不可变**：不改指、不删远程 tag、不 force push。
+
 **提交信息**：用 Conventional Commits —— `feat:` 新功能 · `fix:` 修复 ·
 `refactor:` 重构 · `docs:` 文档 · `chore:` 杂项；标题简述，正文说明原因。
 不 amend、不 force push。
@@ -119,6 +128,12 @@
 - 同一交互反馈在各组件中保持一致（按压色、动画时长语言等），不逐组件各做一套。
 - 动画中的连续 alpha（脉冲、呼吸、急闪）允许跨阶插值，但基色必须用具名常量，
   不写裸 `Colors.white`。
+- **机能风视觉层专用色**集中在调色板的 `mech*` 色组（15 个 token，
+  RCR-2026-001 收编），与 tone1～tone4 亮度阶**并列、互不归并、互不混用**：
+  导航/浮层体系取 tone 阶，背景纹理/读数条/大页码/转鼓取 mech 色组。
+  机能风的几何、排印、时长常量同样只允许在
+  `theme/mechanical_style.dart` 的 `MechanicalStyle` 定义一次
+  （该文件不得再放颜色）。
 
 ### 1.6 元素身份必须稳定
 
@@ -185,6 +200,7 @@
 
 - 物理曲线、动画时长、热区等手感参数属于调参结论，改动前后必须真机对比
   （构建安装 → 实际手势操作 → 录屏 / 截图比对），模拟器与单元测试不能替代。
+  具体取证命令见 1.15。
 - 参数集中、具名、注明取值依据与适用条件（如"按 N 页场景压低"）。
   适用条件变化（页面数量、设备形态）时整体重新评估，不把调参注释当永久真理。
 - 真机帧率以连续操作时 `dumpsys gfxinfo <包名>` 的 Janky / Missed Vsync
@@ -204,6 +220,104 @@
 - 非通用配置不放仓库根目录。
 - 公共 API 写文档注释，重点说明"为什么"。
 
+### 1.15 真机取证工具链（截图 / 录屏 / 抽帧合成）
+
+以下为当前真机验收的具体操作手段（设备：小米 MIX 2S，1080×2160 物理像素、
+density 440，即 1dp = 2.75px；包名 `com.everse.echo`）。工具可换，
+换设备后坐标与换算系数要重新核对。
+
+**公共路径**：
+
+```bash
+ADB=/home/phenol/Android/Sdk/platform-tools/adb
+FLUTTER=/home/phenol/development/flutter/bin/flutter
+```
+
+**（1）构建、安装、冷启动**
+
+```bash
+$FLUTTER build apk --debug
+$ADB install -r echo/build/app/outputs/flutter-apk/app-debug.apk
+$ADB shell am force-stop com.everse.echo
+$ADB shell am start -n com.everse.echo/.MainActivity
+sleep 4.2   # 冷启动到可交互约 4~4.5s，过早注入手势会丢
+```
+
+**（2）截图**
+
+单张截图必须用 `exec-out`——它按二进制透传，旧式
+`adb shell screencap -p > x.png` 会被 CRLF 转换损坏 PNG：
+
+```bash
+$ADB exec-out screencap -p > /tmp/shot.png
+```
+
+截「手势进行中」的画面：后台发起一个长时长 swipe，按时间差在期望相位截图：
+
+```bash
+($ADB shell input swipe 800 2050 800 1300 4500 &)
+sleep 3.4
+$ADB exec-out screencap -p > /tmp/arc_open.png
+```
+
+截图通常只需局部、且要缩小便于快速查看，用 ffmpeg 裁剪 + 缩放：
+
+```bash
+ffmpeg -y -i /tmp/shot.png \
+  -vf "crop=1080:900:0:1100,scale=432:360" /tmp/shot_small.png
+```
+
+**（3）录屏**
+
+```bash
+$ADB shell screenrecord --bit-rate 8000000 /sdcard/rec.mp4  # Ctrl-C 停止
+$ADB pull /sdcard/rec.mp4 /tmp/rec.mp4
+```
+
+注意：screenrecord 本身增加 GPU/IO 负载，录屏期间测到的帧率是最差工况；
+做性能判定优先用 1.12 的 gfxinfo（且 Flutter 自渲染管线在 debug 包下
+gfxinfo 只记到约 1 帧，精测帧率需 profile 包）。
+
+**（4）抽帧与多帧合成（接触印样）**
+
+按帧率或固定抽帧：
+
+```bash
+ffmpeg -i /tmp/rec.mp4 -vf fps=12 /tmp/frame_%03d.png      # 等间隔抽帧
+ffmpeg -ss 1.2 -i /tmp/rec.mp4 -frames:v 1 /tmp/at_1_2.png # 单时刻取帧
+```
+
+多张帧合成一张总览图（tile 前先缩小，省时省空间）：
+
+```bash
+ffmpeg -i /tmp/frame_%03d.png \
+  -vf "scale=270:-1,tile=4x3" /tmp/contact_sheet.png
+```
+
+**坑**：tile 滤镜偶发整页全黑或错乱——这是滤镜问题，不要据全黑图
+下结论，逐张打开原帧核对。
+
+**（5）手势注入与判定纪律**
+
+```bash
+$ADB shell input swipe <x1> <y1> <x2> <y2> <duration_ms>
+```
+
+- `input swipe` 在该 MIUI 上不稳定：慢速长甩偶尔成功，多次会被系统抖成
+  细碎移动、快捷弧根本不弹出（"那次成功是侥幸"即此）；快速短甩
+  （约 300~350ms，终点落在目标按钮上）触发稳定。
+- 因此：注入手势失败不等于功能坏了——一轮里安排多次尝试 / 改用时长，
+  仍无法确认时交给用户手指验证；截图证据优先于"应该触发了"的推测。
+- 注入坐标是**物理像素**；从 Flutter 逻辑坐标换算 ×2.75，
+  截图反推 dp 则 ÷2.75。
+
+**（6）临时探针 / 可视化件**
+
+- 需要验证几何（如曲线形状）时，优先临时 `CustomPaint` 直接画在界面上、
+  真机看实物，验收后立即删除，不留在交付里。
+- 临时 Dart 探针不能放 `/tmp`——无法解析 `package:` 导入；
+  放在项目内（如 `echo/test/tmp_probe/`）以 `flutter test` 运行，跑完即删。
+
 ---
 
 ## 2. 交付门禁（工具可换，门禁不变）【铁律】
@@ -213,7 +327,7 @@
 1. **静态分析零问题**（当前：`cd echo && flutter analyze`）。
 2. **全部测试通过**（当前：`flutter test`）。
 3. **手感相关改动完成真机回归**，基础手势全部过一遍：横滑、点圆点翻页、
-   上甩及反悔、双击直达、长按搜索、多指边界。
+   上甩及反悔、双击直达、长按搜索、多指边界（真机取证命令见 1.15）。
 4. **新行为补测试；修 bug 优先补能复现该 bug 的回归测试。**
 5. **文档对照审计**：architecture.md / glossary.md 与改动逐句核对。
 

@@ -1,28 +1,30 @@
 import 'package:flutter/material.dart';
 
+import '../services/chat_store.dart';
 import '../services/nav_badge_service.dart';
 import '../theme/app_colors.dart';
 
 // 页面序号（测试脚手架直接按当前 4 页顺序引用；
 // 正式接入时由各业务模块在自己的上下文中上报，不会硬编码序号）。
-const int _chatPage = 1;
 const int _notesPage = 2;
 
 /// 控制台页的通知模拟按钮（仅开发测试用，真实通知接入后移除）。
 ///
-/// 对应验收场景：聊天新消息（绿）、日志报错（红）。
+/// 对应验收场景：聊天新消息（向会话列表插入一条未读会话，行内
+/// 呼吸绿点与导航锚点由 ChatStore 联动）、日志报错（红）。
 class ConsoleBadgeControls extends StatelessWidget {
   const ConsoleBadgeControls({super.key});
 
   @override
   Widget build(BuildContext context) {
     final badges = NavBadgeScope.of(context);
+    final chatStore = ChatStoreScope.of(context);
     return _DebugButtonRow(
       buttons: [
         _DebugAction(
           label: '模拟：聊天新消息',
           onTap: () {
-            badges.postNotification(_chatPage);
+            chatStore.addIncoming();
             _toast(context, '已模拟：聊天新消息');
           },
         ),

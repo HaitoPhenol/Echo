@@ -35,6 +35,16 @@ description: Echo 项目多形态组件与开合动画的实施速查。用户�
   （如原型的 12px）会让端头在按钮外多突出一截。竖单案例见
   `DockGeometry.menuEdgeInsetFor`，涟漪圆心共用同一几何。
 - 循环光效必须挂 AnimatedBuilder 逐帧订阅。
+- **吸附动画起点必须显式传入，且「抓当前呈现位」永远先于状态置位**：
+  三处入口同一纪律——①松手时先抓住手指离开位置再清拖动标志；
+  ②**再次按下（dragStart）先读当前呈现位，再置 `_dragging=true`/
+  作废动画/stop 控制器**（顺序反了会自赋值：标志置位后读到的是
+  上一次松手时的旧 `_dragOffset`，吸附终态与它不同，首帧瞬间跳回
+  旧松手位，用户感知为「弹回旧状态再播」）；③`didUpdateWidget`
+  外部驱动从 oldWidget 静止位（动画在途取当前动画值）起播。
+  案例：chat_page.dart `_SwipeToReveal._animateTo(target, from:)`、
+  `_onDragStart`。测试只离散 pump 覆盖不到「落位后再次起手」，
+  必须真机录屏抽帧看连续手势（事故：首修只改①③漏掉②被用户退回）。
 
 ## 项目视觉事实（勿再试错）
 

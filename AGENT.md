@@ -3,6 +3,24 @@
 你是接手 **Echo** 的开发 agent。本文件只有项目梗概与工作要求；
 动手前按下表读完 `docs/` 中的对应文档。
 
+## 🌙 夜间盲跑协议（2026-10-08 深夜生效，明早由用户撤除）
+
+今晚用户不在设备旁、无法亲自验收，**main 冻结**：
+
+1. **只在分支工作**：从最新 main 切 `night/<任务名>` 分支；禁止合并到 main、
+   禁止 rebase/改写他人提交、禁止 push、禁止改 `echo/pubspec.yaml` 版本号与打 tag
+   （版本号仍按老规矩由明早的合并者分配）。
+2. 一个任务完成 → 先跑 `scripts/nightly/verify.sh`（analyze + 全测试）；
+   **绿了**再跑 `scripts/nightly/pack.sh <标签>` 出包装机，脚本会自动完成
+   构建 → APK 归档 → 按 [docs/usage-guide.md](docs/usage-guide.md) 几何执行
+   手势序列 → 截图 + 录屏 → 写报告。
+3. **唯一一台手机正 USB 插在本机**：严禁绕过脚本直接 `adb install`、手动
+   screencap 或碰 USB/adb 服务；脚本已用文件锁串行占用设备。也禁止清应用数据。
+4. 门禁红、需要产品决策、架构级改动、发现分支分叉：**停下来**，在
+   `artifacts/LEDGER.md` 写一行原因（pack 失败也会自动登记），等明早用户处理。
+5. 明早验收入口：用户先看 `artifacts/LEDGER.md` 总台账，再打开各
+   `artifacts/reports/<时间>-<标签>/index.md` 看截图故事板和录屏。
+
 ## 项目梗概
 
 - Echo 是单人开发、处于 **0.x 实验期**的 Flutter App，核心是一套自研底部手势导航：
@@ -19,6 +37,7 @@
 
 | 文档 | 什么时候读 |
 |---|---|
+| **[docs/usage-guide.md](docs/usage-guide.md)** | **上手第一件事**：软件怎么用、每个手势怎么操作、各按钮/热区的位置坐标与触发阈值，测试前必读 |
 | [docs/architecture.md](docs/architecture.md) | 了解目录结构、核心接口、扩展操作（加页面/快捷操作/搜索源等） |
 | [docs/engineering_standards.md](docs/engineering_standards.md) | **改动前必读**：工程原则、交付门禁、测试约定、历史事故档案 |
 | [docs/current_state.md](docs/current_state.md) | 了解当前实现手段（会变化，勿当教条）与已知债务 |
@@ -53,8 +72,11 @@
      PATCH 和 `+N`、`fix:` 提交、打本地 tag（并行分支上只提交、排号留到合并），
      不必每次问；MINOR 升号、`git push`、删分支仍必须先问；
    - 代码合并到 main 后**立即构建 APK 装到手机**冒烟验证；
+   - 远程只推 MINOR tag（`vX.Y.0`），patch tag 留本地：
+     `git push origin $(git tag -l 'v*.*.0')`，禁止 `--tags` 一把梭；
+     所有分支可同步远程；推送本身仍须用户授权；
    - 纯文档改动（主维护助手）跟随当前最新分支 `docs:` 提交、不升版本号；
-   - 任何分支都不删除，除非用户明确要求。
+   - 任何分支都不删除（本地和远程都不删），除非用户明确要求。
 6. **产品决策问用户**：目标设备形态、页面懒加载策略、持久化时点、
    快捷弧数量、语言等开放问题见审查报告 Q2~Q9（Q1 按压色已决：圆点按下
    tone2、滑块按下无变化），禁止替用户做产品决定。

@@ -450,7 +450,10 @@ PointerMove 事件在两帧之间也会到达（触控采样率通常 ≥ 120Hz�
 [nav_destination.dart:14](file:///home/phenol/Documents/GitHub/Echo/echo/lib/src/navigation/nav_destination.dart#L14)
 注释声称 `pageBuilder` "实现按需构建"。
 
-**影响**：当前 4 个 TemplatePage 无所谓；接入真实页面后：
+**影响**：控制台/日志/我 3 个 TemplatePage 无所谓；首个真实页面
+——聊天页 ChatPage（空态仅一个 Center+Text，有会话时为 itemExtent
+定高 ListView）——现已进入常建
+行列，当前负载很轻，但该债务自此不再是纯理论问题；更多真实页面接入后：
 ① 首帧要构建所有页面（冷启动负载正是本项目已踩过的雷区）；
 ② 离屏页的动画/定时器/订阅全部在跑，耗电与内存随页面数线性增长；
 ③ 页面无法在离屏时释放资源。
@@ -484,8 +487,9 @@ PointerMove 事件在两帧之间也会到达（触控采样率通常 ≥ 120Hz�
 
 **位置**：[nav_badge_service.dart:23-35](file:///home/phenol/Documents/GitHub/Echo/echo/lib/src/services/nav_badge_service.dart#L23-L35)
 （全部接口用 int page）、
-[debug_badge_controls.dart:8-9](file:///home/phenol/Documents/GitHub/Echo/echo/lib/src/pages/debug_badge_controls.dart#L8-L9)
-硬编码聊天=1、日志=2。
+[debug_badge_controls.dart:9](file:///home/phenol/Documents/GitHub/Echo/echo/lib/src/pages/debug_badge_controls.dart#L9)
+硬编码日志页=2（聊天=1 已随聊天锚点改由 ChatStore 数据驱动而移除，
+聊天页下标在装配层用 `indexWhere(id=='chat')` 解析）。
 
 **影响**：NavDestination 专门设计了稳定 `id`（"代码引用页面时永远用它"），
 但锚点状态绑序号——调整页面顺序后通知会亮在错误页面；将来持久化锚点状态时，

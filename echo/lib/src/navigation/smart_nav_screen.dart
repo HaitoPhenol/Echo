@@ -4,10 +4,12 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../services/chat_store.dart';
 import '../services/haptics.dart';
 import '../services/nav_badge_service.dart';
 import '../services/search_service.dart';
 import '../theme/app_colors.dart';
+import '../theme/mechanical_style.dart';
 import 'dock_geometry.dart';
 import 'nav_destination.dart';
 import 'nav_physics.dart';
@@ -17,7 +19,10 @@ import 'widgets/ai_bar.dart';
 import 'widgets/ai_dialog.dart';
 import 'widgets/handle_bar.dart';
 import 'widgets/handle_menu.dart';
-import 'widgets/nav_roller.dart';
+import 'widgets/mechanical_background.dart';
+import 'widgets/mechanical_coords_bar.dart';
+import 'widgets/mechanical_page_drum.dart';
+import 'widgets/mechanical_page_number.dart';
 import 'widgets/quick_action_arc.dart';
 import 'widgets/search_capsule.dart';
 import 'widgets/side_drawer.dart';
@@ -25,7 +30,8 @@ import 'widgets/side_drawer.dart';
 /// 智能导航实验主屏。
 ///
 /// 屏幕内容：
-/// - 底层：横向页面轨道（当前为 4 个只显示标题的占位页）；
+/// - 底层：横向页面轨道（聊天页为会话列表骨架，其余 3 页仍是
+///   只显示标题的占位页）；
 /// - 底部一整行三条（间距与屏幕留白均为 14px，几何见 [DockGeometry]）：
 ///   左为把手条、中为 AI 条、右为导航条整体（含两端翻页圆点）；
 /// - 浮层：滚筒指示器、快捷操作弧、本页操作竖单、侧边抽屉、
@@ -75,6 +81,12 @@ class _SmartNavScreenState extends State<SmartNavScreen>
 
   /// 导航锚点状态服务（通知/异常上报接口）。
   late final NavBadgeService _badges;
+
+  /// 聊天会话数据服务（会话增删 / 已读未读）。
+  late final ChatStore _chatStore;
+
+  /// 聊天目的地在页面轨道中的下标（驱动锚点联动；-1 表示未配置）。
+  int _chatPageIndex = -1;
 
   /// 当前页停留满阈值后标为已读的延迟计时器（离开页面即取消）。
   Timer? _readTimer;
@@ -192,6 +204,14 @@ class _SmartNavScreenState extends State<SmartNavScreen>
 
     _badges = InMemoryNavBadgeService(pageCount: _destinations.length);
 
+    _chatStore = ChatStore();
+    _chatPageIndex = _destinations.indexWhere((d) => d.id == 'chat');
+    // 锚点联动：聊天页锚点不再由「停留 700ms」清除，而完全由
+    // 会话未读数据驱动——存在未读即通知（绿呼吸），全部已读才
+    // 恢复默认；左滑「设为未读」同样会重新点亮锚点。
+    _chatStore.addListener(_syncChatBadge);
+    _syncChatBadge();
+
     _nav = NavPhysicsController(
       vsync: this,
       pageCount: _destinations.length,
@@ -215,7 +235,11 @@ class _SmartNavScreenState extends State<SmartNavScreen>
       if (page != lastViewedPage) {
         lastViewedPage = page;
         _readTimer?.cancel();
-        _readTimer = Timer(_readDwell, () => _badges.markViewed(page));
+        // 聊天页的通知态由会话已读数据驱动（见 _syncChatBadge），
+        // 停留计时不再清除它；其余页面维持「停留即已读」。
+        if (page != _chatPageIndex) {
+          _readTimer = Timer(_readDwell, () => _badges.markViewed(page));
+        }
       }
     });
 
@@ -234,6 +258,7 @@ class _SmartNavScreenState extends State<SmartNavScreen>
     _aiHoldTimer?.cancel();
     _drawerAnim.dispose();
     _nav.dispose();
+    _chatStore.dispose();
     _badges.dispose();
     _searchFocusNode.dispose();
     _searchTextController.dispose();
@@ -242,6 +267,20 @@ class _SmartNavScreenState extends State<SmartNavScreen>
 
   /// 抽屉进度帧回调：驱动遮罩/面板/把手停靠位重绘。
   void _handleDrawerTick() => setState(() {});
+
+  /// 会话未读状态 → 聊天页导航锚点的单向同步。
+  ///
+  /// 存在任意未读会话：锚点进入通知态（绿呼吸）；全部已读：
+  /// 通知态直接恢复默认（不经过停留计时）。异常态不受本同步影响。
+  void _syncChatBadge() {
+    final page = _chatPageIndex;
+    if (page < 0) return;
+    if (_chatStore.hasUnread) {
+      _badges.postNotification(page);
+    } else if (_badges.levelOf(page) == NavBadgeLevel.notification) {
+      _badges.markViewed(page);
+    }
+  }
 
   /// 监听到搜索态翻转：重建根树（更新 PopScope.canPop 与 scrim）。
   void _handleNavSearchToggled() {
@@ -1050,6 +1089,22 @@ class _SmartNavScreenState extends State<SmartNavScreen>
             onPointerCancel: _handleRootPointerCancel,
             child: Stack(
               children: [
+                // -------- 机能风固定背景（纹理不随翻页移动）--------
+                const Positioned.fill(
+                  key: ValueKey<String>('mech-bg'),
+                  child: MechanicalBackground(),
+                ),
+
+                // -------- 机能风设备状态读数条（固定顶部）--------
+                Positioned(
+                  key: const ValueKey<String>('mech-coords'),
+                  top: MediaQuery.paddingOf(context).top +
+                      MechanicalStyle.coordsTop,
+                  left: 0,
+                  right: 0,
+                  child: const Center(child: MechanicalCoordsBar()),
+                ),
+
                 // -------- 横向页面轨道 --------
                 Positioned.fill(
                   key: const ValueKey<String>('pages'),
@@ -1066,16 +1121,35 @@ class _SmartNavScreenState extends State<SmartNavScreen>
                               top: 0,
                               bottom: 0,
                               width: screenSize.width * _destinations.length,
-                              child: Row(
-                                // 页面由导航配置驱动：每个目的地的 pageBuilder
-                                // 经 Builder 注入上下文，全部 Expanded 等宽。
+                              child: Stack(
                                 children: [
-                                  for (final destination in _destinations)
+                                  // 机能风大页码：每页一格、页面之下，随轨道横滑。
+                                  Row(
+                                    children: [
+                                      for (var i = 0;
+                                          i < _destinations.length;
+                                          i++)
                                     Expanded(
-                                      child: Builder(
-                                        builder: destination.pageBuilder,
+                                      child: Stack(
+                                        children: [
+                                          MechanicalPageNumber(index: i),
+                                        ],
                                       ),
                                     ),
+                                    ],
+                                  ),
+                                  Row(
+                                    // 页面由导航配置驱动：每个目的地的 pageBuilder
+                                    // 经 Builder 注入上下文，全部 Expanded 等宽。
+                                    children: [
+                                      for (final destination in _destinations)
+                                        Expanded(
+                                          child: Builder(
+                                            builder: destination.pageBuilder,
+                                          ),
+                                        ),
+                                    ],
+                                  ),
                                 ],
                               ),
                             ),
@@ -1123,15 +1197,14 @@ class _SmartNavScreenState extends State<SmartNavScreen>
                     ),
                   ),
 
-                // -------- 滚筒指示器（含页名标签） --------
+                // -------- 页码指示器：机能风 3D 页码转鼓（仅横滑唤醒）--------
                 Positioned(
                   key: const ValueKey<String>('roller'),
                   right: 14,
                   bottom: 52 + safeBottom,
-                  child: NavRoller(
+                  child: MechanicalPageDrum(
                     controller: _nav,
-                    destinations: _destinations,
-                    width: screenSize.width / 2,
+                    pageCount: _destinations.length,
                   ),
                 ),
 
@@ -1266,17 +1339,20 @@ class _SmartNavScreenState extends State<SmartNavScreen>
     // 返回键：搜索态/快捷弧/竖单/AI 对话框/抽屉打开时先关浮层，
     // 不退出 App（canPop 在根树重建时随状态更新，
     // 见 _handleNavSearchToggled 与抽屉帧回调）。
-    return NavBadgeScope(
-      service: _badges,
-      child: PopScope(
-        canPop:
-            !_nav.isSearching &&
-            !_quickArcShown &&
-            !_menuShown &&
-            !_aiShown &&
-            _drawerAnim.value == 0,
-        onPopInvokedWithResult: _handlePopInvoked,
-        child: scaffold,
+    return ChatStoreScope(
+      store: _chatStore,
+      child: NavBadgeScope(
+        service: _badges,
+        child: PopScope(
+          canPop:
+              !_nav.isSearching &&
+              !_quickArcShown &&
+              !_menuShown &&
+              !_aiShown &&
+              _drawerAnim.value == 0,
+          onPopInvokedWithResult: _handlePopInvoked,
+          child: scaffold,
+        ),
       ),
     );
   }
