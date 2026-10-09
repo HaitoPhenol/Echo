@@ -17,9 +17,10 @@ class MechanicalPageNumber extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final screenSize = MediaQuery.sizeOf(context);
-    // 真机微调：在比例位置基础上再向右挪 2dp（减小右边距）。
+    // 真机微调：在比例位置基础上再向右挪（减小右边距），
+    // 累计 −2dp − 30dp = 32dp（用户逐次裁决 2026-10-09）。
     final rightInset =
-        screenSize.width * MechanicalStyle.pageNumberRightFactor - 2;
+        screenSize.width * MechanicalStyle.pageNumberRightFactor - 32;
     return Positioned(
       top: screenSize.height * MechanicalStyle.pageNumberTopFactor,
       right: rightInset,
