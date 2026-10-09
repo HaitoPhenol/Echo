@@ -1089,13 +1089,13 @@ class _SmartNavScreenState extends State<SmartNavScreen>
             onPointerCancel: _handleRootPointerCancel,
             child: Stack(
               children: [
-                // -------- 机能风固定背景（实验层：纹理不随翻页移动）--------
+                // -------- 机能风固定背景（纹理不随翻页移动）--------
                 const Positioned.fill(
                   key: ValueKey<String>('mech-bg'),
                   child: MechanicalBackground(),
                 ),
 
-                // -------- 机能风设备状态读数条（实验层，固定顶部）--------
+                // -------- 机能风设备状态读数条（固定顶部）--------
                 Positioned(
                   key: const ValueKey<String>('mech-coords'),
                   top: MediaQuery.paddingOf(context).top +
@@ -1197,8 +1197,7 @@ class _SmartNavScreenState extends State<SmartNavScreen>
                     ),
                   ),
 
-                // -------- 滚筒指示器（实验：机能风 3D 页码转鼓） --------
-                // 旧横向圆点胶囊 NavRoller 保留在仓库中，实验放弃时挂回。
+                // -------- 页码指示器：机能风 3D 页码转鼓（仅横滑唤醒）--------
                 Positioned(
                   key: const ValueKey<String>('roller'),
                   right: 14,

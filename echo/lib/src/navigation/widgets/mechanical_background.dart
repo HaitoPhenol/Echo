@@ -3,16 +3,16 @@ import 'package:flutter/material.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/mechanical_style.dart';
 
-/// 机能风固定背景：实验底色 + 三层工程纹理（细网格 / 粗网格 / 点阵）
+/// 机能风固定背景：底色 + 三层工程纹理（细网格 / 粗网格 / 点阵）
 /// + 顶部一对十字定位标记。
 ///
-/// 实验隔离组件（feat/page-background-art）：数值全部取自
-/// [MechanicalStyle]，方案验收/放弃时随实验层整体处理。
+/// 颜色取自 [AppColors] 的机能风视觉层色组，几何取自
+/// [MechanicalStyle]（稿号溯源见两文件注释）。
 ///
 /// 行为约定：
 /// * 纹理与十字**固定在屏幕上**，不随横向翻页移动，页面内容从其上方滑过；
 /// * 三层纹理相对屏幕左上角有整体平移（[MechanicalStyle.gridOriginShiftX/Y]）；
-/// * 不画实体描边框、不画底部十字（实验改版）：仅顶部两个十字标定
+/// * 不画实体描边框、不画底部十字：仅顶部两个十字标定
 ///   「状态栏下沿、左右各 14dp」的位置；
 /// * 静态绘制，外包 [RepaintBoundary]，导航动画不会引发背景重绘；
 /// * 只画"表皮"，不承载任何交互。

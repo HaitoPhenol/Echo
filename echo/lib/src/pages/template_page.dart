@@ -20,10 +20,10 @@ class TemplatePage extends StatelessWidget {
   /// 页面标题（与导航配置中的 label 一致）。
   final String title;
 
-  /// 机能风分区编号（实验，如 SEC.01）；null 时不显示 kicker。
+  /// 机能风分区编号（如 SEC.01）；null 时不显示 kicker。
   final String? secCode;
 
-  /// 机能风分区英文名（实验，如 CONSOLE）；与 [secCode] 成对出现。
+  /// 机能风分区英文名（如 CONSOLE）；与 [secCode] 成对出现。
   final String? secName;
 
   /// 标题下方的附属区域（当前用于放置测试按钮，无内容时不占位）。
@@ -32,8 +32,8 @@ class TemplatePage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final showKicker = secCode != null && secName != null;
-    // 底色透明：机能风实验期由主屏 Stack 底层的 MechanicalBackground
-    // 透出固定纹理；实验放弃时随相关改动一起还原。
+    // 底色透明：由主屏 Stack 底层的 MechanicalBackground 透出固定纹理，
+    // 页面本体只承载内容。
     return ColoredBox(
       color: Colors.transparent,
       child: Center(
@@ -67,9 +67,10 @@ class TemplatePage extends StatelessWidget {
               ),
               const SizedBox(height: 22),
             ],
-            // 大字距下 Flutter 仍在末字后追加一个字距，布局盒比墨水
-            // 实际宽出一个 letterSpacing，居中时墨水整体左偏（单字标题
-            // 「我」尤其明显）；向左补偿半个字距做光学居中。
+            // 大字距下 Flutter 在末字后也追加一个字距，布局盒比墨水
+            // 宽出一个 letterSpacing；向左补偿半个字距做光学居中
+            // （真机 PIL 像素校验：补偿后控制台/日志/我三页墨水中心
+            // 均为屏中 540，见 29.png）。
             Transform.translate(
               offset: const Offset(
                 -MechanicalStyle.pageTitleLetterSpacing / 2,

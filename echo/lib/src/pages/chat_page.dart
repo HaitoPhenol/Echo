@@ -206,10 +206,9 @@ class ChatListRow extends StatelessWidget {
 
 /// 行前景：头像 + 文案 + 未读绿点 + 底部分隔线。
 ///
-/// 机能风实验期（feat/page-background-art）底色透明，让固定背景
-/// 纹理透到会话行；左滑操作按钮的遮挡改由 _SwipeToReveal 对操作区
-/// 按露出宽度裁剪实现（不再依赖本行不透明实底）。
-/// 实验放弃时：本行还原不透明底色、操作区裁剪同步移除。
+/// 底色透明，让主屏的机能风固定背景纹理透到会话行；左滑操作按钮
+/// 的遮挡由 _SwipeToReveal 对操作区按露出宽度裁剪实现（不依赖行
+/// 不透明实底）。
 class _RowForeground extends StatelessWidget {
   const _RowForeground({required this.conversation});
 
@@ -563,7 +562,7 @@ class _SwipeToRevealState extends State<_SwipeToReveal>
     return Stack(
       children: [
         // 操作区：右对齐铺满行高，始终在树中（左滑跟手时要即时露出）。
-        // 机能风实验期行前景透明，遮挡方式从「前景不透明实底」改为
+        // 行前景透明（机能风固定背景要透到会话行），遮挡方式为
         // 「按前景实时偏移裁剪操作区」：裁剪矩形就是行右侧宽度等于
         // 已露出宽度（0 ~ actionWidth）的窄条，窗口外的按钮既不绘制
         // 也不参与 hit test（CustomClipper 同时约束 hitTest 区域）。

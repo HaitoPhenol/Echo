@@ -3,12 +3,11 @@ import 'package:flutter/material.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/mechanical_style.dart';
 
-/// 每页随横滑移动的空心大页码（机能风实验 feat/page-background-art）。
+/// 每页随横滑移动的空心大页码（机能风视觉层组件）。
 ///
 /// 120sp 白描边空心数字（稿 .idx：top:5vh/right 靠中间收，
 /// 填充透明、1dp 白α.10 描边），IgnorePointer 不挡手势；
 /// 画在页面轨道内、与页面一起横滑，固定背景与读数条不动。
-/// 实验放弃时本文件随背景层一起删除。
 class MechanicalPageNumber extends StatelessWidget {
   const MechanicalPageNumber({super.key, required this.index});
 

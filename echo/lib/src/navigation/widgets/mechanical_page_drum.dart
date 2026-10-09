@@ -6,7 +6,7 @@ import '../../theme/app_colors.dart';
 import '../../theme/mechanical_style.dart';
 import '../nav_physics.dart';
 
-/// 机能风 3D 页码转鼓指示器（实验分支 feat/page-background-art 专用）。
+/// 机能风 3D 页码转鼓指示器（右下角页码指示）。
 ///
 /// 1:1 移植自设计工程稿 `ideas/mechanical_style_page.html` 的右下角
 /// 「滚筒模块」（稿 L304-345、L686-695、L918-939）：
@@ -16,9 +16,9 @@ import '../nav_physics.dart';
 /// - 右侧一列竖排刻度指示当前页；底部 2px 进度条；
 /// - 面板左上/右下各一道直角亮线。
 ///
-/// 显隐节奏与旧 NavRoller 完全一致（rollerVisible 驱动
-/// IgnorePointer + AnimatedOpacity + AnimatedSlide），手势唤醒机制
-/// 不在本组件内。方案被推翻时整块删除并挂回旧组件。
+/// 显隐由 rollerVisible 驱动（IgnorePointer + AnimatedOpacity +
+/// AnimatedSlide），手势唤醒机制不在本组件内；圆点 stepPage / snapTo
+/// 路径不显示转鼓，只有横滑 dragStart 才唤醒。
 class MechanicalPageDrum extends StatelessWidget {
   const MechanicalPageDrum({
     super.key,

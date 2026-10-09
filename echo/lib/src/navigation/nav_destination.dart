@@ -65,7 +65,7 @@ List<NavDestination> buildDefaultDestinations() {
           // null，调试组件随树摇移除，不会进入发布包。
           _ => TemplatePage(
             title: label,
-            // 机能风实验：模板页分区小标题（编号与轨道顺序一致）。
+            // 机能风模板页分区小标题（编号与轨道顺序一致）。
             secCode: switch (id) {
               'console' => 'SEC.01',
               'notes' => 'SEC.03',

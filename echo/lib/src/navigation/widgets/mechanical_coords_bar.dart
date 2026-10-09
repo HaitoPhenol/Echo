@@ -6,14 +6,13 @@ import 'package:flutter/services.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/mechanical_style.dart';
 
-/// 顶部固定的设备状态读数条（机能风实验 feat/page-background-art）。
+/// 顶部固定的设备状态读数条（机能风视觉层组件）。
 ///
 /// 显示 `DEV 型号 · T 电池温度 · P 瞬时功耗`，数据来自原生通道
 /// `echo/device_stats`（见 MainActivity.kt，零三方库零权限），
 /// 每 5 秒轮询一次；拿不到数据（测试环境/无传感器）时数值显示「—」。
 ///
 /// 纯展示、[IgnorePointer] 不挡手势、固定不随翻页移动。
-/// 实验放弃时本文件与原生通道一起删除。
 class MechanicalCoordsBar extends StatefulWidget {
   const MechanicalCoordsBar({super.key});
 

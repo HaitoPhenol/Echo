@@ -16,8 +16,8 @@ class MainActivity : FlutterActivity() {
     /// 触感反馈的方法通道名（与 Dart 端 Haptics 工具类一致）。
     private val hapticsChannelName = "echo/haptics"
 
-    /// 设备状态快照通道名（机能风实验 feat/page-background-art）。
-    /// 实验放弃时本通道与 Dart 端 MechanicalCoordsBar 一起删除。
+    /// 设备状态快照通道名（机能风顶部读数条的数据源）。
+    /// Dart 端消费方：MechanicalCoordsBar。
     private val deviceStatsChannelName = "echo/device_stats"
 
     override fun configureFlutterEngine(@NonNull flutterEngine: FlutterEngine) {
