@@ -564,22 +564,32 @@ class _SwipeToRevealState extends State<_SwipeToReveal>
       children: [
         // 操作区：右对齐铺满行高，始终在树中（左滑跟手时要即时露出）。
         // 机能风实验期行前景透明，遮挡方式从「前景不透明实底」改为
-        // 「按前景实时偏移裁剪操作区」：ClipRect + Align(widthFactor)
-        // 使操作区可见/可点宽度恒等于已露出宽度（0 ~ actionWidth），
-        // 收起时宽度为 0，按钮不可见也不参与 hit test。
+        // 「按前景实时偏移裁剪操作区」：ClipRect 全尺寸裁剪，内部右对齐
+        // 的可见窗口宽度恒等于已露出宽度（0 ~ actionWidth）；
+        // OverflowBox 让按钮 Row 始终以 actionWidth 完整布局、右贴窗口，
+        // 窗口外部分被 ClipRect 裁掉且不参与 hit test。
+        // （不能用 Align(widthFactor) 收窄：Positioned.fill 是紧约束，
+        // widthFactor 在紧约束下被忽略，会导致收起态按钮整排穿出。）
         Positioned.fill(
           child: ExcludeSemantics(
             excluding: offset == _closedOffset,
             child: ClipRect(
               child: Align(
                 alignment: Alignment.centerRight,
-                widthFactor: (-offset / widget.actionWidth).clamp(0.0, 1.0),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  // stretch：让操作按钮填满整行高度（Align 给的是
-                  // 全高松散约束，不 stretch 会缩成文字高度）。
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: widget.actions,
+                child: SizedBox(
+                  width: (-offset).clamp(0.0, widget.actionWidth),
+                  height: double.infinity,
+                  child: OverflowBox(
+                    alignment: Alignment.centerRight,
+                    minWidth: widget.actionWidth,
+                    maxWidth: widget.actionWidth,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      // stretch：让操作按钮填满整行高度。
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: widget.actions,
+                    ),
+                  ),
                 ),
               ),
             ),
