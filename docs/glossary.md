@@ -20,10 +20,11 @@
 | **拇指滑块** | 导航条内部的**不透明灰色**小块（0xFF838383，视觉亮度等同 tone1 底上叠 tone2），位置代表当前页、随手指移动；宽度 = 导航条长度 / 页面数，可大致反映总页数；**按下无外观变化** | `search_capsule.dart` 的 `_thumb()` |
 | **导航锚点 / 锚点** | 导航条内部、每一页对应一个的竖直小短条（稍短于导航条高度）；始终挂载、画在滑块下层，常态为 tone2（白 α.42）且不发光，被不透明滑块物理遮挡；该页有通知时绿色呼吸、有异常时红色急闪；发光被裁剪在导航条内，不超出条外 | `search_capsule.dart` 的 `_anchors()` / `_NavAnchor`，状态来自 `services/nav_badge_service.dart` |
 | **隐形触控区** | 导航条/圆点上方约 32px、下方约 10px 的不可见纵向热区，视觉不变但更好按中；横向热区不扩展：圆点热区 = 自身直径 2 倍、导航条热区 = 自身长度 | `smart_nav_screen.dart` 的 `_navGeometry()` / `_handleRootPointerDown()` |
-| **页码转鼓 / 转鼓** | 横滑时在右下角浮现的机能风 3D 指示器（176dp 宽）：方边框面板内一条绕圆柱旋转的数字牌片序列，当前页牌片对齐视窗中心；顶行仅 blip + PAGE 标签（原稿 NO.0N 编号、右侧刻度列已精简删除），底部 2px 跟手进度条；替代旧横向圆点胶囊（NavRoller 已删）；**仅横滑唤醒**，圆点点按、双击直达不显示 | `widgets/mechanical_page_drum.dart` 的 `MechanicalPageDrum` |
+| **页码转鼓 / 转鼓** | 横滑时在右下角浮现的机能风 3D 指示器（176dp 宽）：方边框面板内一条绕圆柱旋转的数字牌片序列，当前页牌片对齐视窗中心；顶行仅 blip + PAGE 标签（原稿 NO.0N 编号、右侧刻度列已精简删除），底部 2px 跟手进度条；替代旧横向圆点胶囊（NavRoller 已删）；**仅横滑唤醒**，圆点点按、双击直达不显示；正常收回播垂直百叶窗故障退场（340ms），上甩/进搜索瞬隐 | `widgets/mechanical_page_drum.dart` 的 `MechanicalPageDrum` |
 | **数字牌片** | 转鼓圆柱上每一页的一张大号数字片（两位页码 01～04），按页间距绕 R=190 圆柱做 rotateY，远面先画近面后画、背面剔除 | `mechanical_page_drum.dart` |
 | **页名牌** | 横滑时在左下角与转鼓同时浮现的衬线页名：半透明色块内 64sp w700 宋体（系统 serif 族）页名 + 56×3 短横线；面板框仿转鼓但向右开口（左/上通线、底边半线、右边不画，左上/左下亮角标），色块底边与转鼓底边对齐；跨页中点硬切文字，与转鼓同显隐；叠加赛博故障动画（唤醒播一次、成功翻页重播、边界回弹不播），详见「赛博故障」 | `widgets/mechanical_page_name_plate.dart` 的 `MechanicalPageNamePlate` |
-| **赛博故障（glitch）** | 页名牌的故障风动画层：文字切三条水平片错时闪烁接通、整字数码抖动、mechInkDim 灰色重影副本（极简单色风）、1px 白线横扫、下划线延迟展开；单控制器 620ms，t=1 稳态；唤醒边沿或可见期内 activePage 硬切时从头播，首/末页回弹与收回不播 | `mechanical_page_name_plate.dart` 内 `_Glitch*`、`MechanicalStyle.nameGlitch*` |
+| **赛博故障（glitch）** | 页名牌的故障风动画层：文字切三条水平片错时闪烁接通、整字数码抖动、mechInkDim 灰色重影副本（极简单色风）、1px 白线横扫、下划线延迟展开；单控制器 620ms，t=1 稳态；唤醒边沿或可见期内 activePage 硬切时从头播，首/末页回弹不播；收回不走本层，由 MechanicalIndicatorLifecycle 播垂直百叶窗退场 | `mechanical_page_name_plate.dart` 内 `_Glitch*`、`MechanicalStyle.nameGlitch*` |
+| **退场百叶窗** | 页名牌与转鼓共用的故障风退场（`MechanicalIndicatorLifecycle`）：整体切 10 条竖带按固定乱序错峰、每条两明两暗后熄灭，前段叠 3px 衰减横抖；总时长 340ms 与旧 fade/rise 相同，单 ClipPath 合成；上甩切快捷弧、进入搜索态走 `rollerInstantHide` 瞬隐不播 | `widgets/mechanical_indicator_lifecycle.dart`、`MechanicalStyle.indicatorExit*` |
 | **磁力曲线 / 吸附曲线** | 拖动时的非线性位置映射：靠近整页粘滞、两页之间滑落，产生吸附感；页面轨道、转鼓、滑块共用 | `nav_physics.dart` 的 `displayPosition` |
 
 ## 二、底部三条（把手 / AI）与侧边抽屉

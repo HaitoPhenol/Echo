@@ -466,9 +466,14 @@ Stack 分层在 `SmartNavScreen.build`（机能风层见 3.11）：
   w 侧；背面剔除（|world|≥90°）、远面先画近面后画；视窗左右为
   `mechDrumLine` 虚线竖边。底部 2px 进度条（轨道
   `mechDrumProgressTrack`、填充 `mechInk`）。显隐由
-  rollerVisible 驱动（IgnorePointer + AnimatedOpacity +
-  AnimatedSlide）：**仅横滑 dragStart 唤醒**；圆点点按 stepPage、
-  双击 snapTo 直达不显示转鼓。
+  rollerVisible 驱动，两个指示器统一走
+  `MechanicalIndicatorLifecycle`：**仅横滑 dragStart 唤醒**
+  （圆点点按 stepPage、双击 snapTo 直达不显示）；入场 fade 220ms
+  +rise 340ms；**正常收回**（落位 650ms 定时器）播 340ms
+  「垂直百叶窗」故障退场——10 条竖带按固定乱序错峰、每条两明两暗
+  后熄灭，前段叠 3px 衰减横抖，单 ClipPath 合成不倍增转鼓重绘；
+  **上甩切快捷弧 / 进入搜索态**（`rollerInstantHide`）为互斥瞬隐，
+  不播退场。
 - **左下页名牌** `MechanicalPageNamePlate`（稿 #pgname）：
   `Positioned(left: DockGeometry.sideMargin, bottom: 52 + safeBottom)`
   ——**左右边距与转鼓同源**（均 14dp，原稿 left:5vw 在 393dp 宽屏
@@ -495,7 +500,9 @@ Stack 分层在 `SmartNavScreen.build`（机能风层见 3.11）：
   白线横扫、下划线延迟展开（1.08 过冲）。
   触发只有两个边沿：**唤醒当帧播一次**；**可见期内 activePage
   硬切（成功翻页）立即从头重播**，连续跨页连击不断。首/末页边界
-  回弹 activePage 不变不触发；收回时故障即时回稳态，只留 fade/rise。
+  回弹 activePage 不变不触发；收回时入场故障即时回稳态，由共有的
+  MechanicalIndicatorLifecycle 接管「垂直百叶窗」退场（与入场的
+  水平切片撕裂做差异），上甩/搜索路径仍瞬隐。
 - **保留项（验收时确认不动）**：粗网格 α 维持 .10（长列表灰色
   预览文案在粗线恰好穿字时略花、随滚动变化，整体可读）；kicker
   未打包真等宽字体（`fontFamily: monospace` 在 Flutter/Android
