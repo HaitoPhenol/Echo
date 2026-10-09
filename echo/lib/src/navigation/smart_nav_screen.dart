@@ -21,8 +21,8 @@ import 'widgets/handle_bar.dart';
 import 'widgets/handle_menu.dart';
 import 'widgets/mechanical_background.dart';
 import 'widgets/mechanical_coords_bar.dart';
+import 'widgets/mechanical_page_drum.dart';
 import 'widgets/mechanical_page_number.dart';
-import 'widgets/nav_roller.dart';
 import 'widgets/quick_action_arc.dart';
 import 'widgets/search_capsule.dart';
 import 'widgets/side_drawer.dart';
@@ -1197,15 +1197,15 @@ class _SmartNavScreenState extends State<SmartNavScreen>
                     ),
                   ),
 
-                // -------- 滚筒指示器（含页名标签） --------
+                // -------- 滚筒指示器（实验：机能风 3D 页码转鼓） --------
+                // 旧横向圆点胶囊 NavRoller 保留在仓库中，实验放弃时挂回。
                 Positioned(
                   key: const ValueKey<String>('roller'),
                   right: 14,
                   bottom: 52 + safeBottom,
-                  child: NavRoller(
+                  child: MechanicalPageDrum(
                     controller: _nav,
-                    destinations: _destinations,
-                    width: screenSize.width / 2,
+                    pageCount: _destinations.length,
                   ),
                 ),
 

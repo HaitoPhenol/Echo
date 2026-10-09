@@ -6,7 +6,7 @@ import 'package:echo/src/app/echo_app.dart';
 import 'package:echo/src/navigation/smart_nav_screen.dart';
 import 'package:echo/src/navigation/widgets/ai_dialog.dart';
 import 'package:echo/src/navigation/widgets/handle_menu.dart';
-import 'package:echo/src/navigation/widgets/nav_roller.dart';
+import 'package:echo/src/navigation/widgets/mechanical_page_drum.dart';
 import 'package:echo/src/navigation/widgets/quick_action_arc.dart';
 import 'package:echo/src/navigation/widgets/side_drawer.dart';
 import 'package:echo/src/pages/chat_page.dart';
@@ -106,7 +106,7 @@ void main() {
     // 滚筒整体显隐用的最外层 AnimatedOpacity
     Finder rollerOpacity() => find
         .descendant(
-          of: find.byType(NavRoller),
+          of: find.byType(MechanicalPageDrum),
           matching: find.byType(AnimatedOpacity),
         )
         .first;
