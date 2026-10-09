@@ -26,6 +26,15 @@
 > 两个指示器共用的 MechanicalIndicatorLifecycle，上甩/进搜索
 > 仍瞬隐。
 >
+> **未发布（分支 `feat/notes-page`，版本号待合入 main 时排）**：
+> 日志页改名**笔记**（label「日志」→「笔记」、英文 kicker
+> LOGS→NOTES，SEC.03 保留），笔记功能暂不做、笔记页不挂任何
+> 调试按钮；异常模拟/处理从日志页收拢到终端页调试面板
+> （终端页共三个按钮：模拟聊天新消息 / 模拟异常 / 处理异常），
+> 终端页下标由 nav_destination 按稳定 id 解析后经构造参数传入，
+> 消除脚手架写死页序（P2-10 的脚手架一半已还，接口按 int 索引的
+> 债务仍在）。
+>
 > 相关文档：[架构与接口说明](architecture.md) ·
 > [工程规范](engineering_standards.md) · [规则演进机制](governance.md) ·
 > [术语表](glossary.md) · [问题清单](code_review_report.md)
@@ -46,8 +55,10 @@
 
 ## 页面与导航
 
-- **4 个页面**：终端 / 聊天 / 日志 / 主页（见 `navigation/nav_destination.dart`；
-  首页中文页名 v0.6.1 起由「控制台」改「终端」，英文 kicker 仍为 CONSOLE）。
+- **4 个页面**：终端 / 聊天 / 笔记 / 主页（见 `navigation/nav_destination.dart`；
+  首页中文页名 v0.6.1 起由「控制台」改「终端」，第三页由「日志」改「笔记」
+  （分支 feat/notes-page，版本号待合入 main 时排定）；英文 kicker 分别为
+  CONSOLE / NOTES / ME）。
   聊天页已替换为真实页面 `ChatPage`（`pages/chat_page.dart`，数据来自
   `services/chat_store.dart` 的 `ChatStore`）：**无标题栏**，
   列表初始为空，空态整屏居中显示 13px 小字「暂无消息」（tone2）；
@@ -61,7 +72,8 @@
   未读行右上角有**呼吸绿点**（anchorGreen，1.7s 往返，与导航锚点同参数），
   点按未读行即已读；终端页「模拟：聊天新消息」经 `ChatStore.addIncoming()`
   在最前插入未读会话。
-  其余三页仍是只显示标题的 TemplatePage，终端、日志页挂有调试用模拟按钮。
+  其余三页仍是只显示标题的 TemplatePage；仅终端页挂锚点调试面板
+  （模拟聊天新消息 / 模拟异常 / 处理异常，共 3 个按钮），笔记与主页无调试按钮。
   **四页均套有机能风视觉层（v0.6.0 转正，RCR-2026-001）**：主屏 Stack
   最底层为固定的网格/点阵/十字背景（RepaintBoundary 静态层），状态栏下沿
   是设备读数条，页面底色透明；模板页带 SEC kicker 与 48sp w700 大字距标题，
@@ -111,11 +123,15 @@
   停留 700ms 计时器对聊天页不启动；「置未读」会重新点亮锚点。
   其余页面仍是「停留 700ms 即已读」。
 - 搜索数据源仅接入了"页面搜索"一个；`SearchProvider.search` 当前为同步接口。
-- 锚点状态**按页序号 int 索引**，与 NavDestination 稳定 id 的设计相矛盾；
-- 做任何锚点持久化之前，必须先改为按 destinationId 索引。
-- 调试模拟按钮（模拟聊天新消息 / 日志报错 / 处理异常）由 `kDebugMode`
-  守卫（v0.4.11 起），release/profile 包不挂载；「聊天新消息」改为调
-  `ChatStore.addIncoming()`，脚手架内不再硬编码聊天页序号（仅日志页仍写死 2）。
+- 锚点状态**按页序号 int 索引**，与 NavDestination 稳定 id 的设计相矛盾
+  （code_review_report P2-10：脚手架一侧的写死序号已消除，但接口层债务仍在）；
+  做任何锚点持久化之前，必须先改为按 destinationId 索引。
+- 调试模拟按钮（模拟聊天新消息 / 模拟异常 / 处理异常）全部收拢在
+  终端页一个面板，由 `kDebugMode` 守卫（v0.4.11 起），release/profile
+  包不挂载；「聊天新消息」调 `ChatStore.addIncoming()`，异常模拟/处理
+  作用于终端页自身，其下标由 `buildDefaultDestinations()` 按 id
+  （indexWhere(id == 'console')）解析后经构造参数传入，脚手架内已无
+  写死页序；笔记页（原日志页）不挂任何调试按钮。
 - 返回键（v0.4.12 起）由根 `PopScope` 统一拦截：任一浮层（搜索 / 快捷弧
   / 竖单 / AI 对话框 / 抽屉）存在时先关浮层不退出 App；`feat/handle-ai-bars`
   分支把新浮层全部纳入同一 canPop 判定。

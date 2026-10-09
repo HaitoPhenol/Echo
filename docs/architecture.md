@@ -119,7 +119,7 @@ AGENT.md                                   # 给开发 agent 的工作提示（�
 | `pageBuilder` | `WidgetBuilder` | 页面本体构建器，按需构建 |
 
 默认配置由 `buildDefaultDestinations()` 构建，当前为 4 页：
-终端（console）、聊天（chat）、日志（notes）、主页（me）。
+终端（console）、聊天（chat）、笔记（notes）、主页（me）。
 其中**聊天页已替换为真实页面** `ChatPage`（`pages/chat_page.dart`，
 会话数据来自 `ChatStore`，见 3.10）：无标题栏；列表初始为空，
 空态整屏居中显示 13px 小字「暂无消息」（tone2），有会话时切换为
@@ -240,7 +240,7 @@ GlobalKey 重挂载曾触发框架断言），而是由 `DockGeometry`（底部�
 文件：`lib/src/services/nav_badge_service.dart`
 
 导航条内每一页有一个锚点短条，其状态由此服务管理。这是预留的
-**通知接口**：任何模块（消息、日志监控等）只依赖抽象接口，不关心 UI。
+**通知接口**：任何模块（消息、某业务模块的异常等）只依赖抽象接口，不关心 UI。
 
 - **`NavBadgeLevel`**：`normal`（白色静止）/ `notification`
   （绿色呼吸，1.7s 缓动往返）/ `exception`（红色急闪，0.62s 往返）。
@@ -281,12 +281,15 @@ GlobalKey 重挂载曾触发框架断言），而是由 `DockGeometry`（底部�
 - **锚点始终全部挂载、画在滑块下层，不做位置显隐**：当前页段被不透明
   滑块物理遮挡，拖动时从滑块边缘自然滑入滑出；常态色与滑块视觉一致
   （白 α.42 叠 tone1 ≈ 滑块灰），离开滑块时无色差（见规范事故 12/13）。
-- `pages/debug_badge_controls.dart` 为测试脚手架：终端页可模拟
-  「聊天新消息」（调 `ChatStore.addIncoming()`，不再直接操作锚点）、
-  「日志报错」，日志页有「处理异常」按钮。接入真实
-  通知源后此脚手架应移除。脚手架在 `buildDefaultDestinations()` 中由
-  `kDebugMode` 守卫：仅 debug 构建挂入页面，release/profile 构建
-  footer 为 null、组件随树摇移除，不会出现在发布包中。
+- `pages/debug_badge_controls.dart` 为测试脚手架，三个按钮全部挂在
+  终端页：「模拟：聊天新消息」（调 `ChatStore.addIncoming()`，
+  不直接操作锚点）、「模拟：异常」（终端页锚点进入红闪）、「处理异常」
+  （无异常时禁用并显示「当前无待处理异常」）；笔记页不挂任何调试按钮。
+  终端页下标由 `buildDefaultDestinations()` 按稳定 id
+  （`indexWhere((d) => d.id == 'console')`）解析后经构造参数传入，
+  脚手架内不写死页序。接入真实通知/异常源后此脚手架应移除。
+  脚手架由 `kDebugMode` 守卫：仅 debug 构建挂入页面，release/profile
+  构建 footer 为 null、组件随树摇移除，不会出现在发布包中。
 
 ### 3.8 颜色体系：中性亮度四阶阶梯
 
@@ -443,9 +446,10 @@ Stack 分层在 `SmartNavScreen.build`（机能风层见 3.11）：
   （MainActivity.kt，零三方库零权限），5 秒轮询、异常降级显示
   「—」；`IgnorePointer` 不挡手势。
 - **页面层**：`TemplatePage` 底色透明，内容为机能风 kicker +
-  大标题——kicker（终端 SEC.01 // CONSOLE、日志 SEC.03 // LOGS、
-  我 SEC.04 // ME；11sp w700、字距 3.85，`mechInk` / `mechInkDim`；
-  中文页名已改「终端」，英文 kicker 保留 CONSOLE）
+  大标题——kicker（终端 SEC.01 // CONSOLE、笔记 SEC.03 // NOTES、
+  主页 SEC.04 // ME；11sp w700、字距 3.85，`mechInk` / `mechInkDim`；
+  中文页名改为「终端」「笔记」「主页」后，英文 kicker 仍保留
+  CONSOLE / NOTES / ME）
   与 48sp w700、字距 5.76（.12em）大标题；Flutter 在末字后也
   追加一个字距，用 −字距/2 的 `Transform.translate` 做光学居中
   （真机像素校验三/二/单字标题墨水中心均为屏中 540）。
@@ -547,8 +551,8 @@ Stack 分层在 `SmartNavScreen.build`（机能风层见 3.11）：
 
 ### 接入真实通知 / 异常源
 取得 `NavBadgeService`（经 `NavBadgeScope.of(context)` 或由上层注入）：
-消息到达时调 `postNotification(页索引)`，日志监控捕获错误时调
-`reportException(页索引)`，问题修复流程完成时调 `resolveException(页索引)`。
+消息到达时调 `postNotification(页索引)`，某模块发生异常时调
+`reportException(页索引)`，异常处理流程完成时调 `resolveException(页索引)`。
 「停留 700ms 即已读」与锚点动画无需接入方处理；**聊天页是数据驱动
 例外**——接入真实消息模块时实现/替换 `ChatStore`（见 3.10），锚点
 联动由 `SmartNavScreen` 的监听完成，不要直接 post 聊天页通知。

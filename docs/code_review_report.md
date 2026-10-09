@@ -485,6 +485,14 @@ PointerMove 事件在两帧之间也会到达（触控采样率通常 ≥ 120Hz�
 
 ### P2-10 锚点状态以"页序号 int"为 key，与稳定 id 的设计自相矛盾 —— 置信度：确定（改动时机见 Q 规划）
 
+> **分支 `feat/notes-page` 进展（未合入 main）**：调试脚手架一侧的
+> 硬编码已消除——`LogBadgeControls` 与 `_notesPage` 常量删除，异常
+> 模拟/处理收拢到终端页 `ConsoleBadgeControls`（三个按钮），终端页
+> 下标由 `buildDefaultDestinations()` 用
+> `indexWhere((d) => d.id == 'console')` 解析后经构造参数传入。
+> **本条仍开放**：`NavBadgeService` 接口本身依旧按 int page 索引
+> （见下），持久化之前仍须整体改为按 destinationId 索引。
+
 **位置**：[nav_badge_service.dart:23-35](file:///home/phenol/Documents/GitHub/Echo/echo/lib/src/services/nav_badge_service.dart#L23-L35)
 （全部接口用 int page）、
 [debug_badge_controls.dart:9](file:///home/phenol/Documents/GitHub/Echo/echo/lib/src/pages/debug_badge_controls.dart#L9)
