@@ -256,7 +256,7 @@ void main() {
 
     /// 第 i 个目的地页的位置标记：聊天页（i=1）已换成 ChatPage，
     /// 用其 ListView；其余三页仍是 TemplatePage 标题。
-    /// 注意 TemplatePage 序列中终端/日志/我依次为 0/2/3（1 为聊天）
+    /// 注意 TemplatePage 序列中终端/日志/主页依次为 0/2/3（1 为聊天）
     /// （聊天页不在该序列内）。
     Finder pageMarker(int i) {
       if (i == 1) {
