@@ -470,7 +470,9 @@ Stack 分层在 `SmartNavScreen.build`（机能风层见 3.11）：
   AnimatedSlide）：**仅横滑 dragStart 唤醒**；圆点点按 stepPage、
   双击 snapTo 直达不显示转鼓。
 - **左下页名牌** `MechanicalPageNamePlate`（稿 #pgname）：
-  `Positioned(left: 5vw, bottom: 52 + safeBottom)`——**色块底边
+  `Positioned(left: DockGeometry.sideMargin, bottom: 52 + safeBottom)`
+  ——**左右边距与转鼓同源**（均 14dp，原稿 left:5vw 在 393dp 宽屏
+  约 19.6dp 不与转鼓右边对齐，已改），**色块底边
   与转鼓面板底边对齐**（原稿 bottom:26px 未采用）。内容为 64sp
   w700、字距 5.12（.08em）的当前页名（带稿 0/2/12 柔和投影）+
   下方 56×3 的 `mechInk` 短横线，
