@@ -36,10 +36,11 @@ echo/
 │       ├── app/
 │       │   └── echo_app.dart              # MaterialApp、主题装配
 │       ├── theme/
-│       │   └── app_colors.dart            # 全局调色板
+│       │   ├── app_colors.dart            # 全局调色板（tone 四阶 + 机能风 mech 色组）
+│       │   └── mechanical_style.dart      # 机能风几何/排印/时长常量（颜色在 AppColors）
 │       ├── pages/
 │       │   ├── chat_page.dart             # 聊天页（数据驱动会话列表：左滑操作/未读绿点）
-│       │   ├── template_page.dart         # 空白占位页（只显示标题，可挂 footer）
+│       │   ├── template_page.dart         # 模板页（大标题 + SEC kicker，可挂 footer）
 │       │   └── debug_badge_controls.dart  # 锚点通知/异常的测试按钮（脚手架）
 │       ├── services/                      # 与界面无关的能力层
 │       │   ├── chat_store.dart            # 聊天会话数据：增删/已读未读 + 未读聚合
@@ -54,7 +55,10 @@ echo/
 │           ├── nav_physics.dart           # 滚动/吸附物理引擎
 │           ├── smart_nav_screen.dart      # 主屏：手势识别 + 组装
 │           └── widgets/
-│               ├── nav_roller.dart        # 滚筒指示器 + 页名标签
+│               ├── mechanical_background.dart  # 机能风固定背景（网格/点阵/十字）
+│               ├── mechanical_coords_bar.dart  # 顶部设备状态读数条
+│               ├── mechanical_page_number.dart # 每页空心大页码 01-04
+│               ├── mechanical_page_drum.dart   # 3D 页码转鼓指示器
 │               ├── quick_action_arc.dart  # 快捷操作弧
 │               ├── search_capsule.dart    # 导航条 + 翻页圆点 + 搜索面板
 │               ├── fuse_border_painter.dart # 倒计时边框
@@ -68,7 +72,7 @@ echo/
 │   ├── navigation/
 │   │   └── dock_geometry_test.dart        # 快捷弧布局纯函数测试（6 个用例）
 │   └── pages/
-│       └── chat_page_test.dart            # 会话列表交互测试（5 个用例）
+│       └── chat_page_test.dart            # 会话列表交互测试（7 个用例）
 └── README.md                              # Flutter 默认工程说明
 docs/
 ├── architecture.md                        # 本文档：架构与接口
@@ -79,14 +83,16 @@ docs/
 ├── governance.md                         # 规则演进机制（RCR 流程、级别、复审）
 ├── maintainer-charter.md                 # AI 维护者常设职责（审查/问题登记/文档维护）
 ├── proposals/                            # 规则变更提案与登记册（永不删除）
-│   └── README.md
+│   ├── README.md
+│   └── 2026-10-09-mechanical-visual-tokens.md # RCR-2026-001 机能风视觉层
 ├── templates/
 │   └── rule-proposal.md                  # RCR 提案模板
 └── component-reports/                     # 组件阶段开发总结（归档，只增不改）
     └── smart-nav-line-v0.4.10-2026-10-06.md
 ideas/
 ├── smart_line.html                        # 原型：导航线设计与手感基准
-└── another_two_lines.html                 # 原型：把手条 / AI 条 / 抽屉基准
+├── another_two_lines.html                 # 原型：把手条 / AI 条 / 抽屉基准
+└── mechanical_style_page.html             # 原型：机能风页面背景与转鼓（稿号 Lxx 出处）
 AGENT.md                                   # 给开发 agent 的工作提示（入口）
 ```
 
@@ -306,12 +312,19 @@ tone2、快捷弧选中按钮 = tone4**；**拇指滑块是特例**：使用不�
   状态语义（搜索、通知、异常）。
 - **AI 虹彩色**：AI 条流动六色是该组件的专属识别色，不属于中性阶梯
   也不进共享色板，就地定义在 `widgets/ai_bar.dart`。
+- **机能风视觉层色组**（`mech*` 前缀，RCR-2026-001 收编）：
+  固定背景、三层纹理/点阵、读数条、空心大页码、kicker、3D 转鼓
+  共用的 15 个皮肤 token（`mechBackground` / `mechFineGrid`(α.05) /
+  `mechCoarseGrid`(α.10) / `mechGridDot`(α.22) / `mechCoordsDim/Hi` /
+  `mechPageNumberStroke` / `mechInk`(#D8D8D8) / `mechInkDim`(#646464) /
+  `mechDrum*` 系列），与四阶阶梯并列、互不混用，详见 3.11。
 - SnackBar 不走 M3 默认反色浅底：`EchoApp` 主题统一为
   `overlaySurface` 底 + 白字、贴底固定（`snackBarTheme`）。
 
 取色规则：新增元素先判断是否状态语义（用功能色），否则按视觉亮度
-就近取阶，不自造白透明度。动画中的连续 alpha（滚筒中央刻度脉冲、
-锚点呼吸/急闪）允许跨阶插值。
+就近取阶，不自造白透明度；机能风视觉层元素（背景纹理/读数条/
+转鼓等）取 `mech*` 色组，不向 tone 阶归并。动画中的连续 alpha
+（滚筒中央刻度脉冲、锚点呼吸/急闪）允许跨阶插值。
 
 ### 3.9 底部三条、本页操作与侧边抽屉
 
@@ -365,11 +378,14 @@ tone2、快捷弧选中按钮 = tone4**；**拇指滑块是特例**：使用不�
 `buildDefaultPageActions()` 当前为刷新 / 分享 / 置顶三个占位，
 `onSelect` 统一弹「「X」功能开发中」SnackBar（1s，先清旧条）。
 
-Stack 分层在 `SmartNavScreen.build`：页面 → 搜索 scrim → 快捷弧 →
-涟漪 → 滚筒 → AI 条 → 把手条 → 搜索胶囊 →（条件）抽屉 + 停靠把手
-→（条件）竖单 scrim + 竖单 →（条件）AI scrim + 对话框；所有条件
-插入节点带稳定 `ValueKey`，逐帧层只动 transform/opacity，
-虹彩/抽屉/竖单各自 `RepaintBoundary` 隔离。
+Stack 分层在 `SmartNavScreen.build`（机能风层见 3.11）：
+固定背景（MechanicalBackground）→ 顶部读数条 → 横向页面轨道
+（轨道内每页一层空心大页码、页面本体透明） → 搜索 scrim → 快捷弧 →
+涟漪 → 3D 页码转鼓 → AI 条 → 把手条 → 搜索胶囊
+→（条件）抽屉 + 停靠把手 →（条件）竖单 scrim + 竖单
+→（条件）AI scrim + 对话框；所有条件插入节点带稳定 `ValueKey`，
+逐帧层只动 transform/opacity，背景/虹彩/抽屉/竖单各自
+`RepaintBoundary` 隔离。
 
 ### 3.10 聊天会话服务 `ChatStore`
 
@@ -400,6 +416,60 @@ Stack 分层在 `SmartNavScreen.build`：页面 → 搜索 scrim → 快捷弧 �
 - **锚点桥接**：`SmartNavScreen` 在 initState 中以
   `indexWhere(id == 'chat')` 找到聊天页下标并 `addListener`
   （见 3.7 聊天页例外）；聊天页停留不启动 700ms 已读计时器。
+
+### 3.11 机能风视觉层
+
+原型：`ideas/mechanical_style_page.html`（稿标题「滚筒页码 ·
+机能风」，注释中「稿 Lxx」为该文件行号）。经 RCR-2026-001
+采纳为正式皮肤，由**固定层 / 页面层 / 指示器层**三部分组成；
+颜色全部在 [AppColors] 的 `mech*` 色组（全量迁移表见提案第 3 节），
+几何 / 排印 / 时长在 `theme/mechanical_style.dart` 的
+`MechanicalStyle`。
+
+- **固定背景** `MechanicalBackground`（widgets/mechanical_background.dart）：
+  `mechBackground`(#0C0C0C) 底上叠三层纹理——细网格 32dp
+  （1dp，白 α.05）、粗网格 128dp（1dp，白 α.10）、128dp 交点
+  r=1 点阵（白 α.22）；三层相对屏左上整体右下偏移 16dp（负向起点
+  循环保证铺满）。顶部一对十字标定：中心在「状态栏下沿 + 8dp 与
+  frameInset 取大」高度、左右各 14dp 处，边长 22、1dp、与粗网格
+  同色；无实体描边框、无底部十字。静态 `CustomPaint` 外包
+  `RepaintBoundary`，`shouldRepaint` 仅随顶部边界变化，翻页动画
+  不引发背景重绘；只画表皮、不接手势。
+- **顶部读数条** `MechanicalCoordsBar`：状态栏下沿（coordsTop=0）
+  居中，9sp、字距 3.6（.4em），文案 `DEV 型号 · T 电池温度 ·
+  P 瞬时功耗`；数据来自原生 MethodChannel `echo/device_stats`
+  （MainActivity.kt，零三方库零权限），5 秒轮询、异常降级显示
+  「—」；`IgnorePointer` 不挡手势。
+- **页面层**：`TemplatePage` 底色透明，内容为机能风 kicker +
+  大标题——kicker（控制台 SEC.01 // CONSOLE、日志 SEC.03 // LOGS、
+  我 SEC.04 // ME；11sp w700、字距 3.85，`mechInk` / `mechInkDim`）
+  与 48sp w700、字距 5.76（.12em）大标题；Flutter 在末字后也
+  追加一个字距，用 −字距/2 的 `Transform.translate` 做光学居中
+  （真机像素校验三/二/单字标题墨水中心均为屏中 540）。
+  横向轨道内每页另铺一个空心大页码 `MechanicalPageNumber`
+  （120sp、1dp `mechPageNumberStroke` 描边、填充透明；top =
+  5vh、right = 0.14w − 32dp），随页面一起横滑。聊天页行前景
+  同样透明，左滑操作区改由 `CustomClipper` 按露出宽度裁剪遮挡。
+- **3D 页码转鼓** `MechanicalPageDrum`（替代旧横向圆点胶囊，
+  旧 NavRoller 已删除）：`Positioned(right: 14, bottom:
+  52 + safeBottom)`。面板为 `mechDrumPanel`(#0F0F0F) + 1px
+  `mechDrumLine`(#262626) 方边框，左上 / 右下各一道 16px、2px
+  直角亮线（`mechInk`）；顶行为 blip（6px 方块、1.2s steps(2)
+  闪烁）+ PAGE 标签（10sp、.3em、`mechInkDim`）+ 右上编号
+  NO.0N（9sp、.15em、`mechDrumUnit`）。主体是 148×96 视窗内
+  R=190 的圆柱（perspective 520）：贴 N 个 56sp w700、字距 2.24
+  的数字牌片做 rotateY 旋转，透视平移走齐次 w 侧；背面剔除
+  （|world|≥90°）、远面先画近面后画；视窗左右为 `mechDrumLine`
+  虚线竖边。右侧一列刻度（14×4、gap 7，激活 `mechInk`、未激活
+  `mechDrumTickOff`，.25s 过渡），底部 2px 进度条（轨道
+  `mechDrumProgressTrack`、填充 `mechInk`）。显隐由
+  rollerVisible 驱动（IgnorePointer + AnimatedOpacity +
+  AnimatedSlide）：**仅横滑 dragStart 唤醒**；圆点点按 stepPage、
+  双击 snapTo 直达不显示转鼓。
+- **保留项（验收时确认不动）**：粗网格 α 维持 .10（长列表灰色
+  预览文案在粗线恰好穿字时略花、随滚动变化，整体可读）；kicker
+  未打包真等宽字体（`fontFamily: monospace` 在 Flutter/Android
+  不解析，要真等宽需引 Roboto Mono 等字体，包体/许可另议）。
 
 ---
 
