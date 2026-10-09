@@ -85,12 +85,9 @@ abstract final class MechanicalStyle {
   // 顶部坐标读数条（稿 L42-45）
   // ================================================================
 
-  /// 读数条距顶部距离（dp，稿 top:20px；真机还需叠加状态栏高度）
-  static const double coordsTop = 20;
-
-  /// 读数条为下方滚动内容预留的顶部避让高度（dp）：
-  /// 20 顶距 + 约 11 行高 + 9 呼吸间隙。
-  static const double coordsReserveTop = 40;
+  /// 读数条距顶部距离（dp，紧贴状态栏下方；真机还需叠加状态栏高度）。
+  /// 读数条居中、顶部十字在左右边缘，水平不相交，故可贴近。
+  static const double coordsTop = 4;
 
   /// 读数条字号（稿 9px）
   static const double coordsFontSize = 9;
