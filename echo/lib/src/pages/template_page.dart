@@ -69,7 +69,7 @@ class TemplatePage extends StatelessWidget {
             ],
             // 大字距下 Flutter 在末字后也追加一个字距，布局盒比墨水
             // 宽出一个 letterSpacing；向左补偿半个字距做光学居中
-            // （真机 PIL 像素校验：补偿后控制台/日志/我三页墨水中心
+            // （真机 PIL 像素校验：补偿后终端/笔记/主页三页墨水中心
             // 均为屏中 540，见 29.png）。
             Transform.translate(
               offset: const Offset(

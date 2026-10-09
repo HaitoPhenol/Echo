@@ -4,21 +4,35 @@ import '../services/chat_store.dart';
 import '../services/nav_badge_service.dart';
 import '../theme/app_colors.dart';
 
-// 页面序号（测试脚手架直接按当前 4 页顺序引用；
-// 正式接入时由各业务模块在自己的上下文中上报，不会硬编码序号）。
-const int _notesPage = 2;
-
-/// 控制台页的通知模拟按钮（仅开发测试用，真实通知接入后移除）。
+/// 终端页的锚点调试面板（仅开发测试用，真实通知/异常源接入后移除）。
 ///
-/// 对应验收场景：聊天新消息（向会话列表插入一条未读会话，行内
-/// 呼吸绿点与导航锚点由 ChatStore 联动）、日志报错（红）。
+/// 三个按钮对应锚点验收的三个场景：
+/// - 「模拟：聊天新消息」：向会话列表插入一条未读会话，行内呼吸绿点
+///   与聊天页锚点由 [ChatStore] 联动；
+/// - 「模拟：异常」：终端页锚点进入红色急闪；
+/// - 「处理异常」：显式解除终端页异常态；无待处理异常时按钮禁用，
+///   文案变为「当前无待处理异常」。
+///
+/// 异常模拟/处理都作用于终端页自身。[consolePageIndex] 是终端页在导航
+/// 配置中的下标，由接线处（nav_destination.dart）按稳定 id 解析后
+/// 传入，组件内不写死页序号（页面调序后不会作用到错误的页）。
 class ConsoleBadgeControls extends StatelessWidget {
-  const ConsoleBadgeControls({super.key});
+  const ConsoleBadgeControls({
+    super.key,
+    required this.consolePageIndex,
+  });
+
+  /// 终端页下标（异常模拟/处理的作用页）。
+  final int consolePageIndex;
 
   @override
   Widget build(BuildContext context) {
     final badges = NavBadgeScope.of(context);
     final chatStore = ChatStoreScope.of(context);
+    // 依赖 NavBadgeScope：异常态变化时本面板自动重建，按钮随之
+    // 在「处理异常」与禁用文案之间切换。
+    final hasError =
+        badges.levelOf(consolePageIndex) == NavBadgeLevel.exception;
     return _DebugButtonRow(
       buttons: [
         _DebugAction(
@@ -29,34 +43,17 @@ class ConsoleBadgeControls extends StatelessWidget {
           },
         ),
         _DebugAction(
-          label: '模拟：日志报错',
+          label: '模拟：异常',
           onTap: () {
-            badges.reportException(_notesPage);
-            _toast(context, '已模拟：日志报错');
+            badges.reportException(consolePageIndex);
+            _toast(context, '已模拟：异常');
           },
         ),
-      ],
-    );
-  }
-}
-
-/// 日志页的「处理异常」按钮（仅开发测试用）。
-///
-/// 异常未处理完成时按钮可点；处理后状态恢复，按钮变为禁用文案。
-class LogBadgeControls extends StatelessWidget {
-  const LogBadgeControls({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    final badges = NavBadgeScope.of(context);
-    final hasError = badges.levelOf(_notesPage) == NavBadgeLevel.exception;
-    return _DebugButtonRow(
-      buttons: [
         _DebugAction(
           label: hasError ? '处理异常' : '当前无待处理异常',
           enabled: hasError,
           onTap: () {
-            badges.resolveException(_notesPage);
+            badges.resolveException(consolePageIndex);
             _toast(context, '异常已处理');
           },
         ),

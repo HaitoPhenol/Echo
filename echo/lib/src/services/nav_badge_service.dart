@@ -8,13 +8,13 @@ enum NavBadgeLevel {
   /// 通知：绿色呼吸闪烁（如聊天新消息）；页面被查看后恢复。
   notification,
 
-  /// 异常：红色闪烁（如日志报错）；必须处理完成才会恢复。
+  /// 异常：红色闪烁（如某模块发生异常）；必须显式处理完成才会恢复。
   exception,
 }
 
 /// 导航锚点状态服务：各模块向导航线上报「需要用户注意」的统一接口。
 ///
-/// 这是预留的通知接口：消息模块、日志监控等只依赖本类上报状态
+/// 这是预留的通知接口：消息等任何模块只依赖本类上报状态
 /// （[postNotification] / [reportException]），导航条锚点自动响应，
 /// UI 不关心状态由谁产生、何时清除。继承 [ChangeNotifier]，
 /// 通过 [NavBadgeScope] 向子树提供实例并驱动刷新。
@@ -37,7 +37,7 @@ abstract class NavBadgeService extends ChangeNotifier {
 
 /// 内存实现：状态仅保存在进程内，重启清空（开发阶段使用）。
 ///
-/// 后续接入真实模块时，消息/日志系统直接调用本实例的方法即可；
+/// 后续接入真实模块时，各业务模块直接调用本实例的方法即可；
 /// 如需跨重启保留，另写一个 [NavBadgeService] 实现替换。
 class InMemoryNavBadgeService extends NavBadgeService {
   InMemoryNavBadgeService({required int pageCount})

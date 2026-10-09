@@ -47,9 +47,12 @@ List<NavDestination> buildDefaultDestinations() {
   const specs = <(String, String)>[
     ('console', '终端'),
     ('chat', '聊天'),
-    ('notes', '日志'),
+    ('notes', '笔记'),
     ('me', '主页'),
   ];
+
+  // 终端页调试面板的作用下标：按稳定 id 从配置解析，不写死序号。
+  final consoleIndex = specs.indexWhere((s) => s.$1 == 'console');
 
   return [
     for (final (id, label) in specs)
@@ -60,7 +63,8 @@ List<NavDestination> buildDefaultDestinations() {
         // 聊天页已进入真实页面开发（无标题栏的会话列表骨架）。
         pageBuilder: (_) => switch (id) {
           'chat' => const ChatPage(),
-          // 控制台/日志页挂测试按钮（锚点通知验收用，正式功能接入后移除）。
+          // 仅终端页挂锚点调试面板（新消息/异常模拟与处理，验收用，
+          // 正式功能接入后移除）；笔记页暂不做功能，footer 为 null。
           // kDebugMode 守卫：debug 构建可见，release/profile 构建 footer 为
           // null，调试组件随树摇移除，不会进入发布包。
           _ => TemplatePage(
@@ -74,16 +78,12 @@ List<NavDestination> buildDefaultDestinations() {
             },
             secName: switch (id) {
               'console' => 'CONSOLE',
-              'notes' => 'LOGS',
+              'notes' => 'NOTES',
               'me' => 'ME',
               _ => null,
             },
-            footer: kDebugMode
-                ? switch (id) {
-                    'console' => const ConsoleBadgeControls(),
-                    'notes' => const LogBadgeControls(),
-                    _ => null,
-                  }
+            footer: kDebugMode && id == 'console'
+                ? ConsoleBadgeControls(consolePageIndex: consoleIndex)
                 : null,
           ),
         },

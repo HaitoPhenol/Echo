@@ -185,7 +185,7 @@ void main() {
 
   testWidgets('导航锚点：聊天锚点由会话未读数据驱动（点未读行才恢复），'
       '其余页停留才算已读，快速扫过/双击跳转不读中转页；'
-      '异常须处理完成才恢复', (tester) async {
+      '终端页异常查看与经过均不解除，须显式处理才恢复', (tester) async {
     await tester.pumpWidget(const EchoApp());
     await tester.pump();
 
@@ -218,7 +218,7 @@ void main() {
       expect(anchorLevel(i), NavBadgeLevel.normal);
     }
 
-    // ---- 终端页模拟：聊天新消息 + 日志报错 ----
+    // ---- 终端页（页 0）模拟：聊天新消息 + 终端异常 ----
     await tester.tap(find.text('模拟：聊天新消息'));
     await tester.pump();
     expect(anchorLevel(1), NavBadgeLevel.notification);
@@ -233,9 +233,10 @@ void main() {
       reason: '锚点光效应自动推进，无触控时不能冻结',
     );
 
-    await tester.tap(find.text('模拟：日志报错'));
+    // 异常模拟作用于终端页自身（页序由接线处按 id 解析，不写死）。
+    await tester.tap(find.text('模拟：异常'));
     await tester.pump();
-    expect(anchorLevel(2), NavBadgeLevel.exception);
+    expect(anchorLevel(0), NavBadgeLevel.exception);
 
     /// 等待页面吸附落位（圆点翻页为弹簧动画，最长约 5 秒）。
     Future<void> settlePage(Finder pageText) async {
@@ -259,7 +260,7 @@ void main() {
 
     /// 第 i 个目的地页的位置标记：聊天页（i=1）已换成 ChatPage，
     /// 用其 ListView；其余三页仍是 TemplatePage 标题。
-    /// 注意 TemplatePage 序列中终端/日志/主页依次为 0/2/3（1 为聊天）
+    /// 注意 TemplatePage 序列中终端/笔记/主页依次为 0/2/3（1 为聊天）
     /// （聊天页不在该序列内）。
     Finder pageMarker(int i) {
       if (i == 1) {
@@ -278,7 +279,7 @@ void main() {
           .first;
     }
 
-    // ---- 双击导航条直达末页：途中经过的页面不算已读 ----
+    // ---- 双击导航条从终端页直达末页：途中经过的页面不算已读 ----
     await tester.tapAt(const Offset(700, 580));
     await tester.tapAt(const Offset(700, 580));
     await settlePage(pageMarker(3));
@@ -288,7 +289,11 @@ void main() {
       NavBadgeLevel.notification,
       reason: '双击直达途中经过聊天页，不应判定已读',
     );
-    expect(anchorLevel(2), NavBadgeLevel.exception);
+    expect(
+      anchorLevel(0),
+      NavBadgeLevel.exception,
+      reason: '双击离开终端页，异常不应被解除',
+    );
 
     /// 点左圆点，并只推进到激活页切换（越过 destination 中点，
     /// 该页标题中心越过屏幕左缘 0）——模拟快速连点：每"页"停留
@@ -304,16 +309,21 @@ void main() {
       }
     }
 
-    // ---- 连点左圆点快速扫回首页：经过聊天页也不算已读 ----
+    // ---- 连点左圆点快速扫回终端页：经过聊天页不算已读；
+    //      回到异常页连续停留超过 700ms 也不解除异常 ----
     await fastStepLeft(2);
     await fastStepLeft(1);
     await fastStepLeft(0);
     await settlePage(pageMarker(0));
     await tester.pump(const Duration(milliseconds: 750));
     expect(anchorLevel(1), NavBadgeLevel.notification, reason: '快速扫过不应判定已读');
-    expect(anchorLevel(2), NavBadgeLevel.exception);
+    expect(
+      anchorLevel(0),
+      NavBadgeLevel.exception,
+      reason: '查看异常页不会解除异常（停留计时只清通知态）',
+    );
 
-    // ---- 真正翻到聊天页：锚点由未读数据驱动，停留再久也不自动恢复 ----
+    // ---- 翻到聊天页：锚点由未读数据驱动，停留再久也不自动恢复 ----
     await tester.tapAt(const Offset(781, 560));
     await settlePage(pageMarker(1));
     expect(anchorLevel(1), NavBadgeLevel.notification, reason: '刚落位仍未读');
@@ -325,6 +335,7 @@ void main() {
       NavBadgeLevel.notification,
       reason: '聊天锚点改为全部已读才恢复，停留计时不清除',
     );
+    expect(anchorLevel(0), NavBadgeLevel.exception, reason: '在聊天页期间终端异常应保持');
 
     // 新消息行在列表最前（800×600 测试表面无安全区：首行中心 y=36），
     // 行内呼吸绿点在树；点按该行 → 全部已读 → 锚点恢复、绿点消失。
@@ -337,25 +348,25 @@ void main() {
     await tester.pump();
     expect(anchorLevel(1), NavBadgeLevel.normal, reason: '点按未读行后全部已读，锚点恢复默认');
     expect(find.byType(UnreadDot), findsNothing);
-    expect(anchorLevel(2), NavBadgeLevel.exception);
+    expect(anchorLevel(0), NavBadgeLevel.exception, reason: '通知清除不影响终端异常');
 
-    // ---- 再翻到日志页：仅查看不解除异常，按钮可处理 ----
-    await tester.tapAt(const Offset(781, 560));
-    await settlePage(pageMarker(2));
+    // ---- 翻回终端页：仅查看不解除异常，调试面板上「处理异常」可点 ----
+    await tester.tapAt(const Offset(391, 560));
+    await settlePage(pageMarker(0));
     // 离开聊天页：锚点始终在树上（覆盖/揭示都靠物理遮挡）
     expect(find.byKey(const ValueKey<String>('nav-anchor-1')), findsOneWidget);
     await tester.pump(const Duration(milliseconds: 750));
     expect(
-      anchorLevel(2),
+      anchorLevel(0),
       NavBadgeLevel.exception,
-      reason: '异常未处理完成，查看页面不应改变状态',
+      reason: '异常未处理完成，回到该页查看不应改变状态',
     );
     expect(find.text('处理异常'), findsOneWidget);
 
-    // 处理完成 → 锚点恢复，按钮变为禁用文案
+    // 显式处理完成 → 锚点恢复，按钮变为禁用文案
     await tester.tap(find.text('处理异常'));
     await tester.pump();
-    expect(anchorLevel(2), NavBadgeLevel.normal);
+    expect(anchorLevel(0), NavBadgeLevel.normal);
     expect(find.text('当前无待处理异常'), findsOneWidget);
   });
 
