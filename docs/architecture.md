@@ -479,6 +479,10 @@ Stack 分层在 `SmartNavScreen.build`（机能风层见 3.11）：
   文字走系统 **serif 通用族**（`fontFamily: 'serif'`，不打包字体；
   Android 西文 NotoSerif、中文回退 NotoSerifCJK，Bold 面由引擎
   合成），即原型 `--serif` 栈的宋体效果；色块 panel α.90。
+  **面板框仿转鼓但向右开口**（`_PlateFramePainter`）：1px
+  `mechDrumLine` 细线左边通高、上边通宽、底边只画左半、右边不画
+  （视作被右侧内容挡住的延续面板）；左上与左下两个实角各加 16px/2px
+  `mechInk` 亮角标（参数同转鼓 `drumCorner*`，转鼓为左上/右下）。
   与转鼓共用同一 rollerVisible / 同一组时长曲线，同升同收；
   拖动跨过页中点时按 nearestPage 硬切页名；圆点/双击路径同样
   不显示。页名取自 `NavDestination.label`，3~4 字长名与转鼓的
