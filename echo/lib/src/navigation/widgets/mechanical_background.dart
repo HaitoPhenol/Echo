@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../theme/app_colors.dart';
 import '../../theme/mechanical_style.dart';
 
 /// 机能风固定背景：实验底色 + 三层工程纹理（细网格 / 粗网格 / 点阵）
@@ -28,7 +29,7 @@ class MechanicalBackground extends StatelessWidget {
 
     return RepaintBoundary(
       child: ColoredBox(
-        color: MechanicalStyle.baseBackground,
+        color: AppColors.mechBackground,
         child: CustomPaint(
           painter: _MechanicalGridPainter(topBoundary: topBoundary),
           size: Size.infinite,
@@ -93,7 +94,7 @@ class _MechanicalGridPainter extends CustomPainter {
       Paint()
         ..style = PaintingStyle.stroke
         ..strokeWidth = MechanicalStyle.fineGridStrokeWidth
-        ..color = MechanicalStyle.fineGridColor
+        ..color = AppColors.mechFineGrid
         ..isAntiAlias = false,
     );
 
@@ -105,14 +106,14 @@ class _MechanicalGridPainter extends CustomPainter {
       Paint()
         ..style = PaintingStyle.stroke
         ..strokeWidth = MechanicalStyle.coarseGridStrokeWidth
-        ..color = MechanicalStyle.coarseGridColor
+        ..color = AppColors.mechCoarseGrid
         ..isAntiAlias = false,
     );
 
     // -------- 点阵（128dp 交点，r=1，白 α.22）--------
     // 与粗网格同原点平移，点保持压在粗网格交点上。
     final dotPaint = Paint()
-      ..color = MechanicalStyle.dotColor
+      ..color = AppColors.mechGridDot
       ..style = PaintingStyle.fill;
     final spacing = MechanicalStyle.dotGridSpacing;
     final shiftX = MechanicalStyle.gridOriginShiftX % spacing;
@@ -127,7 +128,7 @@ class _MechanicalGridPainter extends CustomPainter {
     final crossPaint = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = MechanicalStyle.crossStrokeWidth
-      ..color = MechanicalStyle.coarseGridColor
+      ..color = AppColors.mechCoarseGrid
       ..isAntiAlias = false;
     _paintCross(
       canvas,

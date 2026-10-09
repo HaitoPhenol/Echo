@@ -50,7 +50,7 @@ class TemplatePage extends StatelessWidget {
                     const TextSpan(
                       style: TextStyle(
                         fontWeight: FontWeight.w400,
-                        color: MechanicalStyle.kickerDimColor,
+                        color: AppColors.mechInkDim,
                       ),
                       text: '// ',
                     ),
@@ -61,7 +61,7 @@ class TemplatePage extends StatelessWidget {
                   fontSize: MechanicalStyle.kickerFontSize,
                   fontWeight: FontWeight.w700,
                   letterSpacing: MechanicalStyle.kickerLetterSpacing,
-                  color: MechanicalStyle.kickerHiColor,
+                  color: AppColors.mechInk,
                   height: 1.2,
                 ),
               ),

@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../../theme/app_colors.dart';
 import '../../theme/mechanical_style.dart';
 import '../nav_physics.dart';
 
@@ -55,8 +56,8 @@ class MechanicalPageDrum extends StatelessWidget {
                 width: panelWidth,
                 child: DecoratedBox(
                   decoration: BoxDecoration(
-                    color: MechanicalStyle.drumPanelColor,
-                    border: Border.all(color: MechanicalStyle.drumBorderColor),
+                    color: AppColors.mechDrumPanel,
+                    border: Border.all(color: AppColors.mechDrumLine),
                   ),
                   child: Stack(
                     children: [
@@ -100,7 +101,7 @@ class MechanicalPageDrum extends StatelessWidget {
                         child: SizedBox(
                           height: MechanicalStyle.drumProgressHeight,
                           child: ColoredBox(
-                            color: MechanicalStyle.drumProgressTrackColor,
+                            color: AppColors.mechDrumProgressTrack,
                           ),
                         ),
                       ),
@@ -151,7 +152,7 @@ class _DrumHead extends StatelessWidget {
             fontSize: MechanicalStyle.drumTagFontSize,
             fontWeight: FontWeight.w700,
             letterSpacing: MechanicalStyle.drumTagLetterSpacing,
-            color: MechanicalStyle.drumTagColor,
+            color: AppColors.mechInkDim,
           ),
         ),
         const Spacer(),
@@ -160,7 +161,7 @@ class _DrumHead extends StatelessWidget {
           style: const TextStyle(
             fontSize: MechanicalStyle.drumUnitFontSize,
             letterSpacing: MechanicalStyle.drumUnitLetterSpacing,
-            color: MechanicalStyle.drumUnitColor,
+            color: AppColors.mechDrumUnit,
           ),
         ),
       ],
@@ -200,7 +201,7 @@ class _BlipState extends State<_Blip> with SingleTickerProviderStateMixin {
           height: MechanicalStyle.drumBlipSize,
           child: ColoredBox(
             color: on
-                ? MechanicalStyle.drumHiColor
+                ? AppColors.mechInk
                 : Colors.transparent,
           ),
         );
@@ -283,7 +284,7 @@ class _DrumPainter extends CustomPainter {
             fontSize: MechanicalStyle.drumNumberFontSize,
             fontWeight: FontWeight.w700,
             letterSpacing: MechanicalStyle.drumNumberLetterSpacing,
-            color: MechanicalStyle.drumNumberColor,
+            color: AppColors.mechDrumNumber,
             height: 1,
           ),
         ),
@@ -357,8 +358,8 @@ class _DrumTicks extends StatelessWidget {
                   width: MechanicalStyle.drumTickWidth,
                   height: MechanicalStyle.drumTickHeight,
                   color: i == controller.activePage
-                      ? MechanicalStyle.drumHiColor
-                      : MechanicalStyle.drumTickOffColor,
+                      ? AppColors.mechInk
+                      : AppColors.mechDrumTickOff,
                 ),
               ],
             ],
@@ -391,7 +392,7 @@ class _DrumProgressFill extends StatelessWidget {
             : (controller.displayPosition / (pageCount - 1)).clamp(0.0, 1.0);
         return SizedBox(
           width: trackWidth * progress,
-          child: const ColoredBox(color: MechanicalStyle.drumHiColor),
+          child: const ColoredBox(color: AppColors.mechInk),
         );
       },
     );
@@ -405,7 +406,7 @@ class _ViewEdgePainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color = MechanicalStyle.drumViewEdgeColor
+      ..color = AppColors.mechDrumLine
       ..strokeWidth = 1;
     const dash = 4.0;
     const gap = 3.0;
@@ -431,7 +432,7 @@ class _CornerPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color = MechanicalStyle.drumHiColor
+      ..color = AppColors.mechInk
       ..strokeWidth = MechanicalStyle.drumCornerStrokeWidth
       ..strokeCap = StrokeCap.square;
     const s = MechanicalStyle.drumCornerSize;

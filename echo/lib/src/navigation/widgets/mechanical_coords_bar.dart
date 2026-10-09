@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../theme/app_colors.dart';
 import '../../theme/mechanical_style.dart';
 
 /// 顶部固定的设备状态读数条（机能风实验 feat/page-background-art）。
@@ -75,8 +76,8 @@ class _MechanicalCoordsBarState extends State<MechanicalCoordsBar> {
       fontSize: MechanicalStyle.coordsFontSize,
       letterSpacing: MechanicalStyle.coordsLetterSpacing,
       color: highlighted
-          ? MechanicalStyle.coordsHiColor
-          : MechanicalStyle.coordsDimColor,
+          ? AppColors.mechCoordsHi
+          : AppColors.mechCoordsDim,
       height: 1.2,
     ),
   );

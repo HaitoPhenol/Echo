@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../theme/app_colors.dart';
 import '../../theme/mechanical_style.dart';
 
 /// 每页随横滑移动的空心大页码（机能风实验 feat/page-background-art）。
@@ -38,7 +39,7 @@ class MechanicalPageNumber extends StatelessWidget {
                 Paint()
                   ..style = PaintingStyle.stroke
                   ..strokeWidth = MechanicalStyle.pageNumberStrokeWidth
-                  ..color = MechanicalStyle.pageNumberStrokeColor,
+                  ..color = AppColors.mechPageNumberStroke,
           ),
         ),
       ),
