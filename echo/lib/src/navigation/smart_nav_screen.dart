@@ -9,6 +9,7 @@ import '../services/haptics.dart';
 import '../services/nav_badge_service.dart';
 import '../services/search_service.dart';
 import '../theme/app_colors.dart';
+import '../theme/mechanical_style.dart';
 import 'dock_geometry.dart';
 import 'nav_destination.dart';
 import 'nav_physics.dart';
@@ -19,6 +20,7 @@ import 'widgets/ai_dialog.dart';
 import 'widgets/handle_bar.dart';
 import 'widgets/handle_menu.dart';
 import 'widgets/mechanical_background.dart';
+import 'widgets/mechanical_coords_bar.dart';
 import 'widgets/nav_roller.dart';
 import 'widgets/quick_action_arc.dart';
 import 'widgets/search_capsule.dart';
@@ -1090,6 +1092,16 @@ class _SmartNavScreenState extends State<SmartNavScreen>
                 const Positioned.fill(
                   key: ValueKey<String>('mech-bg'),
                   child: MechanicalBackground(),
+                ),
+
+                // -------- 机能风设备状态读数条（实验层，固定顶部）--------
+                Positioned(
+                  key: const ValueKey<String>('mech-coords'),
+                  top: MediaQuery.paddingOf(context).top +
+                      MechanicalStyle.coordsTop,
+                  left: 0,
+                  right: 0,
+                  child: const Center(child: MechanicalCoordsBar()),
                 ),
 
                 // -------- 横向页面轨道 --------

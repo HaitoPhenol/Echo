@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../services/chat_store.dart';
 import '../services/haptics.dart';
 import '../theme/app_colors.dart';
+import '../theme/mechanical_style.dart';
 
 /// 聊天页（会话列表）。
 ///
@@ -95,8 +96,9 @@ class _ChatPageState extends State<ChatPage> {
         itemCount: store.conversations.length,
         // 安全区与停靠条避让走列表内边距而非外包 SafeArea/SizedBox：
         // 列表本身始终铺满全屏，滚动时内容可从停靠条下方穿过。
+        // 顶部额外避让机能风实验的固定设备状态读数条。
         padding: EdgeInsets.only(
-          top: safePadding.top,
+          top: safePadding.top + MechanicalStyle.coordsReserveTop,
           bottom: safePadding.bottom + ChatPage._dockReservedHeight,
         ),
         itemBuilder: (context, index) {

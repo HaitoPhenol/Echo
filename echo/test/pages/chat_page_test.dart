@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:echo/src/pages/chat_page.dart';
 import 'package:echo/src/services/chat_store.dart';
 import 'package:echo/src/theme/app_colors.dart';
+import 'package:echo/src/theme/mechanical_style.dart';
 
 /// ChatPage 会话列表的组件测试。
 ///
@@ -99,11 +100,12 @@ void main() {
     await tester.pumpWidget(booth(store));
     await tester.pump();
 
-    // 首行（最后插入的 incoming-30）从状态栏安全区之下开始
+    // 首行（最后插入的 incoming-30）从状态栏安全区 + 机能风读数条
+    // 避让之下开始
     final firstRect = tester.getRect(
       find.byKey(const ValueKey<String>('chat-row-incoming-30')),
     );
-    expect(firstRect.top, 30);
+    expect(firstRect.top, 30 + MechanicalStyle.coordsReserveTop);
 
     // 视口只放得下约 7 行，末行尚未构建
     expect(
@@ -146,7 +148,7 @@ void main() {
     expect(find.byType(ListView), findsOneWidget);
     final newRow = find.byKey(const ValueKey<String>('chat-row-incoming-1'));
     expect(newRow, findsOneWidget);
-    expect(tester.getTopLeft(newRow).dy, 0);
+    expect(tester.getTopLeft(newRow).dy, MechanicalStyle.coordsReserveTop);
     expect(
       find.descendant(of: newRow, matching: find.byType(UnreadDot)),
       findsOneWidget,
@@ -161,7 +163,11 @@ void main() {
     expect(avatarRect.left, ChatPage.rowHorizontalPadding);
     expect(avatarRect.width, ChatPage.avatarSize);
     expect(avatarRect.height, ChatPage.avatarSize);
-    expect(avatarRect.top, (ChatPage.rowHeight - 1 - ChatPage.avatarSize) / 2);
+    expect(
+      avatarRect.top,
+      MechanicalStyle.coordsReserveTop +
+          (ChatPage.rowHeight - 1 - ChatPage.avatarSize) / 2,
+    );
     final avatarBox = tester.widget<Container>(
       find.descendant(of: newRow, matching: find.byType(Container)).first,
     );
@@ -180,7 +186,7 @@ void main() {
     expect(preview.overflow, TextOverflow.ellipsis);
 
     // 分隔线：屏宽 80%（800 表面 → 640 宽、左右各留 80）、1px、
-    // tone1，贴在行底（行顶 0 → 底边 72）
+    // tone1，贴在行底（行顶 coordsReserveTop → 底边再加行高 72）
     final divider = find.descendant(
       of: newRow,
       matching: find.byWidgetPredicate(
@@ -195,7 +201,10 @@ void main() {
     );
     expect(dividerRect.width, closeTo(800 * ChatPage.dividerWidthRatio, 1e-9));
     expect(dividerRect.height, 1);
-    expect(dividerRect.bottom, ChatPage.rowHeight);
+    expect(
+      dividerRect.bottom,
+      MechanicalStyle.coordsReserveTop + ChatPage.rowHeight,
+    );
 
     // 点按该行 → 标记已读：绿点消失，store 无未读；行保留、不回空态
     await tester.tap(newRow);
@@ -336,7 +345,9 @@ void main() {
       double step,
       bool Function(double offset) reached,
     ) async {
-      final gesture = await tester.startGesture(const Offset(400, 36));
+      final gesture = await tester.startGesture(
+        const Offset(400, 36 + MechanicalStyle.coordsReserveTop),
+      );
       await tester.pump();
       for (var i = 0; i < 20; i++) {
         await gesture.moveBy(Offset(step, 0));
@@ -412,7 +423,9 @@ void main() {
 
     // 左拖到半程与全开之间（约 -120）松手，吸附落位到全开 -152。
     // 注意：此时内部记录的上次松手位置仍在 -120 一带，与呈现位不同。
-    final first = await tester.startGesture(const Offset(400, 36));
+    final first = await tester.startGesture(
+      const Offset(400, 36 + MechanicalStyle.coordsReserveTop),
+    );
     await tester.pump();
     for (var i = 0; i < 20; i++) {
       await first.moveBy(const Offset(-10, 0));
@@ -427,7 +440,9 @@ void main() {
     // 落位后立刻发起第二次拖动。错误实现会在拖动起点把位置重置为
     // 上一次松手位置（约 -120，向右跳 30+px）；正确实现应从
     // 当前呈现位 -152 连续起步（首段过 slop 后只可能继续向左）。
-    final second = await tester.startGesture(const Offset(400, 36));
+    final second = await tester.startGesture(
+      const Offset(400, 36 + MechanicalStyle.coordsReserveTop),
+    );
     await tester.pump();
     await second.moveBy(const Offset(-30, 0));
     await tester.pump();

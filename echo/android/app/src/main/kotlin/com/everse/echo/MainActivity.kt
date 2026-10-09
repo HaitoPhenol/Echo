@@ -1,5 +1,8 @@
 package com.everse.echo
 
+import android.content.Intent
+import android.content.IntentFilter
+import android.os.BatteryManager
 import android.os.Build
 import android.os.VibrationEffect
 import android.os.Vibrator
@@ -12,6 +15,10 @@ class MainActivity : FlutterActivity() {
 
     /// 触感反馈的方法通道名（与 Dart 端 Haptics 工具类一致）。
     private val hapticsChannelName = "echo/haptics"
+
+    /// 设备状态快照通道名（机能风实验 feat/page-background-art）。
+    /// 实验放弃时本通道与 Dart 端 MechanicalCoordsBar 一起删除。
+    private val deviceStatsChannelName = "echo/device_stats"
 
     override fun configureFlutterEngine(@NonNull flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -32,6 +39,48 @@ class MainActivity : FlutterActivity() {
                     else -> result.notImplemented()
                 }
             }
+
+        // -------- 设备状态监控（机能风实验，零三方库、零权限）--------
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, deviceStatsChannelName)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "snapshot" -> result.success(readDeviceStats())
+                    else -> result.notImplemented()
+                }
+            }
+    }
+
+    /// 读取一次设备状态：型号 / 电池温度 / 瞬时功耗绝对值。
+    ///
+    /// 全部来自系统 API（Build + 电池粘性广播 + BatteryManager），
+    /// 无传感器或缺字段时对应值返回 null，由 Dart 端显示「—」。
+    private fun readDeviceStats(): Map<String, Any?> {
+        // 粘性广播：receiver 传 null 直接拿到最近一次电池广播。
+        val intent = registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+
+        // 温度：EXTRA_TEMPERATURE 单位 0.1°C。
+        val tempRaw = intent?.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, Int.MIN_VALUE)
+        val tempC = if (tempRaw != null && tempRaw != Int.MIN_VALUE) tempRaw / 10.0 else null
+
+        // 功耗：|瞬时电流(µA)| × 电压(mV) / 1e9 = W
+        // （µA·mV = 1e-9 W；取绝对值，放电/充电都显示正功率）。
+        val bm = getSystemService(BATTERY_SERVICE) as? BatteryManager
+        val currentUa = bm?.getIntProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_NOW)
+        val voltageMv = intent?.getIntExtra(BatteryManager.EXTRA_VOLTAGE, -1) ?: -1
+        val powerW = if (currentUa != null &&
+            currentUa != Int.MIN_VALUE &&
+            voltageMv > 0
+        ) {
+            kotlin.math.abs(currentUa).toDouble() * voltageMv / 1_000_000_000.0
+        } else {
+            null
+        }
+
+        return mapOf(
+            "model" to Build.MODEL,
+            "tempC" to tempC,
+            "powerW" to powerW,
+        )
     }
 
     /// 直接驱动振动马达。
