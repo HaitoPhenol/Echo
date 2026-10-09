@@ -165,9 +165,8 @@ abstract final class MechanicalStyle {
   // 左下角页名牌（稿 L305-317「#pgname」，与转鼓同时显隐）
   // ================================================================
 
-  /// 左边距为屏宽倍数（稿 left:5vw）；底边不另设常量——色块底边
-  /// 与右下转鼓面板底边对齐，定位在 smart_nav_screen 取同一 52dp。
-  static const double namePlateLeftFactor = 0.05;
+  // 页名牌不设独立左右边距常量：左边距与右下转鼓右边距同源，
+  // 都取 DockGeometry.sideMargin（14dp），定位在 smart_nav_screen。
 
   /// 色块内边距（稿 padding:12px 26px 14px）
   static const double namePlatePadTop = 12;
