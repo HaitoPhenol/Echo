@@ -22,7 +22,8 @@
 | **隐形触控区** | 导航条/圆点上方约 32px、下方约 10px 的不可见纵向热区，视觉不变但更好按中；横向热区不扩展：圆点热区 = 自身直径 2 倍、导航条热区 = 自身长度 | `smart_nav_screen.dart` 的 `_navGeometry()` / `_handleRootPointerDown()` |
 | **页码转鼓 / 转鼓** | 横滑时在右下角浮现的机能风 3D 指示器（176dp 宽）：方边框面板内一条绕圆柱旋转的数字牌片序列，当前页牌片对齐视窗中心；顶行仅 blip + PAGE 标签（原稿 NO.0N 编号、右侧刻度列已精简删除），底部 2px 跟手进度条；替代旧横向圆点胶囊（NavRoller 已删）；**仅横滑唤醒**，圆点点按、双击直达不显示 | `widgets/mechanical_page_drum.dart` 的 `MechanicalPageDrum` |
 | **数字牌片** | 转鼓圆柱上每一页的一张大号数字片（两位页码 01～04），按页间距绕 R=190 圆柱做 rotateY，远面先画近面后画、背面剔除 | `mechanical_page_drum.dart` |
-| **页名牌** | 横滑时在左下角与转鼓同时浮现的衬线页名：半透明色块内 64sp w700 宋体（系统 serif 族）页名 + 56×3 短横线，色块底边与转鼓底边对齐；跨页中点硬切文字，与转鼓同显隐 | `widgets/mechanical_page_name_plate.dart` 的 `MechanicalPageNamePlate` |
+| **页名牌** | 横滑时在左下角与转鼓同时浮现的衬线页名：半透明色块内 64sp w700 宋体（系统 serif 族）页名 + 56×3 短横线，色块底边与转鼓底边对齐；跨页中点硬切文字，与转鼓同显隐；叠加赛博故障动画（唤醒播一次、成功翻页重播、边界回弹不播），详见「赛博故障」 | `widgets/mechanical_page_name_plate.dart` 的 `MechanicalPageNamePlate` |
+| **赛博故障（glitch）** | 页名牌的故障风动画层：文字切三条水平片错时闪烁接通、整字数码抖动、红蓝色差副本、1px 白线横扫、下划线延迟展开；单控制器 620ms，t=1 稳态；唤醒边沿或可见期内 activePage 硬切时从头播，首/末页回弹与收回不播 | `mechanical_page_name_plate.dart` 内 `_Glitch*`、`MechanicalStyle.nameGlitch*` |
 | **磁力曲线 / 吸附曲线** | 拖动时的非线性位置映射：靠近整页粘滞、两页之间滑落，产生吸附感；页面轨道、转鼓、滑块共用 | `nav_physics.dart` 的 `displayPosition` |
 
 ## 二、底部三条（把手 / AI）与侧边抽屉
@@ -146,7 +147,7 @@
 | **SEC kicker** | 模板页大标题上方的 11sp w700 大字距小标签（终端 SEC.01 // CONSOLE、日志 SEC.03 // LOGS、我 SEC.04 // ME；中文页名改「终端」后英文仍为 CONSOLE），亮段 `mechInk`、暗段 `mechInkDim`；当前 `fontFamily: monospace` 在 Flutter/Android 不解析，并非真等宽 | `pages/template_page.dart` |
 | **空心大页码** | 每页轨道内随页面一起横滑的 01～04 描边数字：120sp、1dp `mechPageNumberStroke` 描边、无填充，top = 5vh、right = 0.14w − 32dp | `widgets/mechanical_page_number.dart` 的 `MechanicalPageNumber` |
 | **透明页面层** | 页面底色全部透明、让固定背景透出的约定；模板页如此，聊天页行前景也透明，左滑操作区改由 `CustomClipper` 按露出宽度裁剪遮挡 | `pages/template_page.dart`、`pages/chat_page.dart` 的 `_RevealClipper` |
-| **衬线页名牌 / 页名牌** | 横滑唤醒时左下角浮现的当前页名（稿 #pgname）：`mechDrumPanel` α.90 色块、64sp w700 系统 serif（Android 中文回退 NotoSerifCJK 即宋体效果）、字距 .08em、下配 56×3 mechInk 短横线；left:5vw、底边与转鼓底边对齐（52+safeBottom）；与转鼓同一 rollerVisible 同升同收，跨中点按 nearestPage 硬切 | `widgets/mechanical_page_name_plate.dart` 的 `MechanicalPageNamePlate` |
+| **衬线页名牌 / 页名牌** | 横滑唤醒时左下角浮现的当前页名（稿 #pgname）：`mechDrumPanel` α.90 色块、64sp w700 系统 serif（Android 中文回退 NotoSerifCJK 即宋体效果）、字距 .08em、下配 56×3 mechInk 短横线；left:5vw、底边与转鼓底边对齐（52+safeBottom）；与转鼓同一 rollerVisible 同升同收，跨中点按 nearestPage 硬切；叠加赛博故障层（见第一节「赛博故障（glitch）」） | `widgets/mechanical_page_name_plate.dart` 的 `MechanicalPageNamePlate` |
 
 ---
 

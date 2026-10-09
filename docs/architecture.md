@@ -59,7 +59,7 @@ echo/
 │               ├── mechanical_coords_bar.dart  # 顶部设备状态读数条
 │               ├── mechanical_page_number.dart # 每页空心大页码 01-04
 │               ├── mechanical_page_drum.dart   # 3D 页码转鼓指示器
-│               ├── mechanical_page_name_plate.dart # 横滑时左下浮现的衬线页名牌
+│               ├── mechanical_page_name_plate.dart # 横滑时左下浮现的衬线页名牌（赛博故障入场）
 │               ├── quick_action_arc.dart  # 快捷操作弧
 │               ├── search_capsule.dart    # 导航条 + 翻页圆点 + 搜索面板
 │               ├── fuse_border_painter.dart # 倒计时边框
@@ -481,6 +481,14 @@ Stack 分层在 `SmartNavScreen.build`（机能风层见 3.11）：
   拖动跨过页中点时按 nearestPage 硬切页名；圆点/双击路径同样
   不显示。页名取自 `NavDestination.label`，3~4 字长名与转鼓的
   横向避让目前靠字数短，未做截断/缩放（已知留白项）。
+  **赛博故障层**：单个 `AnimationController`（t=1 稳态，
+  时长 `nameGlitchDuration` 620ms）驱动三水平切片
+  （上 .0-.38 / 中 .32-.70 / 下 .64-1.0，重叠防缝）错时闪烁接通、
+  整字幅度递减的数码抖动、红 `anchorRed`/蓝 `accentBlue` 色差副本、
+  确定性时间表的 1px 白线横扫、下划线延迟展开（1.08 过冲）。
+  触发只有两个边沿：**唤醒当帧播一次**；**可见期内 activePage
+  硬切（成功翻页）立即从头重播**，连续跨页连击不断。首/末页边界
+  回弹 activePage 不变不触发；收回时故障即时回稳态，只留 fade/rise。
 - **保留项（验收时确认不动）**：粗网格 α 维持 .10（长列表灰色
   预览文案在粗线恰好穿字时略花、随滚动变化，整体可读）；kicker
   未打包真等宽字体（`fontFamily: monospace` 在 Flutter/Android
