@@ -470,7 +470,7 @@ Stack 分层在 `SmartNavScreen.build`（机能风层见 3.11）：
   `MechanicalIndicatorLifecycle`：**仅横滑 dragStart 唤醒**
   （圆点点按 stepPage、双击 snapTo 直达不显示）；入场 fade 220ms
   +rise 340ms；**正常收回**（落位 650ms 定时器）播 340ms
-  「垂直百叶窗」故障退场——10 条竖带按固定乱序错峰、每条两明两暗
+  「水平百叶窗」故障退场——10 条横带按固定乱序错峰、每条两明两暗
   后熄灭，前段叠 3px 衰减横抖，单 ClipPath 合成不倍增转鼓重绘；
   **上甩切快捷弧 / 进入搜索态**（`rollerInstantHide`）为互斥瞬隐，
   不播退场。
@@ -501,8 +501,8 @@ Stack 分层在 `SmartNavScreen.build`（机能风层见 3.11）：
   触发只有两个边沿：**唤醒当帧播一次**；**可见期内 activePage
   硬切（成功翻页）立即从头重播**，连续跨页连击不断。首/末页边界
   回弹 activePage 不变不触发；收回时入场故障即时回稳态，由共有的
-  MechanicalIndicatorLifecycle 接管「垂直百叶窗」退场（与入场的
-  水平切片撕裂做差异），上甩/搜索路径仍瞬隐。
+  MechanicalIndicatorLifecycle 接管「水平百叶窗」退场，
+  上甩/搜索路径仍瞬隐。
 - **保留项（验收时确认不动）**：粗网格 α 维持 .10（长列表灰色
   预览文案在粗线恰好穿字时略花、随滚动变化，整体可读）；kicker
   未打包真等宽字体（`fontFamily: monospace` 在 Flutter/Android
