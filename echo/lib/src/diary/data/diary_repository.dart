@@ -50,39 +50,52 @@ class DiaryDaySummary {
 /// 日记数据仓储。
 ///
 /// 浏览层级与编辑器只依赖本抽象，不关心正文存内存还是文件：
-/// M2 用 [InMemoryDiaryRepository]；M5 换成 sqflite `diary_meta`
+/// M2-M4 用 [InMemoryDiaryRepository]；M5 换成 sqflite `diary_meta`
 /// 加应用目录下的 `.sy` 草稿文件。仓储在数据变化时 notify，
 /// 列表页经 [DiaryRepositoryScope] 自动刷新。
 abstract class DiaryRepository extends ChangeNotifier {
-  /// 仓储时钟所认为的「今天」（归一到年月日的自然日）。
+  /// 日记日时钟所认为的「今天」（04:00 日界，归一到年月日）。
   ///
-  /// 浏览层的当年/当月可达性与「今天/本月」高亮一律以它为准，
-  /// 不直取系统时钟，保证时钟可注入（测试、M5 存储实现）。
+  /// 全模块对「今天」的判定唯一收口点，委托 [DiaryClock]；
+  /// 浏览层高亮、自动成稿、清理与补记未来禁用一律以它为准。
   DateTime today();
 
-  /// 有草稿或应当可浏览的年份（升序、去重）。
+  /// 有草稿的年份（升序、去重）。
   ///
-  /// 即使仓为空也必须包含今天所在年份，保证「今天」始终可达。
+  /// M4 起不再保证包含当前年份——当前年由「进模块自动成稿」
+  /// （tech-plan §5.2 第 2 条）保证自然出现。
   Future<List<int>> availableYears();
 
-  /// 指定年份下有草稿或应当可浏览的月份（1..12，升序、去重）。
+  /// 指定年份下有草稿的月份（1..12，升序、去重）。
   ///
-  /// 当 [year] 为当前年份时必须包含当前月份，理由同 [availableYears]。
+  /// M4 起不再保证包含当前月份，理由同 [availableYears]。
   Future<List<int>> monthsOfYear(int year);
 
   /// 指定月份内**已有草稿**的日摘要（升序）；没有草稿返回空列表。
-  /// 日列表页自行枚举整月日期并与本结果合并，空日显示弱化行。
+  ///
+  /// M4 起日列表只展示这里返回的真实日记，不再逐日枚举空日。
   Future<List<DiaryDaySummary>> daysOfMonth(int year, int month);
 
-  /// 指定月份内草稿篇数（月列表行做「N 篇 / 本月」视觉层级用）。
+  /// 指定月份内草稿篇数（月列表行做篇数视觉层级用）。
   Future<int> draftCountOfMonth(int year, int month);
 
-  /// 取某日草稿；不存在返回 null（编辑器随后按模板新建空草稿，
-  /// 首次输入时才 [upsertDraft] 落盘）。
+  /// 取某日草稿；不存在返回 null（调用方随后走 composer.ensureDay
+  /// 模板成稿；M2 空白模板路径已在 M4 移除）。
   Future<DiaryDocument?> findDay(DateTime date);
 
   /// 新建或覆盖某日草稿。
   Future<void> upsertDraft(DiaryDocument document);
+
+  /// 删除日记日**早于** [cutoff]（按自然日比较，不含 cutoff 当天）
+  /// 且 [isEmpty] 判定为「什么都没写」的草稿（tech-plan §5.2 第 4 条）。
+  ///
+  /// 判定函数由 composer 提供（忽略 readonly data 块与模板骨架预填块），
+  /// 仓储只负责日期筛选与删除。返回删除篇数，完成后 notify 一次。
+  /// M4 内存实现下仅进程内生效；M5 持久化后自动获得跨进程语义。
+  Future<int> pruneEmptyBefore(
+    DateTime cutoff,
+    bool Function(DiaryDocument document) isEmpty,
+  );
 }
 
 /// 向子树提供 [DiaryRepository]（与 ChatStoreScope 同范式）。

@@ -1,13 +1,17 @@
 import 'package:flutter/material.dart';
 
 import '../../data/diary_repository.dart';
+import '../diary_composer_scope.dart';
 import '../diary_route.dart';
 import '../widgets/diary_shell.dart';
 import '../widgets/diary_list_row.dart';
 import 'day_editor_page.dart';
 
-/// 日级别：整月逐日枚举（降序），有草稿显示预览；
-/// 查看当前月时顶部置顶「今天」快捷入口。
+/// 日级别：只显示真实存在的日记（UI 倒序）。
+///
+/// M4 行为反转（§5.2 硬裁定 3）：删除整月逐日枚举、空日弱化行与
+/// 「今天置顶」特例行——今天由进模块自动成稿保证自然出现在列表顶部；
+/// 未来日期没有任何入口，过去空日补记在月页完成。
 class DayListPage extends StatefulWidget {
   const DayListPage({super.key, required this.year, required this.month});
 
@@ -19,15 +23,30 @@ class DayListPage extends StatefulWidget {
 }
 
 class _DayListPageState extends State<DayListPage> {
-  static const List<String> _weekdays = ['一', '二', '三', '四', '五', '六', '日'];
+  static const List<String> _weekdays = [
+    '一', '二', '三', '四', '五', '六', '日',
+  ];
 
+  DiaryRepository? _subscribed;
   Future<List<DiaryDaySummary>>? _daysFuture;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _daysFuture ??= DiaryRepositoryScope.of(context)
-        .daysOfMonth(widget.year, widget.month);
+    final repository = DiaryRepositoryScope.of(context);
+    if (!identical(repository, _subscribed)) {
+      _subscribed?.removeListener(_reload);
+      _subscribed = repository..addListener(_reload);
+    }
+    _daysFuture ??= repository.daysOfMonth(widget.year, widget.month);
+  }
+
+  void _reload() {
+    if (!mounted) return;
+    setState(() {
+      _daysFuture =
+          _subscribed!.daysOfMonth(widget.year, widget.month);
+    });
   }
 
   Future<void> _openDay(int day) async {
@@ -41,77 +60,70 @@ class _DayListPageState extends State<DayListPage> {
       ),
     );
     // 从编辑页返回后刷新草稿预览（页面在路由下一直保活）。
-    if (mounted) {
-      setState(() {
-        _daysFuture = DiaryRepositoryScope.of(context)
-            .daysOfMonth(widget.year, widget.month);
-      });
-    }
+    _reload();
+  }
+
+  @override
+  void dispose() {
+    _subscribed?.removeListener(_reload);
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final now = DiaryRepositoryScope.of(context).today();
-    final isCurrentMonth = now.year == widget.year && now.month == widget.month;
-    final daysInMonth = DateTime(widget.year, widget.month + 1, 0).day;
-    final daysFuture = _daysFuture;
+    final clock = DiaryComposerScope.of(context).clock;
+    final today = clock.today();
+    final isCurrentMonth =
+        today.year == widget.year && today.month == widget.month;
 
     return DiaryShell(
       kicker: 'DIARY // ${widget.year}.${widget.month}',
       title: '${widget.month} 月',
       onBack: () => Navigator.of(context).maybePop(),
-      child: daysFuture == null
-          ? const SizedBox.shrink()
-          : FutureBuilder<List<DiaryDaySummary>>(
-              future: daysFuture,
-              builder: (context, snapshot) {
-                final summaries = {
-                  for (final s in snapshot.data ?? const <DiaryDaySummary>[])
-                    s.date.day: s,
-                };
+      child: FutureBuilder<List<DiaryDaySummary>>(
+        future: _daysFuture,
+        builder: (context, snapshot) {
+          final summaries = [...?snapshot.data]
+            ..sort((a, b) => b.date.compareTo(a.date)); // 倒序：新的在上
 
-                return ListView.builder(
-                  padding: EdgeInsets.zero,
-                  itemCount: daysInMonth + (isCurrentMonth ? 1 : 0),
-                  itemBuilder: (context, index) {
-                    if (isCurrentMonth && index == 0) {
-                      final todaySummary = summaries[now.day];
-                      return DiaryListRow(
-                        head: '今天',
-                        sub:
-                            todaySummary?.preview ??
-                            '${now.month}月${now.day}日 周${_weekdays[now.weekday - 1]}',
-                        highlight: true,
-                        onTap: () => _openDay(now.day),
-                      );
-                    }
-                    final day =
-                        daysInMonth - (index - (isCurrentMonth ? 1 : 0));
-                    if (isCurrentMonth && day == now.day) {
-                      return const SizedBox.shrink(); // 已置顶
-                    }
-                    final summary = summaries[day];
-                    final date = DateTime(widget.year, widget.month, day);
-                    return DiaryListRow(
-                      head: '$day日',
-                      dim: summary == null,
-                      sub:
-                          summary?.preview ?? '周${_weekdays[date.weekday - 1]}',
-                      trailing: summary == null
-                          ? null
-                          : Text(
-                              '${summary.blockCount} 块',
-                              style: const TextStyle(
-                                fontSize: 11,
-                                color: Color(0xFF646464),
-                              ),
-                            ),
-                      onTap: () => _openDay(day),
-                    );
-                  },
-                );
-              },
-            ),
+          if (summaries.isEmpty) {
+            return const Center(
+              child: Padding(
+                padding: EdgeInsets.all(24),
+                child: Text(
+                  '本月还没有日记',
+                  style: TextStyle(fontSize: 13, color: Color(0xFF8A8A8A)),
+                ),
+              ),
+            );
+          }
+
+          return ListView.builder(
+            padding: EdgeInsets.zero,
+            itemCount: summaries.length,
+            itemBuilder: (context, index) {
+              final summary = summaries[index];
+              final date = summary.date;
+              final isToday = isCurrentMonth && date.day == today.day;
+              return DiaryListRow(
+                head: isToday ? '今天' : '${date.day}日',
+                highlight: isToday,
+                sub: summary.preview.isEmpty
+                    ? '周${_weekdays[date.weekday - 1]}（空稿）'
+                    : summary.preview,
+                trailing: Text(
+                  '${summary.blockCount} 块',
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: Color(0xFF646464),
+                  ),
+                ),
+                onTap: () => _openDay(date.day),
+              );
+            },
+          );
+        },
+      ),
     );
   }
 }

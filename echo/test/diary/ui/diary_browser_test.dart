@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:echo/src/diary/data/diary_clock.dart';
+import 'package:echo/src/diary/data/diary_data_provider.dart';
 import 'package:echo/src/diary/data/diary_repository.dart';
 import 'package:echo/src/diary/data/in_memory_diary_repository.dart';
 import 'package:echo/src/diary/editor/block_editor_controller.dart';
@@ -11,157 +13,318 @@ import 'package:echo/src/diary/editor/block_editor_view.dart';
 import 'package:echo/src/diary/editor/editor_scope.dart';
 import 'package:echo/src/diary/sy/diary_model.dart';
 import 'package:echo/src/diary/sy/sy_id.dart';
+import 'package:echo/src/diary/template/daily_default_template.dart';
+import 'package:echo/src/diary/template/diary_composer.dart';
 import 'package:echo/src/diary/ui/browser/day_editor_page.dart';
 import 'package:echo/src/diary/ui/browser/day_list_page.dart';
-import 'package:echo/src/diary/ui/browser/month_list_page.dart';
+import 'package:echo/src/diary/ui/browser/year_list_page.dart';
 import 'package:echo/src/diary/ui/diary_page.dart';
 import 'package:echo/src/diary/ui/widgets/diary_list_row.dart';
+
+/// 天气可切换的假 provider（第二次起返回晴），验证 ↻ 刷新。
+class _SwitchWeatherProvider implements DiaryDataProvider {
+  int calls = 0;
+
+  @override
+  bool get isSampleData => true;
+
+  @override
+  Future<HomeEnvironment?> fetchHomeEnvironment(DateTime d) async =>
+      const (tempC: 21.0, humidityPct: 45);
+
+  @override
+  Future<int?> fetchScheduleCount(DateTime d) async => 3;
+
+  @override
+  Future<String?> fetchWeather(DateTime d) async =>
+      calls++ == 0 ? '多云' : '晴';
+}
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  /// 找当前月里一个保证没有种子草稿的日期（排除今天/昨天）；
-  /// 从月底往前找，命中列表顶部可见行，避免额外滚动。
-  int emptyDayOf(DateTime now) {
-    for (var d = 28; d >= 1; d--) {
-      if (d != now.day && d != now.day - 1) return d;
-    }
-    throw StateError('unreachable');
-  }
+  // 固定墙钟 2026-06-15 中午（避开 04:00 日界），日记日 = 当天。
+  final fixedNow = DateTime(2026, 6, 15, 12);
+  DiaryClock fixedClock() => DiaryClock(now: () => fixedNow);
 
-  group('日记层级浏览（M3）', () {
-    testWidgets('年→月→日→编辑器下钻，种子内容可见', (tester) async {
-      await tester.pumpWidget(const MaterialApp(home: DiaryPage()));
-      await tester.pumpAndSettle();
-
-      final now = DateTime.now();
-
-      expect(find.text('日记'), findsOneWidget);
-
-      // 年列表 → 月列表（标题与行同年份，取行）。
-      await tester.tap(find.byType(DiaryListRow).first);
-      await tester.pumpAndSettle();
-      expect(find.byType(MonthListPage), findsOneWidget);
-      // 回归：opaque 路由落定后下层年页被移出绘制（Offstage 保活），
-      // 不能与月页叠绘（半透明路由 secondary 复位会导致永久叠影）。
-      expect(
-        find.text('日记'),
-        findsNothing,
-        reason: '年页应在 opaque 月页落定后 Offstage',
+  InMemoryDiaryRepository emptyRepo() => InMemoryDiaryRepository(
+        clock: fixedClock(),
+        seedDebugData: false,
       );
 
-      // 月列表 → 日列表。
-      await tester.tap(find.text('${now.month} 月').last);
-      await tester.pumpAndSettle();
-      expect(find.byType(DayListPage), findsOneWidget);
-      expect(find.text('今天'), findsOneWidget);
+  Widget app({
+    DiaryClock? clock,
+    DiaryDataProvider? provider,
+    InMemoryDiaryRepository? repository,
+  }) {
+    return MaterialApp(
+      home: DiaryPage(
+        clock: clock ?? fixedClock(),
+        dataProvider: provider ?? FakeDiaryDataProvider(),
+        repository: repository ?? emptyRepo(),
+      ),
+    );
+  }
 
-      // 今天有 debug 种子，编辑器直接显示正文（日列表在下层仍保活，
-      // 故在 DayEditorPage 子树内断言，避免命中列表预览）。
+  Future<void> drillToToday(WidgetTester tester) async {
+    await tester.pumpWidget(app());
+    await tester.pumpAndSettle();
+    // 年 → 月 → 日。
+    await tester.tap(find.text('2026'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('6 月'));
+    await tester.pumpAndSettle();
+    expect(find.byType(DayListPage), findsOneWidget);
+    expect(find.text('今天'), findsOneWidget);
+    await tester.tap(find.text('今天'));
+    await tester.pumpAndSettle();
+    expect(find.byType(DayEditorPage), findsOneWidget);
+  }
+
+  group('M4 自动成稿', () {
+    testWidgets('进模块即成稿：列表自然出现今天，编辑器为六块模板快照',
+        (tester) async {
+      await drillToToday(tester);
+
+      // 三个骨架标题 + data 快照行 + 示例标注 + 3 号底色 data 块。
+      expect(find.text('📈 自动记录'), findsOneWidget);
+      expect(find.text('💭 今天'), findsOneWidget);
+      expect(find.text('🌙 睡前'), findsOneWidget);
+      expect(
+        find.text('🌡️ 21°C　💧 45%　📅 3 条日程　☁️ 多云　（示例数据）'),
+        findsOneWidget,
+      );
+      // 只读 data 块尾部有 ↻ 入口。
+      expect(find.byIcon(Icons.refresh), findsOneWidget);
+      // 六块结构：1 个只读 data TextField + 5 个可写（标题/空段）。
+      expect(find.byType(TextField), findsNWidgets(6));
+    });
+
+    testWidgets('写作后重进：用户文字保留，模板与快照不被二次成稿覆盖',
+        (tester) async {
+      await drillToToday(tester);
+
+      await tester.enterText(find.byType(TextField).at(3), '今天写的内容');
+      await tester.pump();
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.byType(DayEditorPage), findsNothing);
+
+      // 日列表仍只有今天一篇（自动成稿不重复落盘）。
+      expect(find.byType(DiaryListRow), findsOneWidget);
+
+      // 再进：文字在、快照也在（ensureDay 命中既有草稿不覆盖）。
       await tester.tap(find.text('今天'));
       await tester.pumpAndSettle();
-      expect(find.byType(DayEditorPage), findsOneWidget);
+      expect(find.text('今天写的内容'), findsOneWidget);
       expect(
-        find.descendant(
-          of: find.byType(DayEditorPage),
-          matching: find.text('今天的第一条记录。'),
-        ),
+        find.text('🌡️ 21°C　💧 45%　📅 3 条日程　☁️ 多云　（示例数据）'),
         findsOneWidget,
       );
     });
+  });
 
-    testWidgets('空日新建：输入后系统返回落盘，日列表出现预览', (tester) async {
-      await tester.pumpWidget(const MaterialApp(home: DiaryPage()));
+  group('M4 ↻ 刷新', () {
+    testWidgets('点 ↻ 重新取数：文本更新且落盘到 custom 与 data 块',
+        (tester) async {
+      await tester.pumpWidget(
+        app(provider: _SwitchWeatherProvider()),
+      );
       await tester.pumpAndSettle();
-      final now = DateTime.now();
-      final emptyDay = emptyDayOf(now);
-
-      await tester.tap(find.byType(DiaryListRow).first);
+      await tester.tap(find.text('2026'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('${now.month} 月').last);
+      await tester.tap(find.text('6 月'));
       await tester.pumpAndSettle();
-
-      await tester.tap(find.text('$emptyDay日'));
+      await tester.tap(find.text('今天'));
       await tester.pumpAndSettle();
+      expect(find.textContaining('☁️ 多云'), findsOneWidget);
 
-      // 空文档：占位提示可见。
-      expect(find.text('写点什么…'), findsOneWidget);
+      await tester.tap(find.byIcon(Icons.refresh));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('☁️ 晴'), findsOneWidget);
 
-      await tester.enterText(find.byType(TextField).first, '测试草稿内容');
-      await tester.pump();
-      expect(find.text('编辑中'), findsOneWidget);
-
-      // 系统返回键：DiaryPage PopScope 收口到内层 Navigator，
-      // 编辑器自己的 PopScope 在 pop 时 flush。
+      // pop 立即落盘；重进同一篇验证刷新结果已持久化。
       await tester.binding.handlePopRoute();
       await tester.pumpAndSettle();
-
-      expect(find.byType(DayEditorPage), findsNothing);
-      expect(find.byType(DayListPage), findsOneWidget);
-      expect(find.text('测试草稿内容'), findsOneWidget); // 行预览
+      await tester.tap(find.text('今天'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('☁️ 晴'), findsOneWidget);
     });
   });
 
-  group('月列表视觉层级（M3）', () {
-    testWidgets('有草稿月常亮标篇数；当月有草稿强调；空当月弱化',
+  group('M4 列表反转', () {
+    testWidgets('日列表只显真实日记：无空日弱化行、无置顶特例',
         (tester) async {
-      // 种子仓：今天/昨天/上月各一篇（月初回绕时昨天属上月）。
-      await tester.pumpWidget(const MaterialApp(home: DiaryPage()));
+      await tester.pumpWidget(app());
       await tester.pumpAndSettle();
-      final now = DateTime.now();
-      final currentCount =
-          1 + (now.subtract(const Duration(days: 1)).month == now.month
-              ? 1
-              : 0);
-
-      await tester.tap(find.byType(DiaryListRow).first);
+      await tester.tap(find.text('2026'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('6 月'));
       await tester.pumpAndSettle();
 
-      final currentRow = tester.widget<DiaryListRow>(
-        find.widgetWithText(DiaryListRow, '本月 · $currentCount 篇'),
-      );
-      expect(currentRow.dim, isFalse);
-      expect(currentRow.highlight, isTrue);
+      // 自动成稿后仅 15 日一行，标注「今天」但不是独立置顶行。
+      final rows = find.byType(DiaryListRow);
+      expect(rows, findsOneWidget);
+      final row = tester.widget<DiaryListRow>(rows);
+      expect(row.head, '今天');
+      expect(find.text('1日'), findsNothing);
+      expect(find.text('30日'), findsNothing);
+    });
 
-      // 非年初：上一月种子也在本年列表中，常亮、不强调。
-      if (now.month > 1) {
-        final otherRow = tester.widget<DiaryListRow>(
-          find.widgetWithText(DiaryListRow, '1 篇'),
-        );
-        expect(otherRow.dim, isFalse);
-        expect(otherRow.highlight, isFalse);
-      }
+    testWidgets('月列表只有含日记的月份，标篇数，无「本月」弱化文案',
+        (tester) async {
+      await tester.pumpWidget(app());
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('2026'));
+      await tester.pumpAndSettle();
 
-      // 空仓 + 固定时钟：当月无草稿，行弱化并标「本月」。
-      final emptyRepo = InMemoryDiaryRepository(
-        now: () => DateTime(2026, 3, 10),
-        seedDebugData: false,
-      );
-      addTearDown(emptyRepo.dispose);
+      final rows = find.byType(DiaryListRow);
+      expect(rows, findsOneWidget);
+      final row = tester.widget<DiaryListRow>(rows);
+      expect(row.head, '6 月');
+      expect(row.dim, isFalse);
+      expect(row.highlight, isFalse);
+      expect(find.text('本月'), findsNothing);
+      expect(find.byTooltip('补记'), findsOneWidget);
+    });
+
+    testWidgets('空仓：年/月/日都有空态，不兜底当前年月', (tester) async {
+      final repo = emptyRepo();
+      addTearDown(repo.dispose);
       await tester.pumpWidget(
         MaterialApp(
           home: DiaryRepositoryScope(
-            repository: emptyRepo,
-            child: const MonthListPage(year: 2026),
+            repository: repo,
+            child: const Scaffold(body: YearListPage()),
           ),
         ),
       );
       await tester.pumpAndSettle();
-
-      final emptyRow = tester.widget<DiaryListRow>(
-        find.widgetWithText(DiaryListRow, '本月'),
-      );
-      expect(emptyRow.head, '3 月');
-      expect(emptyRow.dim, isTrue);
-      expect(emptyRow.highlight, isFalse);
+      expect(find.text('还没有日记'), findsOneWidget);
+      expect(find.byType(DiaryListRow), findsNothing);
     });
   });
 
-  group('编辑器块组件（M2）', () {
+  group('M4 补记', () {
+    testWidgets('未来日期禁选（点 16 无效，OK 仍为初始 15）；选 10 成稿',
+        (tester) async {
+      await tester.pumpWidget(app());
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('2026'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('补记'));
+      await tester.pumpAndSettle();
+      expect(find.text('补记哪一天'), findsOneWidget);
+
+      // 16 日是未来日：点击不改变选中，确认后打开的仍是 15 日。
+      await tester.tap(find.text('16'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('OK'));
+      await tester.pumpAndSettle();
+      expect(find.byType(DayEditorPage), findsOneWidget);
+      expect(find.text('DIARY // 2026.6.15'), findsOneWidget);
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+
+      // 再补记 10 日（过去）：选择器 → 成稿 → 直开编辑器。
+      await tester.tap(find.byTooltip('补记'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('10'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('OK'));
+      await tester.pumpAndSettle();
+      expect(find.byType(DayEditorPage), findsOneWidget);
+      expect(find.text('DIARY // 2026.6.10'), findsOneWidget);
+      // 补记同样是模板成稿（进入即成稿）。
+      expect(
+        find.text('🌡️ 21°C　💧 45%　📅 3 条日程　☁️ 多云　（示例数据）'),
+        findsOneWidget,
+      );
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      // 补记从月页直开编辑器，pop 回到月页：当月篇数变 2。
+      expect(find.byType(DayListPage), findsNothing);
+      final monthRow = tester.widget<DiaryListRow>(
+        find.widgetWithText(DiaryListRow, '6 月'),
+      );
+      expect(monthRow.sub, '2 篇');
+    });
+  });
+
+  group('M4 跨天空草稿清理', () {
+    testWidgets('重开模块：更早的空稿被清，写过字的保留', (tester) async {
+      final clock = fixedClock();
+      final repo = emptyRepo();
+      addTearDown(repo.dispose);
+      final template = await DailyDefaultTemplate.loadAsset();
+      final composer = DiaryComposer(
+        template: template,
+        provider: FakeDiaryDataProvider(),
+        idGenerator: repo.idGenerator,
+      );
+      // 6/10 空稿；6/9 写了字。
+      await composer.ensureDay(DateTime(2026, 6, 10), repo);
+      final written = await composer.ensureDay(DateTime(2026, 6, 9), repo);
+      written.blocks[3].text = '这天写了，不能清';
+      await repo.upsertDraft(written);
+
+      // 进模块（时钟已是 6/15）：自动成稿今天 + 清理早于今天的空稿。
+      await tester.pumpWidget(
+        app(clock: clock, repository: repo),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('2026'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('6 月'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('今天'), findsOneWidget); // 6/15 自动成稿保留
+      expect(find.text('9日'), findsOneWidget); // 写过字保留
+      expect(find.text('10日'), findsNothing); // 空稿已清
+      final monthRows = find.byType(DiaryListRow);
+      expect(monthRows, findsNWidgets(2));
+    });
+  });
+
+  group('M4 锁定文档', () {
+    testWidgets('locked 文档不显示 ↻，顶部只读横幅', (tester) async {
+      final clock = fixedClock();
+      final repo = emptyRepo();
+      addTearDown(repo.dispose);
+      final template = await DailyDefaultTemplate.loadAsset();
+      final composer = DiaryComposer(
+        template: template,
+        provider: FakeDiaryDataProvider(),
+        idGenerator: repo.idGenerator,
+      );
+      final doc = await composer.ensureDay(DateTime(2026, 6, 15), repo);
+      doc.locked = true;
+      await repo.upsertDraft(doc);
+
+      await tester.pumpWidget(
+        app(clock: clock, repository: repo),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('2026'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('6 月'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('今天'));
+      await tester.pumpAndSettle();
+
+      expect(find.byIcon(Icons.refresh), findsNothing);
+      expect(find.text('已导出 · 只读'), findsOneWidget);
+    });
+  });
+
+  group('编辑器块组件（M2 回归）', () {
     testWidgets('200 块懒加载并可滚到底部', (tester) async {
       // 固定 2026-05-15（无种子），装载一篇 200 块的草稿。
-      final fixedNow = DateTime(2026, 5, 15, 9);
-      final ids = SyIdGenerator(random: Random(1), now: () => fixedNow);
+      final fixed = DateTime(2026, 5, 15, 9);
+      final ids = SyIdGenerator(random: Random(1), now: () => fixed);
       final date = DateTime(2026, 5, 15);
       final document = DiaryDocument(
         id: SyIdGenerator.dayContainer(date),
@@ -177,7 +340,7 @@ void main() {
       );
       final editor = BlockEditorController(
         idGenerator: ids,
-        now: () => fixedNow,
+        now: () => fixed,
       )..attach(document);
       addTearDown(editor.dispose);
 

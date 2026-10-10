@@ -30,6 +30,9 @@ class BlockState {
 
   String get text => block.text;
 
+  /// 是否为 data 快照块（确定性 ID 判定，M4）。
+  bool get isData => SyIdGenerator.isDataBlockId(block.id);
+
   void dispose() {
     controller.dispose();
     focusNode.dispose();
@@ -74,6 +77,10 @@ class BlockEditorController extends ChangeNotifier {
   /// 当前选中块（块标点击）；null 无选中。
   String? selectedBlockId;
 
+  /// data 块 ↻ 刷新回调（编辑页注入：composer 取数后回调
+  /// [replaceDataSnapshot]）。为 null 时不显示刷新入口。
+  Future<void> Function(BlockState state)? dataRefresher;
+
   /// 文档是否整体锁定（导出后只读）。
   bool get locked => _doc?.locked ?? false;
 
@@ -103,6 +110,9 @@ class BlockEditorController extends ChangeNotifier {
     _redoStack.clear();
     _dirty.value = false;
     for (final block in document.blocks) {
+      // readonly 不进序列化：data 块以确定性 ID 为身份，挂载时恢复只读，
+      // 使「落盘→重开（M5 从 .sy 读取）」后快照语义不丢失。
+      if (SyIdGenerator.isDataBlockId(block.id)) block.readonly = true;
       final state = BlockState(block)
         ..lastValue = TextEditingValue(
           text: block.text,
@@ -363,6 +373,34 @@ class BlockEditorController extends ChangeNotifier {
     _pushSnapshot();
     state.block.background = number;
     state.block.updatedAt = _now();
+    _markDirty();
+    notifyListeners();
+  }
+
+  // ================================================================
+  //  data 快照（M4 ↻ 刷新）
+  // ================================================================
+
+  /// 程序化替换 data 块快照文本并同步文档根 custom。
+  ///
+  /// 压一次撤销快照（用户可撤销掉一次刷新结果）；[customPatch] 值为
+  /// null 的键从文档 custom 移除。locked 文档或块不存在时 no-op。
+  void replaceDataSnapshot({
+    required String blockId,
+    required String text,
+    required Map<String, String?> customPatch,
+  }) {
+    final state = blockById(blockId);
+    if (state == null || locked || !state.isData) return;
+    _pushSnapshot();
+    applyValue(state, text, const TextSelection.collapsed(offset: 0));
+    customPatch.forEach((key, value) {
+      if (value == null) {
+        _doc!.custom.remove(key);
+      } else {
+        _doc!.custom[key] = value;
+      }
+    });
     _markDirty();
     notifyListeners();
   }

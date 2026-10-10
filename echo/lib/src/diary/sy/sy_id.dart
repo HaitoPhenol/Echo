@@ -58,6 +58,27 @@ class SyIdGenerator {
       '${_pad(date.year, 4)}${_pad(date.month, 2)}${_pad(date.day, 2)}'
       '080000-$containerSuffix';
 
+  /// data 快照块确定性 ID：`{yyyyMMdd}080100-dataNNN`（M4，tech-plan
+  /// §5.1 第 2 条）。同一日记日同一角色永远算同一 ID，refresh 按
+  /// 日期+角色定位，无需把内部索引写进文档根 custom-*。
+  ///
+  /// [roleIndex] 为模板里 data 块的角色序号（1 起），固定时间片 08:01:00
+  /// 仅作占位（同日容器 ID 一样，ID 即身份而非真实创建时刻）。
+  static String dataBlock(DateTime date, int roleIndex) =>
+      '${_pad(date.year, 4)}${_pad(date.month, 2)}${_pad(date.day, 2)}'
+      '080100-data${_pad(roleIndex, 3)}';
+
+  static final RegExp _dataBlockPattern = RegExp(r'^\d{14}-data(\d{3})$');
+
+  /// 是否为 data 快照块（编辑器据此显 ↻ 并判只读语义）。
+  static bool isDataBlockId(String id) => _dataBlockPattern.hasMatch(id);
+
+  /// 取 data 块角色序号（1 起）；非 data 块返回 null。
+  static int? dataRoleOf(String id) {
+    final match = _dataBlockPattern.firstMatch(id);
+    return match == null ? null : int.tryParse(match.group(1)!);
+  }
+
   /// 校验 ID 是否符合 22 位思源规范。
   static bool isValid(String id) => pattern.hasMatch(id);
 }

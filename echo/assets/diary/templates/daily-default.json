@@ -1,0 +1,11 @@
+{
+  "id": "daily-default-v1",
+  "blocks": [
+    { "type": "heading", "level": 2, "text": "📈 自动记录" },
+    { "type": "data", "role": 1, "placeholder": "数据暂不可用，点 ↻ 重试" },
+    { "type": "heading", "level": 2, "text": "💭 今天" },
+    { "type": "paragraph" },
+    { "type": "heading", "level": 2, "text": "🌙 睡前" },
+    { "type": "paragraph" }
+  ]
+}

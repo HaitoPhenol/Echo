@@ -6,7 +6,7 @@ import '../widgets/diary_shell.dart';
 import '../widgets/diary_list_row.dart';
 import 'month_list_page.dart';
 
-/// 年级别：列出可浏览年份（当前年恒在列，保证「今天」可达）。
+/// 年级别：只列含日记的年份；当前年由进模块自动成稿保证出现。
 class YearListPage extends StatelessWidget {
   const YearListPage({super.key});
 
@@ -26,6 +26,17 @@ class YearListPage extends StatelessWidget {
             return const SizedBox.shrink();
           }
           final years = snapshot.data!;
+          if (years.isEmpty) {
+            return const Center(
+              child: Padding(
+                padding: EdgeInsets.all(24),
+                child: Text(
+                  '还没有日记',
+                  style: TextStyle(fontSize: 13, color: Color(0xFF8A8A8A)),
+                ),
+              ),
+            );
+          }
           return ListView.builder(
             padding: EdgeInsets.zero,
             itemCount: years.length,

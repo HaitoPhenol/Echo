@@ -45,6 +45,31 @@ void main() {
     });
   });
 
+  group('data 快照块确定性 ID（M4）', () {
+    test('{yyyyMMdd}080100-dataNNN 合 22 位规范且可识别', () {
+      final id = SyIdGenerator.dataBlock(DateTime(2026, 10, 10), 1);
+      expect(id, '20261010080100-data001');
+      expect(SyIdGenerator.isValid(id), isTrue);
+      expect(SyIdGenerator.isDataBlockId(id), isTrue);
+    });
+
+    test('角色序号递增到 3 位', () {
+      expect(
+        SyIdGenerator.dataBlock(DateTime(2026, 10, 10), 12),
+        '20261010080100-data012',
+      );
+    });
+
+    test('普通块/容器 ID 不被识别为 data 块', () {
+      expect(
+        SyIdGenerator.isDataBlockId('20261010080000-echo000'),
+        isFalse,
+      );
+      final gen = SyIdGenerator(random: Random(1));
+      expect(SyIdGenerator.isDataBlockId(gen.next()), isFalse);
+    });
+  });
+
   group('isValid 反例', () {
     for (final bad in [
       '',

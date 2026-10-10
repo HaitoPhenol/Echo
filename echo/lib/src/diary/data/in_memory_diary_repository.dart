@@ -4,37 +4,39 @@ import 'package:flutter/foundation.dart';
 
 import '../sy/diary_model.dart';
 import '../sy/sy_id.dart';
+import 'diary_clock.dart';
 import 'diary_repository.dart';
 
-/// 内存版 [DiaryRepository]（M2）。
+/// 内存版 [DiaryRepository]（M2-M4）。
 ///
 /// 进程内 Map 存储，重启清空；M5 用 sqflite + `.sy` 草稿文件替换，
 /// 浏览页与编辑器代码不变。
 ///
-/// 可达性保证：即使仓为空，当前年/月仍出现在浏览层级中（日列表页
-/// 自行枚举整月日期），用户永远能点进「今天」并开始写。
+/// 「今天」一律取自注入的 [DiaryClock]（04:00 日界）。M4 起
+/// 可达性不再由仓储兜底：空仓年/月列表为空，当前年月由
+/// 模块初始化自动成稿（composer.ensureDay）保证自然出现。
 class InMemoryDiaryRepository extends DiaryRepository {
   InMemoryDiaryRepository({
     SyIdGenerator? idGenerator,
-    DateTime Function()? now,
+    DiaryClock? clock,
     bool? seedDebugData,
   })  : _ids = idGenerator ?? SyIdGenerator(random: Random(0xE0C0)),
-        _now = now ?? DateTime.now {
+        _clock = clock ?? DiaryClock() {
     // 默认 debug 构建装种子、release 空仓；测试显式传 false 关闭。
     if (seedDebugData ?? kDebugMode) _installDebugSeeds();
   }
 
   final SyIdGenerator _ids;
-  final DateTime Function() _now;
+  final DiaryClock _clock;
 
-  /// key = yyyymmdd（仅自然日），value = 文档。
+  /// 模板成稿共用同一 ID 发生器（与仓储内容器/种子 ID 同源）。
+  SyIdGenerator get idGenerator => _ids;
+
+  /// key = yyyymmdd（仅日记日），value = 文档。
   final Map<int, DiaryDocument> _docs = {};
 
   @override
-  DateTime today() {
-    final n = _now();
-    return DateTime(n.year, n.month, n.day);
-  }
+  DateTime today() => _clock.today();
 
   static int _keyOf(DateTime date) =>
       date.year * 10000 + date.month * 100 + date.day;
@@ -44,8 +46,7 @@ class InMemoryDiaryRepository extends DiaryRepository {
 
   @override
   Future<List<int>> availableYears() async {
-    final years = _docs.values.map((d) => d.date.year).toSet()
-      ..add(_now().year);
+    final years = _docs.values.map((d) => d.date.year).toSet();
     return years.toList()..sort();
   }
 
@@ -55,8 +56,6 @@ class InMemoryDiaryRepository extends DiaryRepository {
         .where((d) => d.date.year == year)
         .map((d) => d.date.month)
         .toSet();
-    final today = _now();
-    if (year == today.year) months.add(today.month);
     return months.toList()..sort();
   }
 
@@ -84,8 +83,29 @@ class InMemoryDiaryRepository extends DiaryRepository {
     notifyListeners();
   }
 
+  @override
+  Future<int> pruneEmptyBefore(
+    DateTime cutoff,
+    bool Function(DiaryDocument document) isEmpty,
+  ) async {
+    final cutoffDay = _dayOnly(cutoff);
+    final doomed = _docs.values
+        .where((d) => d.date.isBefore(cutoffDay) && isEmpty(d))
+        .map((d) => _keyOf(d.date))
+        .toList(growable: false);
+    for (final key in doomed) {
+      _docs.remove(key);
+    }
+    if (doomed.isNotEmpty) notifyListeners();
+    return doomed.length;
+  }
+
   DiaryDaySummary _summaryOf(DiaryDocument doc) {
+    // 预览 = 用户写下的第一句：跳过 readonly data 快照与标题骨架
+    // （模板成稿但一个字没写时预览为空，列表显「周X（空稿）」）。
     final preview = doc.blocks
+        .where((b) =>
+            !b.readonly && b.kind == DiaryBlockKind.paragraph)
         .map((b) => b.text.replaceAll('\n', ' ').trim())
         .firstWhere((t) => t.isNotEmpty, orElse: () => '');
     return DiaryDaySummary(
@@ -96,16 +116,15 @@ class InMemoryDiaryRepository extends DiaryRepository {
     );
   }
 
-  /// 开发期种子：今天/昨天/上月各一篇，层级与编辑器打开即有内容可看。
-  /// release 构建不安装（空仓）。
+  /// 开发期种子：昨天、上月各一篇，验证层级下钻；今天不种子——
+  /// M4 起今天由进模块自动成稿接管。release 构建不安装（空仓）。
   void _installDebugSeeds() {
-    final today = _dayOnly(_now());
+    final today = _clock.today();
     final yesterday = today.subtract(const Duration(days: 1));
     final lastMonth = DateTime(today.year, today.month - 1,
         min(today.day, 28));
     _seed(lastMonth, ['补一条上月的备忘。']);
     _seed(yesterday, ['昨天随手记的一行。', '第二段，测试分块之间的留白。']);
-    _seed(today, ['今天的第一条记录。']);
   }
 
   void _seed(DateTime day, List<String> paragraphs) {

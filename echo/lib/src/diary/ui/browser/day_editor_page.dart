@@ -10,15 +10,16 @@ import '../../editor/editor_scope.dart';
 import '../../sy/diary_model.dart';
 import '../../sy/sy_id.dart';
 import '../../sy/sy_serializer.dart';
-import '../../template/diary_template.dart';
 import '../../../theme/app_colors.dart';
+import '../diary_composer_scope.dart';
 import '../widgets/diary_shell.dart';
 
 /// 单日编辑器页。
 ///
-/// 职责编排：findDay 为空时按 [BlankDiaryTemplate] 建空文档（首次
-/// 输入才落盘）；dirty → 5s 防抖 upsert；进后台 / 页面 pop 时立即
-/// flush。块结构与输入全部在 [BlockEditorController] 内。
+/// 职责编排：加载统一走 composer.ensureDay（命中草稿直接打开，无则
+/// 模板成稿并落盘，补记过去空日同样进入即成稿）；dirty → 5s 防抖
+/// upsert；进后台 / 页面 pop 时立即 flush。data 块的 ↻ 刷新经
+/// composer.fetchSnapshot + 控制器 replaceDataSnapshot。
 class DayEditorPage extends StatefulWidget {
   const DayEditorPage({
     super.key,
@@ -76,22 +77,41 @@ class _DayEditorPageState extends State<DayEditorPage>
 
   Future<void> _load() async {
     final repository = DiaryRepositoryScope.of(context);
-    final existing = await repository.findDay(_date);
-    final document =
-        existing ?? const BlankDiaryTemplate().instantiate(_date, _ids);
+    final composer = DiaryComposerScope.of(context).composer;
+    // 先探一次：区分「新开/补记」（自动聚焦首个可写空段）与翻旧稿。
+    final existedBefore = await repository.findDay(_date);
+    final document = await composer.ensureDay(_date, repository);
     _controller.attach(document);
+    _controller.dataRefresher = (state) async {
+      final snapshot = await composer.fetchSnapshot(_date);
+      _controller.replaceDataSnapshot(
+        blockId: state.block.id,
+        text: snapshot.text,
+        customPatch: snapshot.customPatch,
+      );
+    };
     _controller.dirty.addListener(_onDirtyChanged);
     _document = document;
     if (mounted) setState(() => _loaded = true);
 
-    // 新建空文档：自动聚焦首块，点进日期即可输入（不立即落盘）。
-    if (existing == null && _controller.blocks.isNotEmpty) {
-      final first = _controller.blocks.first;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && first.focusNode.context != null) {
-          first.focusNode.requestFocus();
+    // 新成稿：聚焦第一个「可写空段」（跳过标题与 readonly data 块）。
+    if (existedBefore == null) {
+      BlockState? target;
+      for (final state in _controller.blocks) {
+        final block = state.block;
+        if (!block.readonly &&
+            block.kind == DiaryBlockKind.paragraph &&
+            block.text.trim().isEmpty) {
+          target = state;
+          break;
         }
-      });
+      }
+      if (target != null) {
+        final focus = target.focusNode;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted && focus.context != null) focus.requestFocus();
+        });
+      }
     }
   }
 
