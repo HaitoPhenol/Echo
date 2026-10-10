@@ -76,6 +76,11 @@ class DiaryComposer {
   ) async {
     final existing = await repository.findDay(day);
     if (existing != null) return existing;
+    // M5：findDay 为 null 仍可能是「正文已清除的 archived」——
+    // 有 meta 即历史日记，禁止模板复活（UI 对 archived 走占位页）。
+    if (await repository.dayExists(day)) {
+      throw StateError('该日记已归档（本机正文已清除），不能重新成稿：$day');
+    }
 
     final document = template.instantiate(day, _ids);
     final snapshot = await fetchSnapshot(day);

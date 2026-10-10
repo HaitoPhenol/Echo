@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:echo/src/app/echo_app.dart';
+import 'package:echo/src/diary/data/in_memory_diary_repository.dart';
 import 'package:echo/src/navigation/smart_nav_screen.dart';
 import 'package:echo/src/navigation/widgets/ai_dialog.dart';
 import 'package:echo/src/navigation/widgets/handle_menu.dart';
@@ -26,9 +27,19 @@ Future<void> pumpFramesMs(WidgetTester tester, int ms) async {
 }
 
 void main() {
+  // 全应用用例共享一个内存日记仓储（与 M4 行为一致：debug 种子）。
+  // 生产持久装配（path_provider+sqflite 的真实文件 I/O）无法在
+  // testWidgets 的 fake-async 区完成，其覆盖由 persistent 仓储
+  // 单测（FFI）与真机验收承担。
+  late final InMemoryDiaryRepository diaryRepo;
+  setUpAll(() {
+    diaryRepo = InMemoryDiaryRepository(seedDebugData: true);
+    addTearDown(diaryRepo.dispose);
+  });
+
   testWidgets('初始展示 4 页：聊天页为会话列表骨架，笔记页为日记年表，终端/主页仍占位', (tester) async {
     // 构建应用
-    await tester.pumpWidget(const EchoApp());
+    await tester.pumpWidget(EchoApp(diaryRepository: diaryRepo));
     await tester.pump();
 
     // 智能导航屏在树上；聊天页为 ChatPage、笔记页 M2 起为 DiaryPage，
@@ -51,7 +62,7 @@ void main() {
 
   testWidgets('搜索真实闭环：长按展开 → 输入页面名 → 点结果跳转', (tester) async {
     // 测试表面 800×600；胶囊隐形热区约 x:362~794, y:542~585。
-    await tester.pumpWidget(const EchoApp());
+    await tester.pumpWidget(EchoApp(diaryRepository: diaryRepo));
     await tester.pump();
 
     // 第 2 页（聊天）已是 ChatPage，用页面组件本身作为位置标记
@@ -103,7 +114,7 @@ void main() {
   });
 
   testWidgets('横滑松手后立即上甩：滚筒先关闭，快捷弧不叠加', (tester) async {
-    await tester.pumpWidget(const EchoApp());
+    await tester.pumpWidget(EchoApp(diaryRepository: diaryRepo));
     await tester.pump();
 
     // 滚筒整体显隐骨架的 AnimatedOpacity（现收在
@@ -165,7 +176,7 @@ void main() {
 
   testWidgets('点击右端圆点：按下即翻到聊天页', (tester) async {
     // 表面 800×600：整体导航位于 x 400..800、y 574..584。
-    await tester.pumpWidget(const EchoApp());
+    await tester.pumpWidget(EchoApp(diaryRepository: diaryRepo));
     await tester.pump();
 
     // 聊天页（第 2 页）已是 ChatPage，用页面组件本身作为位置标记
@@ -189,7 +200,7 @@ void main() {
   testWidgets('导航锚点：聊天锚点由会话未读数据驱动（点未读行才恢复），'
       '其余页停留才算已读，快速扫过/双击跳转不读中转页；'
       '终端页异常查看与经过均不解除，须显式处理才恢复', (tester) async {
-    await tester.pumpWidget(const EchoApp());
+    await tester.pumpWidget(EchoApp(diaryRepository: diaryRepo));
     await tester.pump();
 
     // 读取第 i 页锚点的当前逻辑状态。锚点始终全部挂载（被滑块
@@ -371,7 +382,7 @@ void main() {
 
   testWidgets('返回键：搜索 open/input 态与快捷弧先关闭不退出；'
       '常规态行为不变', (tester) async {
-    await tester.pumpWidget(const EchoApp());
+    await tester.pumpWidget(EchoApp(diaryRepository: diaryRepo));
     await tester.pump();
 
     // 记录 App 退出请求（唯一路由被 pop 时框架调用 SystemNavigator.pop）。
@@ -459,7 +470,7 @@ void main() {
   // 条顶 y=574，热区上下扩到 542/594；竖单在把手位向上生长，
   // 抽屉宽 340，全开时把手停靠 x354..450。
   testWidgets('把手点按：竖单生长出 3 个占位按钮；返回键/点遮罩收起', (tester) async {
-    await tester.pumpWidget(const EchoApp());
+    await tester.pumpWidget(EchoApp(diaryRepository: diaryRepo));
     await tester.pump();
 
     // 初始只有常态把手，没有竖单。
@@ -534,7 +545,7 @@ void main() {
   });
 
   testWidgets('竖单按钮触发：弹「开发中」提示并收起竖单', (tester) async {
-    await tester.pumpWidget(const EchoApp());
+    await tester.pumpWidget(EchoApp(diaryRepository: diaryRepo));
     await tester.pump();
 
     await tester.tapAt(const Offset(62, 579));
@@ -562,7 +573,7 @@ void main() {
   });
 
   testWidgets('AI 条：单击/短滑动不误触；长按呼出对话框可输入，点遮罩收起', (tester) async {
-    await tester.pumpWidget(const EchoApp());
+    await tester.pumpWidget(EchoApp(diaryRepository: diaryRepo));
     await tester.pump();
 
     // 单击 AI 条：预留无动作。
@@ -603,7 +614,7 @@ void main() {
   });
 
   testWidgets('把手右拖：抽屉跟手滑出、松手吸附；返回键关闭，把手回归', (tester) async {
-    await tester.pumpWidget(const EchoApp());
+    await tester.pumpWidget(EchoApp(diaryRepository: diaryRepo));
     await tester.pump();
     expect(find.byType(SideDrawer), findsNothing);
 
@@ -642,7 +653,7 @@ void main() {
   });
 
   testWidgets('浮层互斥：竖单打开时在 AI 条上长按不弹对话框', (tester) async {
-    await tester.pumpWidget(const EchoApp());
+    await tester.pumpWidget(EchoApp(diaryRepository: diaryRepo));
     await tester.pump();
 
     // 先开竖单。

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../sy/diary_model.dart';
+import '../sy/sy_id.dart';
 
 // ====================================================================
 //  领域小类型
@@ -94,6 +95,10 @@ class DiaryDaySummary {
 /// 加应用目录下的 `.sy` 正文文件。仓储在数据变化时 notify，
 /// 列表页经 [DiaryRepositoryScope] 自动刷新。
 abstract class DiaryRepository extends ChangeNotifier {
+  /// 与仓储同源的思源 ID 发生器（composer 模板成稿时注入，
+  /// 保证容器/块 ID 与仓储内既有 ID 不冲突）。
+  SyIdGenerator get idGenerator;
+
   /// 日记日时钟所认为的「今天」（04:00 日界，归一到年月日）。
   ///
   /// 全模块对「今天」的判定唯一收口点，委托 [DiaryClock]；

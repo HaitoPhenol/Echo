@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../diary/data/diary_repository.dart';
 import '../navigation/smart_nav_screen.dart';
 import '../theme/app_colors.dart';
 
@@ -8,7 +9,10 @@ import '../theme/app_colors.dart';
 /// 负责全局主题配置与首页挂载。当前为开发期深色主题，
 /// 首页是智能导航实验屏 [SmartNavScreen]。
 class EchoApp extends StatelessWidget {
-  const EchoApp({super.key});
+  const EchoApp({super.key, this.diaryRepository});
+
+  /// 测试注入缝：笔记页日记仓储；生产环境为 null。
+  final DiaryRepository? diaryRepository;
 
   @override
   Widget build(BuildContext context) {
@@ -33,7 +37,7 @@ class EchoApp extends StatelessWidget {
           elevation: 0,
         ),
       ),
-      home: const SmartNavScreen(),
+      home: SmartNavScreen(diaryRepository: diaryRepository),
     );
   }
 }

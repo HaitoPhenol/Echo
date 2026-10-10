@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 
+import '../diary/data/diary_repository.dart';
 import '../diary/ui/diary_page.dart';
 import '../pages/chat_page.dart';
 import '../pages/debug_badge_controls.dart';
@@ -43,7 +44,11 @@ class NavDestination {
 ///
 /// 新增页面的标准做法：在本列表末尾（或合适位置）增加一个
 /// [NavDestination]，导航线、滚筒、搜索会自动纳入，无需改动其他代码。
-List<NavDestination> buildDefaultDestinations() {
+List<NavDestination> buildDefaultDestinations({
+  /// 测试注入缝：注入后笔记页跳过生产持久仓储开库（widget 测试的
+  /// fake-async 区无法完成真实文件 I/O）；生产环境传 null。
+  DiaryRepository? diaryRepository,
+}) {
   /// (id, 标题) 列表。
   const specs = <(String, String)>[
     ('console', '终端'),
@@ -65,7 +70,7 @@ List<NavDestination> buildDefaultDestinations() {
         // 笔记页 M2 起承载日记模块：年→月→日层级 + 块编辑器。
         pageBuilder: (_) => switch (id) {
           'chat' => const ChatPage(),
-          'notes' => const DiaryPage(),
+          'notes' => DiaryPage(repository: diaryRepository),
           // 仅终端页挂锚点调试面板（新消息/异常模拟与处理，验收用，
           // 正式功能接入后移除）；主页暂不做功能，footer 为 null。
           // kDebugMode 守卫：debug 构建可见，release/profile 构建 footer 为

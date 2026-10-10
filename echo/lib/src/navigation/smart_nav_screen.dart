@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../diary/data/diary_repository.dart';
 import '../services/chat_store.dart';
 import '../services/haptics.dart';
 import '../services/nav_badge_service.dart';
@@ -53,7 +54,10 @@ import 'widgets/side_drawer.dart';
 /// 竖单、抽屉、AI 对话框与搜索态互斥：唤起其一会先收起其他浮层。
 /// 任一浮层打开时系统返回键只关闭浮层、不退出 App（PopScope）。
 class SmartNavScreen extends StatefulWidget {
-  const SmartNavScreen({super.key});
+  const SmartNavScreen({super.key, this.diaryRepository});
+
+  /// 测试注入缝：笔记页日记仓储；生产环境为 null（走持久仓储开库）。
+  final DiaryRepository? diaryRepository;
 
   @override
   State<SmartNavScreen> createState() => _SmartNavScreenState();
@@ -189,7 +193,8 @@ class _SmartNavScreenState extends State<SmartNavScreen>
     );
 
     // ---- 组装配置与服务（依赖关系：providers → searchService）----
-    _destinations = buildDefaultDestinations();
+    _destinations =
+        buildDefaultDestinations(diaryRepository: widget.diaryRepository);
     _quickActions = buildDefaultQuickActions();
     _pageActions = buildDefaultPageActions();
     _searchHistory = InMemorySearchHistoryStore();

@@ -35,6 +35,7 @@ class InMemoryDiaryRepository extends DiaryRepository {
   final DiaryClock _clock;
 
   /// 模板成稿共用同一 ID 发生器（与仓储内容器/种子 ID 同源）。
+  @override
   SyIdGenerator get idGenerator => _ids;
 
   /// key = yyyymmdd（仅日记日）。

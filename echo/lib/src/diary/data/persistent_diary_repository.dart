@@ -34,6 +34,7 @@ class PersistentDiaryRepository extends DiaryRepository {
   final SySerializer _serializer = const SySerializer();
 
   /// 模板成稿共用同一 ID 发生器。
+  @override
   SyIdGenerator get idGenerator => _ids;
 
   // ---- 开库 / schema ------------------------------------------------------
