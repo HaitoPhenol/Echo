@@ -54,6 +54,12 @@ class DiaryDaySummary {
 /// 加应用目录下的 `.sy` 草稿文件。仓储在数据变化时 notify，
 /// 列表页经 [DiaryRepositoryScope] 自动刷新。
 abstract class DiaryRepository extends ChangeNotifier {
+  /// 仓储时钟所认为的「今天」（归一到年月日的自然日）。
+  ///
+  /// 浏览层的当年/当月可达性与「今天/本月」高亮一律以它为准，
+  /// 不直取系统时钟，保证时钟可注入（测试、M5 存储实现）。
+  DateTime today();
+
   /// 有草稿或应当可浏览的年份（升序、去重）。
   ///
   /// 即使仓为空也必须包含今天所在年份，保证「今天」始终可达。
@@ -67,6 +73,9 @@ abstract class DiaryRepository extends ChangeNotifier {
   /// 指定月份内**已有草稿**的日摘要（升序）；没有草稿返回空列表。
   /// 日列表页自行枚举整月日期并与本结果合并，空日显示弱化行。
   Future<List<DiaryDaySummary>> daysOfMonth(int year, int month);
+
+  /// 指定月份内草稿篇数（月列表行做「N 篇 / 本月」视觉层级用）。
+  Future<int> draftCountOfMonth(int year, int month);
 
   /// 取某日草稿；不存在返回 null（编辑器随后按模板新建空草稿，
   /// 首次输入时才 [upsertDraft] 落盘）。

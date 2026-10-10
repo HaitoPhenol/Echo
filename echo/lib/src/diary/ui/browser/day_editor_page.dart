@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../data/diary_repository.dart';
 import '../../editor/block_editor_controller.dart';
 import '../../editor/block_editor_view.dart';
+import '../../editor/editor_history_buttons.dart';
 import '../../editor/editor_scope.dart';
 import '../../sy/diary_model.dart';
 import '../../sy/sy_id.dart';
@@ -131,14 +132,21 @@ class _DayEditorPageState extends State<DayEditorPage>
         kicker: 'DIARY // ${widget.year}.${widget.month}.${widget.day}',
         title: title,
         onBack: () => Navigator.of(context).maybePop(),
-        trailing: ValueListenableBuilder<bool>(
-          valueListenable: _controller.dirty,
-          builder: (context, dirty, _) => _SaveChip(
-            loaded: _loaded,
-            dirty: _loaded && dirty,
-            savedAt: _savedAt,
-            readOnly: _readOnly,
-          ),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            EditorHistoryButtons(controller: _controller),
+            const SizedBox(width: 10),
+            ValueListenableBuilder<bool>(
+              valueListenable: _controller.dirty,
+              builder: (context, dirty, _) => _SaveChip(
+                loaded: _loaded,
+                dirty: _loaded && dirty,
+                savedAt: _savedAt,
+                readOnly: _readOnly,
+              ),
+            ),
+          ],
         ),
         child: !_loaded
             ? const Center(

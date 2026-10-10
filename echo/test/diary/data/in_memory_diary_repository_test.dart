@@ -21,6 +21,14 @@ void main() {
   // 仅当同一文档内需要多块时才单独构造。
 
   group('InMemoryDiaryRepository 空仓可达性', () {
+    test('today 归一到自然日（时分秒抹零，时钟可注入）', () {
+      final repo = InMemoryDiaryRepository(
+        now: () => DateTime(2026, 12, 15, 23, 59, 59),
+        seedDebugData: false,
+      );
+      expect(repo.today(), DateTime(2026, 12, 15));
+    });
+
     test('空仓仍暴露当前年/月，日列表为空，findDay 返回 null', () async {
       final repo = InMemoryDiaryRepository(
         now: () => fixedNow,
@@ -84,6 +92,20 @@ void main() {
 
       await repo.upsertDraft(doc(DateTime(2026, 3, 11), ['a']));
       expect(notified, 1);
+    });
+
+    test('draftCountOfMonth 按月计数，其他月份为 0', () async {
+      final repo = InMemoryDiaryRepository(
+        now: () => fixedNow,
+        seedDebugData: false,
+      );
+      await repo.upsertDraft(doc(DateTime(2026, 3, 2), ['a']));
+      await repo.upsertDraft(doc(DateTime(2026, 3, 20), ['b']));
+      await repo.upsertDraft(doc(DateTime(2026, 4, 1), ['c']));
+
+      expect(await repo.draftCountOfMonth(2026, 3), 2);
+      expect(await repo.draftCountOfMonth(2026, 4), 1);
+      expect(await repo.draftCountOfMonth(2026, 5), 0);
     });
 
     test('多日按日期升序返回', () async {

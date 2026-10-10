@@ -6,8 +6,10 @@
 >
 > 状态：M0–M3 已完成（2026-10-10）。M1 示例包经思源 3.8.6 真机导入验收通过；
 > M2/M3 年→月→日层级与块级编辑器经 MIX 2S 真机国产输入法验收（拆/合块、
-> 防抖落盘闭环），发布 v0.7.0。M3 剩余打磨项（工具栏 UI、Slash 菜单、
-> 思源主题真实色板）转入后续 patch 迭代。
+> 防抖落盘闭环），发布 v0.7.0。M3 打磨 patch（`feat/diary-m3-toolbar`，
+> 2026-10-10）补齐块标浮层工具栏（正文/H1–H3、13 色真实底色+无色）、
+> 编辑页标题栏撤销/重做入口、月行视觉层级；13 色取思源 3.8.6 midnight
+> 主题 CSS 实值。**Slash 菜单仍留后续 patch**（控制器逻辑已就位，只差接线）。
 > 分工：M1 纯 Dart 格式层为基建（已交付于 `lib/src/diary/sy/`）；M2 起的页面
 > 与编辑器属业务代码，由负责笔记/日记页的 agent 按本方案实施。
 
@@ -45,7 +47,7 @@ echo/lib/src/diary/
 ├── template/                    # M2 落地接口：DiaryTemplate + BlankDiaryTemplate（M4 扩充模板集）
 ├── editor/                      # M2-M3：Flutter 原生块编辑器
 │   ├── block_editor_controller.dart  # delta 拆/合块、跳焦、命令、50 步撤销、dirty
-│   ├── block_commands.dart           # BlockAction + 临时 13 色调色板（M3 换真实 RGB）
+│   ├── block_commands.dart           # BlockAction + 13 色调色板（M3 patch 已换思源 midnight 真实 RGB）
 │   ├── block_widget.dart             # 块标/段落与 H1-H3 样式/底色/Action 键拦截
 │   ├── block_editor_view.dart        # ListView.builder 懒加载
 │   └── editor_scope.dart
@@ -175,9 +177,9 @@ BlockWidget = Row(
 | IME 组词 | 【已实现】`composing.isValid` 时只同步文本不拆块（实测国产 IME 上屏链路） |
 | 块首 Backspace | 【已实现】硬件退格经 `Actions` 覆盖 `DeleteCharacterIntent`（利用 EditableText 的 Action.overridable，条件不满足回落默认行为；Focus 冒泡在空删除时不可靠）：offset=0 空块删除（至少留一块）、非空与上一块合并，**保留上一块 ID** |
 | ↑/↓ 越界 | 【已实现，边界版】覆盖 `ExtendSelectionVerticallyToAdjacentLineIntent`，仅首行 offset0 向上 / 末行末尾向下才拦截跳焦；`TextPainter` 逐行判定留待打磨 |
-| 块选中/底色 | 【已实现命令，浮层 UI 待打磨】块标点击 selectBlock；`setBackground(1..13/null)`、`turnInto(paragraph/heading 1..3)` 命令就绪且只读/locked 时 no-op；13 色调色板目前为临时暗色值，浮层 UI 与思源主题真实 RGB 待补 |
+| 块选中/底色 | 【M3 patch 已接线】块标点击 selectBlock 弹出 OverlayPortal 浮层（正文/H1–H3、13 色+无色，只读禁用；点全屏屏障取消选中并关闭）；`setBackground(1..13/null)`、`turnInto(paragraph/heading 1..3)` 命令只读/locked 时 no-op；13 色为思源 3.8.6 midnight 主题实值，13 号近白底自动切深墨字 |
 | 粘贴 | 【已实现】delta 插入文本含多个 `\n` 即一次拆成多块（与分块同通道，无需单独快捷键拦截） |
-| 撤销 | 【已实现】结构操作前压 serializer JSON 快照（50 步，含编辑态光标信息）；字符级用 TextField 内建 UndoHistory |
+| 撤销 | 【M3 patch 已接线】结构操作前压 serializer JSON 快照（50 步，含编辑态光标信息）；编辑页标题栏撤销/重做按钮由 canUndo/canRedo 驱动（只读/locked 禁用）；字符级用 TextField 内建 UndoHistory |
 | 自动保存 | 【M2：内存仓储版】dirty 监听 + 5s 防抖 snapshotDocument→upsertDraft；paused/hidden/inactive 与返回时强制 flush；保存态 chip（编辑中/已保存 HH:mm/草稿/只读）。**写 `.sy` 草稿文件与启动完整性校验在 M5 随持久化落地** |
 
 ### 4.3 Flutter 特有的真机验收项（替换上游"浏览器内核矩阵"风险）
@@ -192,6 +194,12 @@ BlockWidget = Row(
 （chip「已保存 HH:mm」）、返回日列表预览与块数刷新全部通过；
 200 块懒加载有 widget 测试（ListView.builder，视口外不构建）。
 
+**2026-10-10 M3 打磨 patch 真机验收结论（MIX 2S）**：块标浮层转
+正文/H1–H3、13 色切换（13 号近白深字、6/8 号极深底白字可读性）、
+无色清除、点外部屏障关闭且取消选中、浮层应用后保持；标题栏撤销/重做
+随 canUndo/canRedo 启停并正确回退/恢复；月页「N 篇 / 本月 · N 篇」
+两态（空仓「本月」弱化态由 widget 测试覆盖）层级区分明确。
+
 ### 4.4 M2/M3 交付偏差与遗留打磨项
 
 - 层级路由须 `opaque:true`：`opaque:false` 时 Flutter 在转场结束后把
@@ -200,9 +208,11 @@ BlockWidget = Row(
   opaque 不影响其透显；Shell 加命中屏障防空白区点击穿透。
 - 仓储/模板接口在 M2 即抽象（`DiaryRepository`、`DiaryTemplate`），
   M5 换 sqflite、M4 加模板集均为平替换/增实现，不动调用方。
-- 遗留（后续 patch 迭代，不阻塞 M4/M5）：块操作浮层工具栏与 Slash 菜单、
-  思源 CSS 变量真实底色 RGB 桥接、↑/↓ 逐行跳焦、月行「当前月/有内容」
-  视觉层级、撤销重做的 UI 入口（canUndo/canRedo 接口已就绪）。
+- 遗留（后续 patch 迭代，不阻塞 M4/M5）：Slash 命令面板、↑/↓ 逐行跳焦。
+  M3 打磨 patch（2026-10-10）已交付：块标浮层工具栏（正文/H1–H3/13 色/
+  无色/屏障关闭）、思源 CSS 变量真实底色 RGB（13 号近白底配深墨字）、
+  月行「本月 · N 篇 / N 篇 / 本月」三态（仓储补 `today()` 时钟收口与
+  `draftCountOfMonth`）、标题栏撤销/重做入口；MIX 2S 真机逐项验收通过。
 
 ## 5. M4：模板与数据注入
 
@@ -240,7 +250,7 @@ abstract interface class DiaryDataProvider {
 | M0 ✅ | 完成 | 两份金标准样本 + 格式对照表 | 2026-10-10 完成 |
 | M1 ✅ | 完成 | sy/ 格式层 + 金标准单测 + 示例包思源导入通过 | 2026-10-10 完成：38 个日记测试 + 全量 62 测试绿、analyze 0 问题；示例包在 3.8.6 真机导入验收通过 |
 | M2 ✅ | 1–1.5 周 | 编辑器核心：分块/合并/越界/自动保存；年→月→日三级浏览页 + DiaryRepository 内存实现 | 2026-10-10 完成：T01/T02/T04/T05/T08/T09 单测化，层级下钻与落盘预览 widget 化，200 块懒加载测试；真机国产 IME 拆/合块+防抖落盘验收。注：**崩溃恢复（进程被杀不丢字）随 M5 持久化一起验收**——M2 仓储为内存实现，5s 防抖只落内存 |
-| M3 ✅（核心） | 1 周 | 选中/底色 13 色桥/转标题/撤销/Slash | 2026-10-10 核心完成：selectBlock/setBackground/turnInto 命令 + serializer 往返 + 50 步撤销重做，非法参数/只读守卫齐；底色导出随序列化往返一致。**Slash 菜单与浮层工具栏 UI、撤销按键/按钮绑定、思源真实色板留后续 patch 打磨**（控制器逻辑已就位，M3 打磨只做"接线"） |
+| M3 ✅（核心 + 打磨 patch） | 1 周 | 选中/底色 13 色桥/转标题/撤销/Slash | 2026-10-10 核心完成：selectBlock/setBackground/turnInto 命令 + serializer 往返 + 50 步撤销重做，非法参数/只读守卫齐；底色导出随序列化往返一致。同日 M3 打磨 patch 接线完成：块标浮层（正文/H1–H3/13 色/无色）、标题栏撤销重做按钮、月行三态，底色换思源 midnight 实值（MIX 2S 真机验收）。**仅余 Slash 菜单留下个 patch** |
 | M4 | 1 周 | 模板实例化 + Provider 假实现 + data 块刷新 | 晨间自动成稿；失败占位降级 |
 | M5 | 1 周 | meta 表/状态机/增量导出/分享/只读/持久化 | mood 字段可在思源属性视图出图；T10；**杀进程重进后 5s 防抖窗口内的文字不丢（崩溃恢复补验收）** |
 | M6 | 0.5–1 周 | ≥2 台真机连写 7 天、粘贴/撤销边界 | 全流程零异常 |
@@ -259,13 +269,17 @@ abstract interface class DiaryDataProvider {
   显示（`block_widget._styleFor` 的 `_` 分支），但模型保留原 level，
   导出往返不丢级别；Echo 自身永远不会新建 H4+。此为有意取舍，M5 回读
   联调时在只读横幅或行内给出"级别降级显示"的视觉提示即可。
-- **底色编辑期色板是占位值**：`BlockBackgroundPalette.colors` 为暗色界面
-  低饱和临时 RGB（代码内有 TODO），数据层只存 1..13 色号、导出走
-  `var(--b3-font-backgroundN)` canonical 串，换真实色板零数据迁移；
-  M3 打磨 patch 需从思源 3.8.6 主题 CSS 提取实际取值并做深浅色两套。
-- **M2/M3 提前落地但尚无 UI 入口的能力**：turnInto/setBackground/50 步
-  撤销重做在控制器层已完成并测试，M3 打磨 patch 只需接线——块标浮层
-  （转标题/底色/拖拽）、Slash 命令面板、撤销的按键与工具栏绑定。
+- **底色编辑期色板已换思源实值（M3 patch）**：`BlockBackgroundPalette.colors`
+  取自思源 3.8.6 midnight 主题 `--b3-font-background1..13` 暗色实值
+  （fillOf 不透明；13 号近白经 luminance 判定切深墨字），数据层仍只存
+  1..13 色号、导出走 `var(--b3-font-backgroundN)` canonical 串，零数据迁移。
+  浅色主题两套取值仍留待 M6。
+- **控制器能力的 UI 接线状态**：turnInto/setBackground/50 步撤销重做已在
+  M3 patch 完成接线——块标浮层（转标题/底色）、标题栏撤销/重做按钮；
+  **Slash 命令面板与块拖拽浮层入口仍未接线**，留下个 patch。
+- **浏览层时钟收口于仓储**：M3 patch 给 `DiaryRepository` 增加 `today()`，
+  月/日列表的当年当月可达性与「今天/本月」高亮不再直取 `DateTime.now()`，
+  M5 持久化实现须同步提供该方法（内存实现为可注入时钟）。
 
 ## 8. 测试策略
 
@@ -286,6 +300,11 @@ abstract interface class DiaryDataProvider {
 - M2/M3 在 `feat/diary-m2-editor` 分支（从 `feat/notes-page` 拉出）交付，
   2026-10-10 发布 **v0.7.0（0.7.0+31）**，分支与 MINOR tag 已推远程
   （未开 PR，不自行合并）。
+- M3 打磨 patch 在 `feat/diary-m3-toolbar` 分支（从已合入 M2/M3 的本地
+  main 拉出，2026-10-10）交付，**pubspec 保持 0.7.0+31 不动、不打 tag、
+  不自行合并**；合入 main 时由合并者排 0.7.1+32 并只打本地 v0.7.1。
+  注：本地 main ff-only 合入 M2/M3 后，main 与 m2 分支的远程 push 因
+  网络（github.com:443 超时）未完成，网络恢复后需补推。
 - 版本规则（项目铁律）：0.MINOR.PATCH + 单调递增 build 号；功能里程碑
   完成 MINOR+1（M4→0.8.0、M5 顺延），bug 修复走 PATCH（功能更新时清零）；
   patch tag 只打本地，远程只推 vX.Y.0 的 MINOR tag；**排号只在合入 main
@@ -293,4 +312,6 @@ abstract interface class DiaryDataProvider {
   旧值不动**。
 - 流程偏差追认：v0.7.0 实际在功能分支上提前排号并推送（应在合并提交中
   完成）；tag 已推送不可变，合入 main 时追认 0.7.0 即可，后续不再提前排号。
-- M2/M3 交付时门禁基线：`flutter analyze` 零 issue，全量 95 测试通过。
+- M2/M3 交付时门禁基线：`flutter analyze` 零 issue，全量 95 测试通过；
+  M3 打磨 patch 后基线更新为 105 测试通过（新增色板映射、浮层开关/命令、
+  标题栏撤销重做、月行三态、仓储 today/draftCountOfMonth 等用例）。

@@ -51,7 +51,7 @@ class _DayListPageState extends State<DayListPage> {
 
   @override
   Widget build(BuildContext context) {
-    final now = DateTime.now();
+    final now = DiaryRepositoryScope.of(context).today();
     final isCurrentMonth = now.year == widget.year && now.month == widget.month;
     final daysInMonth = DateTime(widget.year, widget.month + 1, 0).day;
     final daysFuture = _daysFuture;

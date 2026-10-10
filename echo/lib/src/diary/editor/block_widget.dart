@@ -12,10 +12,23 @@ import 'editor_scope.dart';
 /// 标记为 handled，冒泡到不了祖先），而是利用 EditableText 刻意暴露的
 /// `Action.overridable` 机制：祖先 [Actions] 覆盖删除/纵向移动两个
 /// intent，不满足块级语义时经 `callingAction` 回落给框架默认行为。
-class BlockWidget extends StatelessWidget {
+///
+/// 块标点击选中后，经 [OverlayPortal] 在块标锚点浮出排版工具条
+/// （转段落/标题、13 档底色）；选中态与浮层共生，点屏障处取消。
+class BlockWidget extends StatefulWidget {
   const BlockWidget({super.key, required this.state});
 
   final BlockState state;
+
+  @override
+  State<BlockWidget> createState() => _BlockWidgetState();
+}
+
+class _BlockWidgetState extends State<BlockWidget> {
+  final LayerLink _handleLink = LayerLink();
+  final OverlayPortalController _popover = OverlayPortalController();
+
+  BlockState get state => widget.state;
 
   @override
   Widget build(BuildContext context) {
@@ -23,6 +36,16 @@ class BlockWidget extends StatelessWidget {
     final block = state.block;
     final selected = editor.selectedBlockId == block.id;
     final readOnly = editor.locked || block.readonly;
+
+    // show/hide 不允许在 build 阶段直接调用，随选中态帧后同步浮层。
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (selected) {
+        _popover.show();
+      } else {
+        _popover.hide();
+      }
+    });
 
     final textField = Actions(
       actions: <Type, Action<Intent>>{
@@ -58,27 +81,76 @@ class BlockWidget extends StatelessWidget {
       ),
     );
 
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
-      decoration: BoxDecoration(
-        color: BlockBackgroundPalette.fillOf(block.background),
-        borderRadius: BorderRadius.circular(8),
-        border: selected
-            ? Border.all(color: AppColors.accentBlue.withValues(alpha: 0.55))
-            : null,
+    final index = editor.blocks.indexWhere((s) => identical(s, state));
+
+    return OverlayPortal(
+      controller: _popover,
+      overlayChildBuilder: (context) => _buildPopover(
+        context,
+        editor: editor,
+        placeBelow: index <= 0,
+        readOnly: readOnly,
       ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          _BlockHandle(
-            selected: selected,
-            readOnly: readOnly,
-            onTap: () => editor.selectBlock(selected ? null : block.id),
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+        decoration: BoxDecoration(
+          color: BlockBackgroundPalette.fillOf(block.background),
+          borderRadius: BorderRadius.circular(8),
+          border: selected
+              ? Border.all(color: AppColors.accentBlue.withValues(alpha: 0.55))
+              : null,
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            CompositedTransformTarget(
+              link: _handleLink,
+              child: _BlockHandle(
+                selected: selected,
+                readOnly: readOnly,
+                onTap: () => editor.selectBlock(selected ? null : block.id),
+              ),
+            ),
+            Expanded(child: textField),
+            const SizedBox(width: 12),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 工具条浮层：全屏吞点屏障（点外部取消选中）+ 锚定块标的工具条。
+  Widget _buildPopover(
+    BuildContext context, {
+    required BlockEditorController editor,
+    required bool placeBelow,
+    required bool readOnly,
+  }) {
+    return Stack(
+      children: [
+        Positioned.fill(
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => editor.selectBlock(null),
+            child: const SizedBox.expand(),
           ),
-          Expanded(child: textField),
-          const SizedBox(width: 12),
-        ],
-      ),
+        ),
+        CompositedTransformFollower(
+          link: _handleLink,
+          targetAnchor: placeBelow
+              ? Alignment.bottomLeft
+              : Alignment.topLeft,
+          followerAnchor: placeBelow
+              ? Alignment.topLeft
+              : Alignment.bottomLeft,
+          offset: Offset(0, placeBelow ? 6 : -6),
+          child: _BlockFormatPopover(
+            state: state,
+            editor: editor,
+            readOnly: readOnly,
+          ),
+        ),
+      ],
     );
   }
 
@@ -86,6 +158,10 @@ class BlockWidget extends StatelessWidget {
   static const double _paragraphHeight = 1.55;
 
   TextStyle _styleFor(DiaryBlock block) {
+    // 13 号底色近白（思源 midnight 取色 #dadada），自动转深色正文。
+    final ink = BlockBackgroundPalette.needsDarkInk(block.background)
+        ? AppColors.background
+        : AppColors.textPrimary;
     switch (block.kind) {
       case DiaryBlockKind.heading:
         // M3 会再校准字号/字距，先保证层级一眼可辨。
@@ -98,15 +174,203 @@ class BlockWidget extends StatelessWidget {
           fontSize: size,
           height: 1.35,
           fontWeight: FontWeight.w700,
-          color: AppColors.textPrimary,
+          color: ink,
         );
       case DiaryBlockKind.paragraph:
-        return const TextStyle(
+        return TextStyle(
           fontSize: _paragraphSize,
           height: _paragraphHeight,
-          color: AppColors.textPrimary,
+          color: ink,
         );
     }
+  }
+}
+
+/// 块排版浮层：段落/H1–H3 + 13 档底色 + 无色。命令全部走控制器，
+/// 应用后浮层保持打开（可连续排版），点屏障或再点块标关闭。
+class _BlockFormatPopover extends StatelessWidget {
+  const _BlockFormatPopover({
+    required this.state,
+    required this.editor,
+    required this.readOnly,
+  });
+
+  final BlockState state;
+  final BlockEditorController editor;
+  final bool readOnly;
+
+  @override
+  Widget build(BuildContext context) {
+    final block = state.block;
+    final headingActive = block.kind == DiaryBlockKind.heading;
+
+    return Material(
+      type: MaterialType.transparency,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+        decoration: BoxDecoration(
+          color: const Color(0xFF151920),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: AppColors.tone2),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x66000000),
+              blurRadius: 18,
+              offset: Offset(0, 6),
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _ToolButton(
+                  key: const ValueKey('diary-turn-p'),
+                  label: '正文',
+                  active: block.kind == DiaryBlockKind.paragraph,
+                  onTap: readOnly
+                      ? null
+                      : () =>
+                          editor.turnInto(state, DiaryBlockKind.paragraph),
+                ),
+                for (final level in [1, 2, 3])
+                  _ToolButton(
+                    key: ValueKey('diary-turn-h$level'),
+                    label: 'H$level',
+                    active: headingActive && block.level == level,
+                    onTap: readOnly
+                        ? null
+                        : () => editor.turnInto(
+                            state, DiaryBlockKind.heading,
+                            level: level),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Container(height: 1, color: AppColors.tone1),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                for (var n = BlockBackgroundPalette.min;
+                    n <= BlockBackgroundPalette.max;
+                    n++)
+                  _Swatch(
+                    key: ValueKey('diary-bg-$n'),
+                    color: BlockBackgroundPalette.colors[n]!,
+                    active: block.background == n,
+                    onTap: readOnly
+                        ? null
+                        : () => editor.setBackground(state, n),
+                  ),
+                _Swatch(
+                  key: const ValueKey('diary-bg-clear'),
+                  active: block.background == null,
+                  onTap: readOnly
+                      ? null
+                      : () => editor.setBackground(state, null),
+                  child: Icon(
+                    Icons.close,
+                    size: 13,
+                    color: block.background == null
+                        ? AppColors.accentBlue
+                        : AppColors.textMuted,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 浮层内的块类型按钮。
+class _ToolButton extends StatelessWidget {
+  const _ToolButton({
+    super.key,
+    required this.label,
+    required this.active,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool active;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(right: 6),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            color: active
+                ? AppColors.accentBlue.withValues(alpha: 0.16)
+                : null,
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(
+              color: active ? AppColors.accentBlue : AppColors.tone2,
+            ),
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0.8,
+              color: active ? AppColors.accentBlue : AppColors.textMuted,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 26dp 色块；[child] 非空时画「无色」边框样式。
+class _Swatch extends StatelessWidget {
+  const _Swatch({
+    super.key,
+    this.color,
+    required this.active,
+    required this.onTap,
+    this.child,
+  });
+
+  final Color? color;
+  final bool active;
+  final VoidCallback? onTap;
+  final Widget? child;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Container(
+        width: 26,
+        height: 26,
+        decoration: BoxDecoration(
+          color: color,
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(
+            color: active ? AppColors.accentBlue : AppColors.tone2,
+            width: active ? 1.6 : 1,
+          ),
+        ),
+        alignment: Alignment.center,
+        child: child,
+      ),
+    );
   }
 }
 
@@ -146,7 +410,7 @@ class _BlockVerticalMoveAction
   }
 }
 
-/// 48dp 块标（M3 在此挂转标题/底色/拖拽菜单）。
+/// 48dp 块标：点击选中并浮出排版工具条。
 class _BlockHandle extends StatelessWidget {
   const _BlockHandle({
     required this.selected,

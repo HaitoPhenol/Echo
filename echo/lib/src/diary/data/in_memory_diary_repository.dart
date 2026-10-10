@@ -30,6 +30,12 @@ class InMemoryDiaryRepository extends DiaryRepository {
   /// key = yyyymmdd（仅自然日），value = 文档。
   final Map<int, DiaryDocument> _docs = {};
 
+  @override
+  DateTime today() {
+    final n = _now();
+    return DateTime(n.year, n.month, n.day);
+  }
+
   static int _keyOf(DateTime date) =>
       date.year * 10000 + date.month * 100 + date.day;
 
@@ -62,6 +68,11 @@ class InMemoryDiaryRepository extends DiaryRepository {
       ..sort((a, b) => a.date.compareTo(b.date));
     return list.map(_summaryOf).toList();
   }
+
+  @override
+  Future<int> draftCountOfMonth(int year, int month) async => _docs.values
+      .where((d) => d.date.year == year && d.date.month == month)
+      .length;
 
   @override
   Future<DiaryDocument?> findDay(DateTime date) async =>

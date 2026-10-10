@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:echo/src/diary/data/diary_repository.dart';
+import 'package:echo/src/diary/data/in_memory_diary_repository.dart';
 import 'package:echo/src/diary/editor/block_editor_controller.dart';
 import 'package:echo/src/diary/editor/block_editor_view.dart';
 import 'package:echo/src/diary/editor/editor_scope.dart';
@@ -97,6 +99,61 @@ void main() {
       expect(find.byType(DayEditorPage), findsNothing);
       expect(find.byType(DayListPage), findsOneWidget);
       expect(find.text('测试草稿内容'), findsOneWidget); // 行预览
+    });
+  });
+
+  group('月列表视觉层级（M3）', () {
+    testWidgets('有草稿月常亮标篇数；当月有草稿强调；空当月弱化',
+        (tester) async {
+      // 种子仓：今天/昨天/上月各一篇（月初回绕时昨天属上月）。
+      await tester.pumpWidget(const MaterialApp(home: DiaryPage()));
+      await tester.pumpAndSettle();
+      final now = DateTime.now();
+      final currentCount =
+          1 + (now.subtract(const Duration(days: 1)).month == now.month
+              ? 1
+              : 0);
+
+      await tester.tap(find.byType(DiaryListRow).first);
+      await tester.pumpAndSettle();
+
+      final currentRow = tester.widget<DiaryListRow>(
+        find.widgetWithText(DiaryListRow, '本月 · $currentCount 篇'),
+      );
+      expect(currentRow.dim, isFalse);
+      expect(currentRow.highlight, isTrue);
+
+      // 非年初：上一月种子也在本年列表中，常亮、不强调。
+      if (now.month > 1) {
+        final otherRow = tester.widget<DiaryListRow>(
+          find.widgetWithText(DiaryListRow, '1 篇'),
+        );
+        expect(otherRow.dim, isFalse);
+        expect(otherRow.highlight, isFalse);
+      }
+
+      // 空仓 + 固定时钟：当月无草稿，行弱化并标「本月」。
+      final emptyRepo = InMemoryDiaryRepository(
+        now: () => DateTime(2026, 3, 10),
+        seedDebugData: false,
+      );
+      addTearDown(emptyRepo.dispose);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: DiaryRepositoryScope(
+            repository: emptyRepo,
+            child: const MonthListPage(year: 2026),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final emptyRow = tester.widget<DiaryListRow>(
+        find.widgetWithText(DiaryListRow, '本月'),
+      );
+      expect(emptyRow.head, '3 月');
+      expect(emptyRow.dim, isTrue);
+      expect(emptyRow.highlight, isFalse);
     });
   });
 
