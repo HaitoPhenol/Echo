@@ -104,8 +104,8 @@ class _BlockWidgetState extends State<BlockWidget> {
           isCollapsed: true,
           border: InputBorder.none,
           contentPadding: const EdgeInsets.symmetric(
-            horizontal: 10,
-            vertical: 9,
+            horizontal: 6,
+            vertical: 8,
           ),
           hintText: block.readonly ? null : '写点什么…',
           hintStyle: TextStyle(
@@ -125,7 +125,7 @@ class _BlockWidgetState extends State<BlockWidget> {
         readOnly: readOnly,
       ),
       child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+        margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
         child: CompositedTransformTarget(
           link: _blockLink,
           child: Container(
@@ -147,7 +147,7 @@ class _BlockWidgetState extends State<BlockWidget> {
                   onTap: () => editor.selectBlock(selected ? null : block.id),
                 ),
                 Expanded(child: textField),
-                const SizedBox(width: 12),
+                const SizedBox(width: 4),
               ],
             ),
           ),
@@ -183,7 +183,7 @@ class _BlockWidgetState extends State<BlockWidget> {
           child: _BlockFormatPopover(
             key: _popoverCardKey,
             maxWidth:
-                _popoverMaxWidth ?? MediaQuery.sizeOf(context).width - 44,
+                _popoverMaxWidth ?? MediaQuery.sizeOf(context).width - 36,
             state: state,
             editor: editor,
             readOnly: readOnly,
@@ -476,9 +476,9 @@ class _BlockHandle extends StatelessWidget {
       behavior: HitTestBehavior.opaque,
       onTap: readOnly ? null : onTap,
       child: SizedBox(
-        width: 48,
+        width: 34,
         child: Center(
-          child: Icon(Icons.drag_indicator, size: 18, color: color),
+          child: Icon(Icons.drag_indicator, size: 17, color: color),
         ),
       ),
     );
