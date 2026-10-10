@@ -15,8 +15,8 @@ import 'block_commands.dart';
 /// 改写都必须经过 [BlockEditorController.applyValue]，避免监听回环。
 class BlockState {
   BlockState(this.block)
-      : controller = TextEditingController(text: block.text),
-        focusNode = FocusNode(debugLabel: 'diary-block-${block.id}');
+    : controller = TextEditingController(text: block.text),
+      focusNode = FocusNode(debugLabel: 'diary-block-${block.id}');
 
   DiaryBlock block;
   final TextEditingController controller;
@@ -49,11 +49,11 @@ class BlockEditorController extends ChangeNotifier {
     int maxHistory = 50,
     SySerializer? serializer,
     DateTime Function()? now,
-  })  : _ids = idGenerator,
-        // ignore: prefer_initializing_formals
-        _maxHistory = maxHistory,
-        _serializer = serializer ?? const SySerializer(),
-        _now = now ?? DateTime.now;
+  }) : _ids = idGenerator,
+       // ignore: prefer_initializing_formals
+       _maxHistory = maxHistory,
+       _serializer = serializer ?? const SySerializer(),
+       _now = now ?? DateTime.now;
 
   final SyIdGenerator _ids;
   final int _maxHistory;
@@ -83,6 +83,29 @@ class BlockEditorController extends ChangeNotifier {
 
   /// 文档是否整体锁定（导出后只读）。
   bool get locked => _doc?.locked ?? false;
+
+  /// 文档级 custom-* 属性只读视图（M5：custom-mood 心情等）。
+  Map<String, String> get documentCustom =>
+      Map<String, String>.unmodifiable(_doc?.custom ?? const {});
+
+  /// 设置或移除文档级 custom-* 属性（M5 心情入口）。
+  ///
+  /// 与正文编辑同纪律：改 [DiaryDocument.custom] 后置 dirty，走编辑页
+  /// 防抖落盘链路；[value] 为 null 时移除该键。文档未挂载或锁定
+  /// （导出只读）时 no-op，值未变化时不产生脏标记。
+  void setDocumentCustom(String key, String? value) {
+    final doc = _doc;
+    if (doc == null || locked) return;
+    if (value == null) {
+      if (!doc.custom.containsKey(key)) return;
+      doc.custom.remove(key);
+    } else {
+      if (doc.custom[key] == value) return;
+      doc.custom[key] = value;
+    }
+    _markDirty();
+    notifyListeners();
+  }
 
   /// 块状态有序视图（ListView 用）。
   List<BlockState> get blocks => List<BlockState>.unmodifiable(_states);
@@ -248,8 +271,7 @@ class BlockEditorController extends ChangeNotifier {
     _syncDocBlocks();
 
     // 依据新坐标把光标落到对应块（处理在段中回车/粘贴中段的情况）。
-    final maxOffset =
-        texts.fold<int>(0, (n, t) => n + t.length + 1) - 1;
+    final maxOffset = texts.fold<int>(0, (n, t) => n + t.length + 1) - 1;
     var remaining = caretOffset.clamp(0, maxOffset);
     var focusTarget = newStates.isEmpty ? state : newStates.last;
     var focusOffset = 0;
@@ -351,7 +373,8 @@ class BlockEditorController extends ChangeNotifier {
 
   void turnInto(BlockState state, DiaryBlockKind kind, {int? level}) {
     if (locked || state.block.readonly) return;
-    if (kind == DiaryBlockKind.heading && (level == null || level < 1 || level > 3)) {
+    if (kind == DiaryBlockKind.heading &&
+        (level == null || level < 1 || level > 3)) {
       throw ArgumentError.value(level, 'level', 'Echo 生成标题级别为 1..3');
     }
     if (state.block.kind == kind && state.block.level == level) return;
@@ -510,8 +533,9 @@ class BlockEditorController extends ChangeNotifier {
       // 控制器或该块已在帧间销毁（pop/合并）则放弃这次跳焦。
       if (_disposed || state.focusNode.context == null) return;
       state.suppress = true;
-      state.controller.selection =
-          TextSelection.collapsed(offset: offset.clamp(0, state.text.length));
+      state.controller.selection = TextSelection.collapsed(
+        offset: offset.clamp(0, state.text.length),
+      );
       state.suppress = false;
       state.focusNode.requestFocus();
     });

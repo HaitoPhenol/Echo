@@ -12,14 +12,16 @@ import '../../sy/sy_id.dart';
 import '../../sy/sy_serializer.dart';
 import '../../../theme/app_colors.dart';
 import '../diary_composer_scope.dart';
+import '../widgets/diary_mood_picker.dart';
 import '../widgets/diary_shell.dart';
 
 /// 单日编辑器页。
 ///
 /// 职责编排：加载统一走 composer.ensureDay（命中草稿直接打开，无则
-/// 模板成稿并落盘，补记过去空日同样进入即成稿）；dirty → 5s 防抖
-/// upsert；进后台 / 页面 pop 时立即 flush。data 块的 ↻ 刷新经
-/// composer.fetchSnapshot + 控制器 replaceDataSnapshot。
+/// 模板成稿并落盘，补记过去空日同样进入即成稿）；dirty → 1.5s 防抖
+/// upsert（M5 崩溃恢复口径，硬杀最多损失 1.5s）；进后台 / 页面 pop
+/// 时立即 flush。data 块的 ↻ 刷新经 composer.fetchSnapshot +
+/// 控制器 replaceDataSnapshot。
 class DayEditorPage extends StatefulWidget {
   const DayEditorPage({
     super.key,
@@ -43,7 +45,7 @@ class DayEditorPage extends StatefulWidget {
 
 class _DayEditorPageState extends State<DayEditorPage>
     with WidgetsBindingObserver {
-  static const Duration _saveDebounce = Duration(seconds: 5);
+  static const Duration _saveDebounce = Duration(milliseconds: 1500);
 
   final SyIdGenerator _ids = SyIdGenerator();
   late final BlockEditorController _controller = BlockEditorController(
@@ -54,6 +56,10 @@ class _DayEditorPageState extends State<DayEditorPage>
   DiaryDocument? _document;
   bool _loaded = false;
   bool _loadStarted = false;
+
+  /// 该日已归档（正文已从本机清理）：不挂编辑器，仅渲染占位页。
+  bool _archived = false;
+
   Timer? _saveTimer;
   DateTime? _savedAt;
 
@@ -78,18 +84,34 @@ class _DayEditorPageState extends State<DayEditorPage>
   Future<void> _load() async {
     final repository = DiaryRepositoryScope.of(context);
     final composer = DiaryComposerScope.of(context).composer;
+    // 归档终态：findDay 返回 null 且 composer 防复活会抛错，
+    // 必须先用 stateOfDay 识别，不挂编辑器、渲染占位页。
+    final state = await repository.stateOfDay(_date);
+    if (state == DiaryDocState.archived) {
+      if (mounted) {
+        setState(() {
+          _archived = true;
+          _loaded = true;
+        });
+      }
+      return;
+    }
     // 先探一次：区分「新开/补记」（自动聚焦首个可写空段）与翻旧稿。
     final existedBefore = await repository.findDay(_date);
     final document = await composer.ensureDay(_date, repository);
     _controller.attach(document);
-    _controller.dataRefresher = (state) async {
-      final snapshot = await composer.fetchSnapshot(_date);
-      _controller.replaceDataSnapshot(
-        blockId: state.block.id,
-        text: snapshot.text,
-        customPatch: snapshot.customPatch,
-      );
-    };
+    // 导出只读态不提供 ↻ data 刷新（块组件自身也按 locked 隐藏入口，
+    // 这里不挂回调，双保险且语义干净）。
+    if (!document.locked) {
+      _controller.dataRefresher = (state) async {
+        final snapshot = await composer.fetchSnapshot(_date);
+        _controller.replaceDataSnapshot(
+          blockId: state.block.id,
+          text: snapshot.text,
+          customPatch: snapshot.customPatch,
+        );
+      };
+    }
     _controller.dirty.addListener(_onDirtyChanged);
     _document = document;
     if (mounted) setState(() => _loaded = true);
@@ -119,6 +141,53 @@ class _DayEditorPageState extends State<DayEditorPage>
     if (!_controller.dirty.value || _readOnly) return;
     _saveTimer?.cancel();
     _saveTimer = Timer(_saveDebounce, _flushSave);
+  }
+
+  /// 心情选择：写 custom-mood 后立即落盘（离散动作，不赌 1.5s 防抖）。
+  Future<void> _pickMood() async {
+    final selection = await showDiaryMoodPicker(
+      context,
+      current: _controller.documentCustom[kDiaryMoodKey],
+    );
+    if (selection == null || !mounted) return;
+    _controller.setDocumentCustom(kDiaryMoodKey, selection.mood);
+    await _flushSave();
+  }
+
+  /// exported → archived：二次确认后删本机正文、仅留索引并退出本页。
+  Future<void> _confirmArchive() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: AppColors.overlaySurface,
+        title: const Text('归档这篇日记？'),
+        content: const Text(
+          '将删除本机正文，仅保留索引。\n'
+          '请确认已在思源中完成导入；归档后本机不可再打开。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            style: TextButton.styleFrom(foregroundColor: AppColors.anchorRed),
+            child: const Text('归档'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    try {
+      await DiaryRepositoryScope.of(context).archiveDay(_date);
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.maybeOf(context)
+          ?.showSnackBar(SnackBar(content: Text('归档失败：$error')));
+      return;
+    }
+    if (mounted) Navigator.of(context).maybePop();
   }
 
   Future<void> _flushSave() async {
@@ -152,22 +221,44 @@ class _DayEditorPageState extends State<DayEditorPage>
         kicker: 'DIARY // ${widget.year}.${widget.month}.${widget.day}',
         title: title,
         onBack: () => Navigator.of(context).maybePop(),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            EditorHistoryButtons(controller: _controller),
-            const SizedBox(width: 10),
-            ValueListenableBuilder<bool>(
-              valueListenable: _controller.dirty,
-              builder: (context, dirty, _) => _SaveChip(
-                loaded: _loaded,
-                dirty: _loaded && dirty,
-                savedAt: _savedAt,
-                readOnly: _readOnly,
+        trailing: _archived
+            ? null
+            : Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (_loaded)
+                    DiaryMoodChip(controller: _controller, onPick: _pickMood),
+                  EditorHistoryButtons(controller: _controller),
+                  const SizedBox(width: 10),
+                  ValueListenableBuilder<bool>(
+                    valueListenable: _controller.dirty,
+                    builder: (context, dirty, _) => _SaveChip(
+                      loaded: _loaded,
+                      dirty: _loaded && dirty,
+                      savedAt: _savedAt,
+                      readOnly: _readOnly,
+                    ),
+                  ),
+                  // 仅 exported 只读态提供「归档」动作（draft 不可归档）。
+                  if (_loaded && _readOnly)
+                    TextButton.icon(
+                      onPressed: _confirmArchive,
+                      icon: const Icon(Icons.archive_outlined, size: 15),
+                      label: const Text('归档'),
+                      style: TextButton.styleFrom(
+                        foregroundColor: AppColors.pageLabel,
+                        textStyle: const TextStyle(
+                          fontSize: 11,
+                          letterSpacing: 1.2,
+                        ),
+                        visualDensity: VisualDensity.compact,
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        minimumSize: const Size(0, 28),
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                    ),
+                ],
               ),
-            ),
-          ],
-        ),
         child: !_loaded
             ? const Center(
                 child: Padding(
@@ -179,6 +270,8 @@ class _DayEditorPageState extends State<DayEditorPage>
                   ),
                 ),
               )
+            : _archived
+            ? const _ArchivedPlaceholder()
             : BlockEditorScope(
                 controller: _controller,
                 child: Column(
@@ -271,6 +364,49 @@ class _NoticeBanner extends StatelessWidget {
           fontSize: 12,
           color: AppColors.pageLabel,
           letterSpacing: 0.5,
+        ),
+      ),
+    );
+  }
+}
+
+/// 已归档日期的占位页：正文已从本机清理，仅留索引，不可再打开编辑。
+class _ArchivedPlaceholder extends StatelessWidget {
+  const _ArchivedPlaceholder();
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(
+              Icons.inventory_2_outlined,
+              size: 34,
+              color: AppColors.mechInkDim,
+            ),
+            const SizedBox(height: 14),
+            const Text(
+              '已归档',
+              style: TextStyle(
+                fontSize: 15,
+                letterSpacing: 4,
+                color: AppColors.pageLabel,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '正文已从本机清理，仅保留日期索引',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 12,
+                height: 1.6,
+                color: AppColors.mechInkDim.withValues(alpha: 0.8),
+              ),
+            ),
+          ],
         ),
       ),
     );

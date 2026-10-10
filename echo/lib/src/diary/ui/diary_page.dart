@@ -9,10 +9,12 @@ import '../data/diary_clock.dart';
 import '../data/diary_data_provider.dart';
 import '../data/diary_repository.dart';
 import '../data/persistent_diary_repository.dart';
+import '../export/diary_export_service.dart';
 import '../template/daily_default_template.dart';
 import '../template/diary_composer.dart';
 import 'browser/year_list_page.dart';
 import 'diary_composer_scope.dart';
+import 'diary_export_scope.dart';
 
 /// 日记模块根页：内嵌一个 Navigator 承载 年→月→日→编辑器 四级栈，
 /// 系统返回键由 [PopScope] 收口到内层栈；栈底时不拦截，交给系统
@@ -23,12 +25,19 @@ import 'diary_composer_scope.dart';
 /// 默认模板，装配完成后 fire-and-forget 执行「今天自动成稿 +
 /// 早于今天的空草稿清理」（§5.2 硬裁定 2/4）。
 class DiaryPage extends StatefulWidget {
-  const DiaryPage({super.key, this.clock, this.dataProvider, this.repository});
+  const DiaryPage({
+    super.key,
+    this.clock,
+    this.dataProvider,
+    this.repository,
+    this.exportService,
+  });
 
-  /// 测试注入缝：固定时钟/数据源/仓储；生产环境全部走真实装配。
+  /// 测试注入缝：固定时钟/数据源/仓储/导出服务；生产环境全部走真实装配。
   final DiaryClock? clock;
   final DiaryDataProvider? dataProvider;
   final DiaryRepository? repository;
+  final DiaryExportService? exportService;
 
   @override
   State<DiaryPage> createState() => _DiaryPageState();
@@ -43,6 +52,7 @@ class _DiaryPageState extends State<DiaryPage> {
 
   DiaryRepository? _repository;
   DiaryComposer? _composer;
+  DiaryExportService? _exportService;
   Object? _loadError;
   bool _canPopNested = false;
 
@@ -56,7 +66,8 @@ class _DiaryPageState extends State<DiaryPage> {
     try {
       // 测试注入直接用；生产打开应用文档目录下的持久仓储
       //（debug 首装种子，release 空仓）。
-      final repository = widget.repository ??
+      final repository =
+          widget.repository ??
           await PersistentDiaryRepository.open(
             root: await _storageRoot(),
             clock: _clock,
@@ -68,10 +79,13 @@ class _DiaryPageState extends State<DiaryPage> {
         provider: _dataProvider,
         idGenerator: repository.idGenerator,
       );
+      final exportService =
+          widget.exportService ?? DiaryExportService(repository: repository);
       if (!mounted) return;
       setState(() {
         _repository = repository;
         _composer = composer;
+        _exportService = exportService;
       });
       // 进模块即自动成稿今天；并发点进由 ensureDay 的 in-flight 去重兜底。
       unawaited(composer.ensureDay(_clock.today(), repository));
@@ -103,7 +117,8 @@ class _DiaryPageState extends State<DiaryPage> {
   Widget build(BuildContext context) {
     final repository = _repository;
     final composer = _composer;
-    if (repository == null || composer == null) {
+    final exportService = _exportService;
+    if (repository == null || composer == null || exportService == null) {
       return Center(
         child: _loadError != null
             ? Padding(
@@ -126,22 +141,25 @@ class _DiaryPageState extends State<DiaryPage> {
         clock: _clock,
         dataProvider: _dataProvider,
         composer: composer,
-        child: PopScope(
-          canPop: !_canPopNested,
-          onPopInvokedWithResult: (didPop, _) {
-            if (!didPop) _navigatorKey.currentState?.maybePop();
-          },
-          child: Navigator(
-            key: _navigatorKey,
-            observers: [_DiaryStackObserver(_syncCanPop)],
-            onGenerateRoute: (settings) {
-              return MaterialPageRoute<void>(
-                settings: settings,
-                fullscreenDialog: false,
-                // 根页也半透明：让页面共用的机械背景透上来。
-                builder: (_) => const YearListPage(),
-              );
+        child: DiaryExportServiceScope(
+          service: exportService,
+          child: PopScope(
+            canPop: !_canPopNested,
+            onPopInvokedWithResult: (didPop, _) {
+              if (!didPop) _navigatorKey.currentState?.maybePop();
             },
+            child: Navigator(
+              key: _navigatorKey,
+              observers: [_DiaryStackObserver(_syncCanPop)],
+              onGenerateRoute: (settings) {
+                return MaterialPageRoute<void>(
+                  settings: settings,
+                  fullscreenDialog: false,
+                  // 根页也半透明：让页面共用的机械背景透上来。
+                  builder: (_) => const YearListPage(),
+                );
+              },
+            ),
           ),
         ),
       ),
