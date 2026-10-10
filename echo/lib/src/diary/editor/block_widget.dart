@@ -25,8 +25,16 @@ class BlockWidget extends StatefulWidget {
 }
 
 class _BlockWidgetState extends State<BlockWidget> {
-  final LayerLink _handleLink = LayerLink();
+  final LayerLink _blockLink = LayerLink();
   final OverlayPortalController _popover = OverlayPortalController();
+  final GlobalKey _popoverCardKey = GlobalKey();
+  final GlobalKey _blockCardKey = GlobalKey();
+
+  /// 浮层朝上还是朝下；选中后按实测高度与屏幕剩余空间修正。
+  bool _placeBelow = true;
+
+  /// 浮层最大宽：与块容器等宽（首帧用屏宽兜底，实测后收敛）。
+  double? _popoverMaxWidth;
 
   BlockState get state => widget.state;
 
@@ -42,6 +50,34 @@ class _BlockWidgetState extends State<BlockWidget> {
       if (!mounted) return;
       if (selected) {
         _popover.show();
+        // 等浮层上树后按实测尺寸决定朝上/朝下、与块等宽，避免溢出屏幕。
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted || editor.selectedBlockId != block.id) return;
+          final cardBox =
+              _popoverCardKey.currentContext?.findRenderObject()
+                  as RenderBox?;
+          final blockBox =
+              _blockCardKey.currentContext?.findRenderObject()
+                  as RenderBox?;
+          if (cardBox == null || blockBox == null) return;
+          final screenHeight = MediaQuery.sizeOf(context).height;
+          final blockTop = blockBox.localToGlobal(Offset.zero).dy;
+          final blockBottom = blockTop + blockBox.size.height;
+          final needed = cardBox.size.height + 12;
+          final spaceBelow = screenHeight - blockBottom;
+          final spaceAbove = blockTop;
+          // 下方放得下就朝下；下方放不下但上方放得下就朝上；
+          // 两侧都不够时优先朝下（贴底后屏幕内至少保留完整宽度）。
+          final wantBelow =
+              spaceBelow >= needed || spaceAbove < needed;
+          if (wantBelow != _placeBelow ||
+              _popoverMaxWidth != blockBox.size.width) {
+            setState(() {
+              _placeBelow = wantBelow;
+              _popoverMaxWidth = blockBox.size.width;
+            });
+          }
+        });
       } else {
         _popover.hide();
       }
@@ -81,39 +117,40 @@ class _BlockWidgetState extends State<BlockWidget> {
       ),
     );
 
-    final index = editor.blocks.indexWhere((s) => identical(s, state));
-
     return OverlayPortal(
       controller: _popover,
       overlayChildBuilder: (context) => _buildPopover(
         context,
         editor: editor,
-        placeBelow: index <= 0,
         readOnly: readOnly,
       ),
       child: Container(
         margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
-        decoration: BoxDecoration(
-          color: BlockBackgroundPalette.fillOf(block.background),
-          borderRadius: BorderRadius.circular(8),
-          border: selected
-              ? Border.all(color: AppColors.accentBlue.withValues(alpha: 0.55))
-              : null,
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            CompositedTransformTarget(
-              link: _handleLink,
-              child: _BlockHandle(
-                selected: selected,
-                readOnly: readOnly,
-                onTap: () => editor.selectBlock(selected ? null : block.id),
-              ),
+        child: CompositedTransformTarget(
+          link: _blockLink,
+          child: Container(
+            key: _blockCardKey,
+            decoration: BoxDecoration(
+              color: BlockBackgroundPalette.fillOf(block.background),
+              borderRadius: BorderRadius.circular(8),
+              border: selected
+                  ? Border.all(
+                      color: AppColors.accentBlue.withValues(alpha: 0.55))
+                  : null,
             ),
-            Expanded(child: textField),
-            const SizedBox(width: 12),
-          ],
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                _BlockHandle(
+                  selected: selected,
+                  readOnly: readOnly,
+                  onTap: () => editor.selectBlock(selected ? null : block.id),
+                ),
+                Expanded(child: textField),
+                const SizedBox(width: 12),
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -123,7 +160,6 @@ class _BlockWidgetState extends State<BlockWidget> {
   Widget _buildPopover(
     BuildContext context, {
     required BlockEditorController editor,
-    required bool placeBelow,
     required bool readOnly,
   }) {
     return Stack(
@@ -136,15 +172,18 @@ class _BlockWidgetState extends State<BlockWidget> {
           ),
         ),
         CompositedTransformFollower(
-          link: _handleLink,
-          targetAnchor: placeBelow
+          link: _blockLink,
+          targetAnchor: _placeBelow
               ? Alignment.bottomLeft
               : Alignment.topLeft,
-          followerAnchor: placeBelow
+          followerAnchor: _placeBelow
               ? Alignment.topLeft
               : Alignment.bottomLeft,
-          offset: Offset(0, placeBelow ? 6 : -6),
+          offset: Offset(0, _placeBelow ? 6 : -6),
           child: _BlockFormatPopover(
+            key: _popoverCardKey,
+            maxWidth:
+                _popoverMaxWidth ?? MediaQuery.sizeOf(context).width - 44,
             state: state,
             editor: editor,
             readOnly: readOnly,
@@ -190,11 +229,14 @@ class _BlockWidgetState extends State<BlockWidget> {
 /// 应用后浮层保持打开（可连续排版），点屏障或再点块标关闭。
 class _BlockFormatPopover extends StatelessWidget {
   const _BlockFormatPopover({
+    super.key,
+    required this.maxWidth,
     required this.state,
     required this.editor,
     required this.readOnly,
   });
 
+  final double maxWidth;
   final BlockState state;
   final BlockEditorController editor;
   final bool readOnly;
@@ -206,84 +248,87 @@ class _BlockFormatPopover extends StatelessWidget {
 
     return Material(
       type: MaterialType.transparency,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
-        decoration: BoxDecoration(
-          color: const Color(0xFF151920),
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: AppColors.tone2),
-          boxShadow: const [
-            BoxShadow(
-              color: Color(0x66000000),
-              blurRadius: 18,
-              offset: Offset(0, 6),
-            ),
-          ],
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _ToolButton(
-                  key: const ValueKey('diary-turn-p'),
-                  label: '正文',
-                  active: block.kind == DiaryBlockKind.paragraph,
-                  onTap: readOnly
-                      ? null
-                      : () =>
-                          editor.turnInto(state, DiaryBlockKind.paragraph),
-                ),
-                for (final level in [1, 2, 3])
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: maxWidth),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+          decoration: BoxDecoration(
+            color: const Color(0xFF151920),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: AppColors.tone2),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x66000000),
+                blurRadius: 18,
+                offset: Offset(0, 6),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
                   _ToolButton(
-                    key: ValueKey('diary-turn-h$level'),
-                    label: 'H$level',
-                    active: headingActive && block.level == level,
+                    key: const ValueKey('diary-turn-p'),
+                    label: '正文',
+                    active: block.kind == DiaryBlockKind.paragraph,
                     onTap: readOnly
                         ? null
-                        : () => editor.turnInto(
-                            state, DiaryBlockKind.heading,
-                            level: level),
+                        : () =>
+                            editor.turnInto(state, DiaryBlockKind.paragraph),
                   ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Container(height: 1, color: AppColors.tone1),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 6,
-              runSpacing: 6,
-              children: [
-                for (var n = BlockBackgroundPalette.min;
-                    n <= BlockBackgroundPalette.max;
-                    n++)
+                  for (final level in [1, 2, 3])
+                    _ToolButton(
+                      key: ValueKey('diary-turn-h$level'),
+                      label: 'H$level',
+                      active: headingActive && block.level == level,
+                      onTap: readOnly
+                          ? null
+                          : () => editor.turnInto(
+                              state, DiaryBlockKind.heading,
+                              level: level),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Container(height: 1, color: AppColors.tone1),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  for (var n = BlockBackgroundPalette.min;
+                      n <= BlockBackgroundPalette.max;
+                      n++)
+                    _Swatch(
+                      key: ValueKey('diary-bg-$n'),
+                      color: BlockBackgroundPalette.colors[n]!,
+                      active: block.background == n,
+                      onTap: readOnly
+                          ? null
+                          : () => editor.setBackground(state, n),
+                    ),
                   _Swatch(
-                    key: ValueKey('diary-bg-$n'),
-                    color: BlockBackgroundPalette.colors[n]!,
-                    active: block.background == n,
+                    key: const ValueKey('diary-bg-clear'),
+                    active: block.background == null,
                     onTap: readOnly
                         ? null
-                        : () => editor.setBackground(state, n),
+                        : () => editor.setBackground(state, null),
+                    child: Icon(
+                      Icons.close,
+                      size: 13,
+                      color: block.background == null
+                          ? AppColors.accentBlue
+                          : AppColors.textMuted,
+                    ),
                   ),
-                _Swatch(
-                  key: const ValueKey('diary-bg-clear'),
-                  active: block.background == null,
-                  onTap: readOnly
-                      ? null
-                      : () => editor.setBackground(state, null),
-                  child: Icon(
-                    Icons.close,
-                    size: 13,
-                    color: block.background == null
-                        ? AppColors.accentBlue
-                        : AppColors.textMuted,
-                  ),
-                ),
-              ],
-            ),
-          ],
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );

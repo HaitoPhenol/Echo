@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:echo/src/diary/editor/block_editor_controller.dart';
 import 'package:echo/src/diary/editor/block_editor_view.dart';
+import 'package:echo/src/diary/editor/block_widget.dart';
 import 'package:echo/src/diary/editor/editor_history_buttons.dart';
 import 'package:echo/src/diary/editor/editor_scope.dart';
 import 'package:echo/src/diary/sy/diary_model.dart';
@@ -104,6 +105,81 @@ void main() {
       await tester.pump();
       await tester.pump();
       expect(find.text('H1'), findsNothing);
+    });
+
+    Finder findPopoverCard() => find.byWidgetPredicate(
+      (w) =>
+          w is Container &&
+          w.decoration is BoxDecoration &&
+          (w.decoration as BoxDecoration).color ==
+              const Color(0xFF151920),
+    );
+
+    testWidgets('浮层宽度不超出屏幕（色块在屏宽约束内折行）', (tester) async {
+      final editor = mount(DateTime(2026, 5, 15, 9));
+      addTearDown(editor.dispose);
+      await tester.pumpWidget(harness(editor));
+      await tester.pump();
+
+      await tester.tap(find.byIcon(Icons.drag_indicator));
+      await tester.pump();
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      final card = tester.getRect(findPopoverCard());
+      final blockRect = tester.getRect(find.byType(BlockWidget));
+      // 浮层与块内容区对齐（块外还有 10dp margin），右缘不超出块本身。
+      expect(card.left, greaterThanOrEqualTo(blockRect.left));
+      expect(card.right, lessThanOrEqualTo(blockRect.right + 1));
+    });
+
+    testWidgets('靠近屏幕底部的块：浮层自动翻到块标上方且不出屏',
+        (tester) async {
+      final now = DateTime(2026, 5, 15, 9);
+      final ids = SyIdGenerator(random: Random(7), now: () => now);
+      final date = DateTime(now.year, now.month, now.day);
+      final document = DiaryDocument(
+        id: SyIdGenerator.dayContainer(date),
+        date: date,
+        title: '测试日',
+        blocks: [
+          for (var i = 1; i <= 12; i++)
+            DiaryBlock(id: ids.next(), text: '块$i'),
+        ],
+      );
+      final editor =
+          BlockEditorController(idGenerator: ids, now: () => now)
+            ..attach(document);
+      addTearDown(editor.dispose);
+      await tester.pumpWidget(harness(editor));
+      await tester.pump();
+
+      // 滚到最后一块（测试表面高 600）。
+      await tester.drag(find.byType(Scrollable).first, const Offset(0, -1200));
+      await tester.pumpAndSettle();
+      final lastBlock = find.text('块12');
+      expect(lastBlock, findsOneWidget);
+      final lastHandle = find.descendant(
+        of: find.ancestor(
+          of: lastBlock,
+          matching: find.byType(BlockWidget),
+        ),
+        matching: find.byIcon(Icons.drag_indicator),
+      );
+      final handleRect = tester.getRect(lastHandle);
+
+      await tester.tap(lastHandle);
+      // show 上树 → 实测宽高 setState（可能再翻一次朝向），泵到收敛。
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      final card = tester.getRect(findPopoverCard());
+      expect(find.text('H1'), findsOneWidget);
+      // 翻到上方：卡片底边不越过块标顶边（含 6dp 间隙，容 1px 误差）。
+      expect(card.bottom, lessThanOrEqualTo(handleRect.top - 5));
+      expect(card.top, greaterThanOrEqualTo(0));
+      expect(card.bottom, lessThanOrEqualTo(600));
+      expect(card.right, lessThanOrEqualTo(800));
     });
   });
 
