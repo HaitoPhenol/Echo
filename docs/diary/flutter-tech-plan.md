@@ -309,10 +309,12 @@ abstract interface class DiaryDataProvider {
   2026-10-10 发布 **v0.7.0（0.7.0+31）**，分支与 MINOR tag 已推远程
   （未开 PR，不自行合并）。
 - M3 打磨 patch 在 `feat/diary-m3-toolbar` 分支（从已合入 M2/M3 的本地
-  main 拉出，2026-10-10）交付，**pubspec 保持 0.7.0+31 不动、不打 tag、
-  不自行合并**；合入 main 时由合并者排 0.7.1+32 并只打本地 v0.7.1。
-  注：本地 main ff-only 合入 M2/M3 后，main 与 m2 分支的远程 push 因
-  网络（github.com:443 超时）未完成，网络恢复后需补推。
+  main 拉出，2026-10-10）交付，含 4 个提交（M3 功能、浮层屏内自适应、
+  块行两轮收紧、文档），同日 ff-only 合入 main 后排 **0.7.1+32**，
+  本地打 v0.7.1（patch tag 不推远程）；任务分支 pubspec 全程保持
+  0.7.0+31 未动。
+  注：本地 main ff-only 合入 M2/M3 后远程 push 曾因网络（github.com:443
+  超时）滞后，M3 patch 合入时一并补推 main 与两个日记功能分支。
 - 版本规则（项目铁律）：0.MINOR.PATCH + 单调递增 build 号；功能里程碑
   完成 MINOR+1（M4→0.8.0、M5 顺延），bug 修复走 PATCH（功能更新时清零）；
   patch tag 只打本地，远程只推 vX.Y.0 的 MINOR tag；**排号只在合入 main
