@@ -17,10 +17,7 @@ void main() {
   late DiaryDocument doc;
   late BlockEditorController controller;
 
-  DiaryDocument makeDoc({
-    List<DiaryBlock>? blocks,
-    bool locked = false,
-  }) {
+  DiaryDocument makeDoc({List<DiaryBlock>? blocks, bool locked = false}) {
     return DiaryDocument(
       id: SyIdGenerator.dayContainer(fixedNow),
       date: fixedNow,
@@ -50,15 +47,17 @@ void main() {
   group('T01 回车拆块', () {
     test('段末回车：原块保留 ID/kind，新块为空段落', () {
       final firstId = ids.next();
-      doc = makeDoc(blocks: [
-        DiaryBlock(
-          id: firstId,
-          kind: DiaryBlockKind.heading,
-          level: 1,
-          background: 3,
-          text: '标题',
-        ),
-      ]);
+      doc = makeDoc(
+        blocks: [
+          DiaryBlock(
+            id: firstId,
+            kind: DiaryBlockKind.heading,
+            level: 1,
+            background: 3,
+            text: '标题',
+          ),
+        ],
+      );
       controller = BlockEditorController(idGenerator: ids, now: () => fixedNow)
         ..attach(doc);
       final state = controller.blocks.single;
@@ -79,7 +78,9 @@ void main() {
     });
 
     test('段中回车：前后文本各归其块', () {
-      doc = makeDoc(blocks: [DiaryBlock(id: ids.next(), text: 'abcd')]);
+      doc = makeDoc(
+        blocks: [DiaryBlock(id: ids.next(), text: 'abcd')],
+      );
       controller = BlockEditorController(idGenerator: ids, now: () => fixedNow)
         ..attach(doc);
       final state = controller.blocks.single;
@@ -107,8 +108,7 @@ void main() {
         ..attach(doc);
       final state = controller.blocks.single;
 
-      type(state, 'a\nb',
-          composing: const TextRange(start: 0, end: 3));
+      type(state, 'a\nb', composing: const TextRange(start: 0, end: 3));
       expect(controller.blocks, hasLength(1));
       expect(controller.blocks.single.block.text, 'a\nb');
 
@@ -122,10 +122,12 @@ void main() {
   group('T02 块首退格', () {
     test('非空块与上一块合并：保留上块 ID，光标落在接合处', () {
       final prevId = ids.next();
-      doc = makeDoc(blocks: [
-        DiaryBlock(id: prevId, text: 'abc'),
-        DiaryBlock(id: ids.next(), text: 'def'),
-      ]);
+      doc = makeDoc(
+        blocks: [
+          DiaryBlock(id: prevId, text: 'abc'),
+          DiaryBlock(id: ids.next(), text: 'def'),
+        ],
+      );
       controller = BlockEditorController(idGenerator: ids, now: () => fixedNow)
         ..attach(doc);
       final second = controller.blocks[1];
@@ -142,10 +144,12 @@ void main() {
     });
 
     test('块首空块删除，但整篇至少保留一块', () {
-      doc = makeDoc(blocks: [
-        DiaryBlock(id: ids.next(), text: 'abc'),
-        DiaryBlock(id: ids.next()),
-      ]);
+      doc = makeDoc(
+        blocks: [
+          DiaryBlock(id: ids.next(), text: 'abc'),
+          DiaryBlock(id: ids.next()),
+        ],
+      );
       controller = BlockEditorController(idGenerator: ids, now: () => fixedNow)
         ..attach(doc);
       final empty = controller.blocks[1];
@@ -161,7 +165,9 @@ void main() {
     });
 
     test('第一块块首退格不拦截（交框架）', () {
-      doc = makeDoc(blocks: [DiaryBlock(id: ids.next(), text: 'abc')]);
+      doc = makeDoc(
+        blocks: [DiaryBlock(id: ids.next(), text: 'abc')],
+      );
       controller = BlockEditorController(idGenerator: ids, now: () => fixedNow)
         ..attach(doc);
       final first = controller.blocks.single;
@@ -171,10 +177,12 @@ void main() {
     });
 
     test('光标非 0 / 有选区时不拦截', () {
-      doc = makeDoc(blocks: [
-        DiaryBlock(id: ids.next(), text: 'abc'),
-        DiaryBlock(id: ids.next(), text: 'def'),
-      ]);
+      doc = makeDoc(
+        blocks: [
+          DiaryBlock(id: ids.next(), text: 'abc'),
+          DiaryBlock(id: ids.next(), text: 'def'),
+        ],
+      );
       controller = BlockEditorController(idGenerator: ids, now: () => fixedNow)
         ..attach(doc);
       final second = controller.blocks[1];
@@ -190,10 +198,12 @@ void main() {
     });
 
     test('上一块/当前块只读时不合并', () {
-      doc = makeDoc(blocks: [
-        DiaryBlock(id: ids.next(), text: 'data', readonly: true),
-        DiaryBlock(id: ids.next()),
-      ]);
+      doc = makeDoc(
+        blocks: [
+          DiaryBlock(id: ids.next(), text: 'data', readonly: true),
+          DiaryBlock(id: ids.next()),
+        ],
+      );
       controller = BlockEditorController(idGenerator: ids, now: () => fixedNow)
         ..attach(doc);
       final second = controller.blocks[1];
@@ -206,10 +216,12 @@ void main() {
 
   group('T05 ↑↓ 跳焦', () {
     test('首块 offset0 向上、末块末尾向下均不拦截；边界跳焦拦截', () {
-      doc = makeDoc(blocks: [
-        DiaryBlock(id: ids.next(), text: 'abc'),
-        DiaryBlock(id: ids.next(), text: 'de'),
-      ]);
+      doc = makeDoc(
+        blocks: [
+          DiaryBlock(id: ids.next(), text: 'abc'),
+          DiaryBlock(id: ids.next(), text: 'de'),
+        ],
+      );
       controller = BlockEditorController(idGenerator: ids, now: () => fixedNow)
         ..attach(doc);
       final first = controller.blocks[0];
@@ -234,7 +246,9 @@ void main() {
 
   group('T04 结构命令与序列化往返', () {
     test('转 H1–H3 / 回段落，serializer 往返一致', () {
-      doc = makeDoc(blocks: [DiaryBlock(id: ids.next(), text: '标题')]);
+      doc = makeDoc(
+        blocks: [DiaryBlock(id: ids.next(), text: '标题')],
+      );
       controller = BlockEditorController(idGenerator: ids, now: () => fixedNow)
         ..attach(doc);
       final s = controller.blocks.single;
@@ -243,9 +257,9 @@ void main() {
       controller.setBackground(s, 12);
 
       final restored = const SySerializer()
-          .decode(const SySerializer().encodeJson(
-            controller.snapshotDocument(),
-          ))
+          .decode(
+            const SySerializer().encodeJson(controller.snapshotDocument()),
+          )
           .document
           .blocks
           .single;
@@ -256,8 +270,9 @@ void main() {
 
       controller.turnInto(s, DiaryBlockKind.paragraph);
       final again = const SySerializer()
-          .decode(const SySerializer()
-              .encodeJson(controller.snapshotDocument()))
+          .decode(
+            const SySerializer().encodeJson(controller.snapshotDocument()),
+          )
           .document
           .blocks
           .single;
@@ -282,9 +297,7 @@ void main() {
     });
 
     test('只读块 / 锁定文档上的结构命令为 no-op', () {
-      doc = makeDoc(blocks: [
-        DiaryBlock(id: ids.next(), readonly: true),
-      ]);
+      doc = makeDoc(blocks: [DiaryBlock(id: ids.next(), readonly: true)]);
       controller = BlockEditorController(idGenerator: ids, now: () => fixedNow)
         ..attach(doc);
       final s = controller.blocks.single;
@@ -311,7 +324,9 @@ void main() {
   group('T09 撤销/重做', () {
     test('回车拆块后撤销还原，重做再次拆开', () {
       final originalId = ids.next();
-      doc = makeDoc(blocks: [DiaryBlock(id: originalId, text: 'abc')]);
+      doc = makeDoc(
+        blocks: [DiaryBlock(id: originalId, text: 'abc')],
+      );
       controller = BlockEditorController(idGenerator: ids, now: () => fixedNow)
         ..attach(doc);
       final state = controller.blocks.single;
@@ -333,10 +348,12 @@ void main() {
 
     test('合并撤销还原两块', () {
       final prevId = ids.next();
-      doc = makeDoc(blocks: [
-        DiaryBlock(id: prevId, text: 'abc'),
-        DiaryBlock(id: ids.next(), text: 'def'),
-      ]);
+      doc = makeDoc(
+        blocks: [
+          DiaryBlock(id: prevId, text: 'abc'),
+          DiaryBlock(id: ids.next(), text: 'def'),
+        ],
+      );
       controller = BlockEditorController(idGenerator: ids, now: () => fixedNow)
         ..attach(doc);
       final second = controller.blocks[1];
@@ -366,10 +383,12 @@ void main() {
     });
 
     test('detach 回灌有序块列表', () {
-      doc = makeDoc(blocks: [
-        DiaryBlock(id: ids.next(), text: 'one'),
-        DiaryBlock(id: ids.next(), text: 'two'),
-      ]);
+      doc = makeDoc(
+        blocks: [
+          DiaryBlock(id: ids.next(), text: 'one'),
+          DiaryBlock(id: ids.next(), text: 'two'),
+        ],
+      );
       controller = BlockEditorController(idGenerator: ids, now: () => fixedNow)
         ..attach(doc);
       type(controller.blocks[0], 'one\nmore');
@@ -384,6 +403,53 @@ void main() {
         ..attach(doc);
       expect(controller.blocks, hasLength(1));
       controller.dispose();
+    });
+  });
+
+  group('M5 文档级 custom（心情入口）', () {
+    test('setDocumentCustom 写入置脏随 snapshot 保留；同值 no-op；null 移除', () {
+      doc = makeDoc();
+      controller = BlockEditorController(idGenerator: ids, now: () => fixedNow)
+        ..attach(doc);
+      addTearDown(controller.dispose);
+      expect(controller.documentCustom, isEmpty);
+
+      controller.setDocumentCustom('custom-mood', '🙂');
+      expect(controller.documentCustom['custom-mood'], '🙂');
+      expect(controller.dirty.value, isTrue);
+      expect(controller.snapshotDocument().custom['custom-mood'], '🙂');
+
+      // 同值不产生新的脏标记。
+      controller.markClean();
+      controller.setDocumentCustom('custom-mood', '🙂');
+      expect(controller.dirty.value, isFalse);
+
+      // null = 移除键（清心情）。
+      controller.setDocumentCustom('custom-mood', null);
+      expect(controller.documentCustom.containsKey('custom-mood'), isFalse);
+      expect(controller.dirty.value, isTrue);
+    });
+
+    test('locked（导出只读）文档 setDocumentCustom 为 no-op', () {
+      doc = makeDoc(locked: true);
+      controller = BlockEditorController(idGenerator: ids, now: () => fixedNow)
+        ..attach(doc);
+      addTearDown(controller.dispose);
+
+      controller.setDocumentCustom('custom-mood', '😢');
+      expect(controller.documentCustom, isEmpty);
+      expect(controller.dirty.value, isFalse);
+    });
+
+    test('documentCustom 为不可改视图', () {
+      doc = makeDoc();
+      controller = BlockEditorController(idGenerator: ids, now: () => fixedNow)
+        ..attach(doc);
+      addTearDown(controller.dispose);
+      expect(
+        () => controller.documentCustom['custom-mood'] = '😄',
+        throwsUnsupportedError,
+      );
     });
   });
 }

@@ -46,16 +46,19 @@ void main() {
     });
 
     test('子集外顶层节点全部记入 skippedTypes', () {
-      expect(result.skippedTypes, containsAll(<String>[
-        'NodeList',
-        'NodeBlockquote',
-        'NodeCodeBlock',
-        'NodeThematicBreak',
-        'NodeTable',
-        'NodeHTMLBlock',
-        'NodeSuperBlock',
-        'NodeCallout',
-      ]));
+      expect(
+        result.skippedTypes,
+        containsAll(<String>[
+          'NodeList',
+          'NodeBlockquote',
+          'NodeCodeBlock',
+          'NodeThematicBreak',
+          'NodeTable',
+          'NodeHTMLBlock',
+          'NodeSuperBlock',
+          'NodeCallout',
+        ]),
+      );
     });
   });
 
@@ -81,8 +84,10 @@ void main() {
       expect(json, contains('"Spec":"2"'));
       expect(
         json,
-        contains('"Type":"NodeHeading","HeadingLevel":2,'
-            '"Properties":{"id":"20261010090000-aaaaaaa","updated":"20261010090000"}'),
+        contains(
+          '"Type":"NodeHeading","HeadingLevel":2,'
+          '"Properties":{"id":"20261010090000-aaaaaaa","updated":"20261010090000"}',
+        ),
       );
     });
 
@@ -104,8 +109,10 @@ void main() {
       expect(json, isNot(contains('#')));
       expect(
         json,
-        contains('"style":"background-color: var(--b3-font-background3); '
-            '--b3-parent-background: var(--b3-font-background3);"'),
+        contains(
+          '"style":"background-color: var(--b3-font-background3); '
+          '--b3-parent-background: var(--b3-font-background3);"',
+        ),
       );
       // Properties 键序 id < style < updated
       expect(json, contains('"id":"20261010090001-bbbbbbb","style":'));
@@ -123,9 +130,11 @@ void main() {
       // custom-mood < custom-weather < id < title < type < updated
       expect(
         json,
-        contains('"Properties":{"custom-mood":"good",'
-            '"custom-weather":"晴 18°C","id":"20261010080000-echo000",'
-            '"title":"10日 周六","type":"doc","updated":"20261010090000"}'),
+        contains(
+          '"Properties":{"custom-mood":"good",'
+          '"custom-weather":"晴 18°C","id":"20261010080000-echo000",'
+          '"title":"10日 周六","type":"doc","updated":"20261010090000"}',
+        ),
       );
     });
 
@@ -134,13 +143,16 @@ void main() {
         id: SyIdGenerator.dayContainer(DateTime(2026, 10, 10)),
         date: DateTime(2026, 10, 10),
         title: '10日 周六',
-        blocks: [
-          DiaryBlock(id: '20261010090002-ccccccc'),
-        ],
+        blocks: [DiaryBlock(id: '20261010090002-ccccccc')],
       );
       final json = serializer.encodeJson(doc);
-      expect(json, contains('"Properties":{"id":"20261010090002-ccccccc",'
-          '"updated":"'));
+      expect(
+        json,
+        contains(
+          '"Properties":{"id":"20261010090002-ccccccc",'
+          '"updated":"',
+        ),
+      );
       // 空段落节点后直接结束（没有 Children 键）
       expect(json, isNot(contains('NodeText')));
     });
@@ -186,6 +198,20 @@ void main() {
       final decoded = serializer.decode(first);
       final again = serializer.encodeJson(decoded.document);
       expect(again, first);
+    });
+
+    test('M5 custom-mood 五档 emoji 取值 encode→decode 原样往返', () {
+      // 心情固定五档离散值（多字节 emoji），必须逐档断言不丢字符。
+      for (final mood in const ['😄', '🙂', '😐', '😕', '😢']) {
+        final doc = DiaryDocument(
+          id: SyIdGenerator.dayContainer(DateTime(2026, 10, 10)),
+          date: DateTime(2026, 10, 10),
+          title: '10月10日 周六',
+          custom: {'custom-mood': mood},
+        );
+        final decoded = serializer.decode(serializer.encodeJson(doc)).document;
+        expect(decoded.custom['custom-mood'], mood);
+      }
     });
   });
 
