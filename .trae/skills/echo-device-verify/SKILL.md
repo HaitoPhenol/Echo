@@ -24,6 +24,21 @@ Positioned 包了——留一个非定位子定尺寸。
 
 ## 2. 装机
 
+**先唤醒屏幕**：为防 OLED 烧屏，测试机不设常亮（不用 `svc power stayon`、
+不改 `screen_off_timeout`），闲置即息屏；息屏后 input 事件照常执行但
+screenrecord 会录到黑屏。每条调试/录屏命令前自行唤醒：
+
+```bash
+adb -s 3f6cc09b shell input keyevent KEYCODE_WAKEUP
+# 无锁屏密码；若停在锁屏，上滑即可：
+adb -s 3f6cc09b shell input swipe 540 1800 540 600 200
+# 状态确认：Awake/Asleep 与是否在锁屏
+adb -s 3f6cc09b shell dumpsys power | grep mWakefulness=
+adb -s 3f6cc09b shell dumpsys window | grep -o 'isStatusBarKeyguard=[a-z]*'
+```
+
+长录屏在同一条设备 shell 里开头先发一次 WAKEUP（见 §3 模板）。
+
 ```bash
 cd echo
 flutter build apk --debug
@@ -37,6 +52,7 @@ sleep 4   # 等冷启动
 
 screenrecord 与多次 input 事件必须写进**同一条** `adb shell '...'`
 （后台 `screenrecord &` + sleep + swipe + `wait`），分多条命令会丢时序。
+该 shell 内开头先放 `input keyevent KEYCODE_WAKEUP`，避免首段黑屏（§2）。
 横滑翻页手势：
 
 - 前进（左滑下一页）：`input swipe 900 2070 500 2070 1200`
