@@ -9,6 +9,7 @@ import 'package:echo/src/navigation/widgets/handle_menu.dart';
 import 'package:echo/src/navigation/widgets/mechanical_page_drum.dart';
 import 'package:echo/src/navigation/widgets/quick_action_arc.dart';
 import 'package:echo/src/navigation/widgets/side_drawer.dart';
+import 'package:echo/src/diary/ui/diary_page.dart';
 import 'package:echo/src/pages/chat_page.dart';
 import 'package:echo/src/pages/template_page.dart';
 import 'package:echo/src/services/nav_badge_service.dart';
@@ -25,15 +26,17 @@ Future<void> pumpFramesMs(WidgetTester tester, int ms) async {
 }
 
 void main() {
-  testWidgets('初始展示 4 页：聊天页为会话列表骨架，其余 3 页为占位页', (tester) async {
+  testWidgets('初始展示 4 页：聊天页为会话列表骨架，笔记页为日记年表，终端/主页仍占位', (tester) async {
     // 构建应用
     await tester.pumpWidget(const EchoApp());
     await tester.pump();
 
-    // 智能导航屏在树上；聊天页已换成 ChatPage，其余 3 页仍是占位页
+    // 智能导航屏在树上；聊天页为 ChatPage、笔记页 M2 起为 DiaryPage，
+    // 终端/主页两页仍是占位页
     expect(find.byType(SmartNavScreen), findsOneWidget);
     expect(find.byType(ChatPage), findsOneWidget);
-    expect(find.byType(TemplatePage), findsNWidgets(3));
+    expect(find.byType(DiaryPage), findsOneWidget);
+    expect(find.byType(TemplatePage), findsNWidgets(2));
 
     // 首个占位页内的标题文本为「终端」（页内另有测试按钮文字，
     // 故按标题精确匹配）
@@ -258,19 +261,19 @@ void main() {
       await tester.pump(const Duration(milliseconds: 16));
     }
 
-    /// 第 i 个目的地页的位置标记：聊天页（i=1）已换成 ChatPage，
-    /// 用其 ListView；其余三页仍是 TemplatePage 标题。
-    /// 注意 TemplatePage 序列中终端/笔记/主页依次为 0/2/3（1 为聊天）
-    /// （聊天页不在该序列内）。
+    /// 第 i 个目的地页的位置标记：聊天页（i=1）用 ChatPage 的 ListView；
+    /// 笔记页（i=2）M2 起为 DiaryPage，用年表标题「日记」；
+    /// 终端（i=0）/主页（i=3）仍是 TemplatePage，序列中下标 0/1。
     Finder pageMarker(int i) {
       if (i == 1) {
         return find.byKey(const ValueKey<String>('chat-page-list'));
       }
-      final templateIndex = switch (i) {
-        0 => 0,
-        2 => 1,
-        _ => 2,
-      };
+      if (i == 2) {
+        return find
+            .descendant(of: find.byType(DiaryPage), matching: find.text('日记'))
+            .first;
+      }
+      final templateIndex = i == 0 ? 0 : 1;
       return find
           .descendant(
             of: find.byType(TemplatePage).at(templateIndex),
@@ -289,11 +292,7 @@ void main() {
       NavBadgeLevel.notification,
       reason: '双击直达途中经过聊天页，不应判定已读',
     );
-    expect(
-      anchorLevel(0),
-      NavBadgeLevel.exception,
-      reason: '双击离开终端页，异常不应被解除',
-    );
+    expect(anchorLevel(0), NavBadgeLevel.exception, reason: '双击离开终端页，异常不应被解除');
 
     /// 点左圆点，并只推进到激活页切换（越过 destination 中点，
     /// 该页标题中心越过屏幕左缘 0）——模拟快速连点：每"页"停留
