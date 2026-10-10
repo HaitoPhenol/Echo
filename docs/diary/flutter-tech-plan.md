@@ -4,7 +4,10 @@
 > 本文件把它落地到 Echo 的 Flutter 工程，是日记模块的实施基线。
 > 格式细节以《[sy-format-golden-3.8.6.md](sy-format-golden-3.8.6.md)》为准，本文不重复。
 >
-> 状态：M0、M1 已完成（2026-10-10，M1 示例包经思源 3.8.6 真机导入验收通过）。
+> 状态：M0–M3 已完成（2026-10-10）。M1 示例包经思源 3.8.6 真机导入验收通过；
+> M2/M3 年→月→日层级与块级编辑器经 MIX 2S 真机国产输入法验收（拆/合块、
+> 防抖落盘闭环），发布 v0.7.0。M3 剩余打磨项（工具栏 UI、Slash 菜单、
+> 思源主题真实色板）转入后续 patch 迭代。
 > 分工：M1 纯 Dart 格式层为基建（已交付于 `lib/src/diary/sy/`）；M2 起的页面
 > 与编辑器属业务代码，由负责笔记/日记页的 agent 按本方案实施。
 
@@ -38,13 +41,26 @@ echo/lib/src/diary/
 │   ├── diary_model.dart         # DiaryDocument / DiaryBlock（编辑器面向的模型）
 │   ├── sy_serializer.dart       # 模型 ↔ .sy JSON（紧凑、键排序、空块省略 Children）
 │   └── sy_zip_exporter.dart     # 模型 → 笔记本 .sy.zip（conf/sort/三级树/UTF-8 位）
-├── editor/                      # M2-M3：Flutter 原生块编辑器（业务 agent）
-├── template/                    # M4：模板实例化与数据注入
+├── data/                        # M2：DiaryRepository 抽象 + InMemory 实现（M5 平替换为 sqflite）
+├── template/                    # M2 落地接口：DiaryTemplate + BlankDiaryTemplate（M4 扩充模板集）
+├── editor/                      # M2-M3：Flutter 原生块编辑器
+│   ├── block_editor_controller.dart  # delta 拆/合块、跳焦、命令、50 步撤销、dirty
+│   ├── block_commands.dart           # BlockAction + 临时 13 色调色板（M3 换真实 RGB）
+│   ├── block_widget.dart             # 块标/段落与 H1-H3 样式/底色/Action 键拦截
+│   ├── block_editor_view.dart        # ListView.builder 懒加载
+│   └── editor_scope.dart
+├── ui/                          # M2-M3：浏览与编辑页
+│   ├── diary_page.dart          # 内嵌 Navigator + PopScope 收口系统返回
+│   ├── diary_route.dart         # opaque 右侧滑入路由（无边缘手势，避开外层横滑）
+│   ├── browser/                 # year/month/day 列表页 + day_editor 编辑页
+│   └── widgets/                 # DiaryShell / DiaryListRow
 ├── storage/                     # M5：sqflite diary_meta + 草稿文件仓
 └── export/                      # M5：状态机与 share_plus 分享
 echo/test/diary/
 ├── fixtures/                    # 两份金标准样本（.sy / .sy.zip）
-└── sy/*_test.dart               # M1 单测
+├── sy/*_test.dart               # M1 单测
+├── data/ template/ editor/      # M2-M3 单测
+└── ui/diary_browser_test.dart   # 层级下钻/落盘预览/200 块懒加载/硬件退格合并
 ```
 
 新增依赖按里程碑引入：M1 仅 `archive`；M5 再加 `sqflite`、`path_provider`、
@@ -131,7 +147,7 @@ class DiaryBlock {
 - `archive` 包若不自动置该位，在打包后用自定义字节处理补齐
   （实现时以其源码行为为准，测试锁死）。
 
-## 4. M2–M3：Flutter 原生块编辑器
+## 4. M2–M3：Flutter 原生块编辑器（已交付于 `lib/src/diary/{editor,ui,data,template}/`）
 
 ### 4.1 组件映射
 
@@ -151,18 +167,18 @@ BlockWidget = Row(
 不使用全局 contenteditable 等价物；每块独立持有文本与光标，
 结构与金标准块模型一一对应。
 
-### 4.2 交互语义（对齐上游 §5.4 与思源行为）
+### 4.2 交互语义（对齐上游 §5.4 与思源行为；括注 M2/M3 实际落地）
 
 | 交互 | 实现要点 |
 |---|---|
-| Enter 分块 | `Focus.onKey` 拦截；`controller.selection.baseOffset` 取光标；前半留原块（ID 不变），后半新建**段落**块并聚焦其首 |
-| IME 组词 | `controller.value.composing.isValid` 时跳过一切块操作（等价 isComposing）；组词/上屏本身由框架完成 |
-| 块首 Backspace | offset=0 时空块删除（至少保留一块）、否则与上一块合并，**保留上一块 ID** |
-| ↑/↓ 越界 | offset 0/末尾判断跳焦；进阶用 `TextPainter.getBoxesForRange` 判首/末行 |
-| 块选中/底色 | 块标点击 → 浮层调色板（13 色 + 无色），写 background 色号 |
-| 粘贴 | 拦截快捷键，剪贴板纯文本按 `\n` 拆块插入 |
-| 撤销 | 结构操作压 50 步 JSON 快照；字符级用 TextField 内建 UndoHistory |
-| 自动保存 | 5s 防抖，直接写 `.sy` 草稿文件（无桥）；启动校验草稿完整性 |
+| Enter 分块 | 【已实现，通道有变】不走 `Focus.onKey`（国产 IME 软回车不产生按键事件）：监听 TextEditingValue delta，插入文本含 `\n` 时做前缀/后缀 diff 拆分；前半留原块（ID/kind/底色不变），后半新建**段落**块并按新坐标落焦 |
+| IME 组词 | 【已实现】`composing.isValid` 时只同步文本不拆块（实测国产 IME 上屏链路） |
+| 块首 Backspace | 【已实现】硬件退格经 `Actions` 覆盖 `DeleteCharacterIntent`（利用 EditableText 的 Action.overridable，条件不满足回落默认行为；Focus 冒泡在空删除时不可靠）：offset=0 空块删除（至少留一块）、非空与上一块合并，**保留上一块 ID** |
+| ↑/↓ 越界 | 【已实现，边界版】覆盖 `ExtendSelectionVerticallyToAdjacentLineIntent`，仅首行 offset0 向上 / 末行末尾向下才拦截跳焦；`TextPainter` 逐行判定留待打磨 |
+| 块选中/底色 | 【已实现命令，浮层 UI 待打磨】块标点击 selectBlock；`setBackground(1..13/null)`、`turnInto(paragraph/heading 1..3)` 命令就绪且只读/locked 时 no-op；13 色调色板目前为临时暗色值，浮层 UI 与思源主题真实 RGB 待补 |
+| 粘贴 | 【已实现】delta 插入文本含多个 `\n` 即一次拆成多块（与分块同通道，无需单独快捷键拦截） |
+| 撤销 | 【已实现】结构操作前压 serializer JSON 快照（50 步，含编辑态光标信息）；字符级用 TextField 内建 UndoHistory |
+| 自动保存 | 【M2：内存仓储版】dirty 监听 + 5s 防抖 snapshotDocument→upsertDraft；paused/hidden/inactive 与返回时强制 flush；保存态 chip（编辑中/已保存 HH:mm/草稿/只读）。**写 `.sy` 草稿文件与启动完整性校验在 M5 随持久化落地** |
 
 ### 4.3 Flutter 特有的真机验收项（替换上游"浏览器内核矩阵"风险）
 
@@ -170,6 +186,23 @@ BlockWidget = Row(
   拦截必须可靠；组词中 Enter 只上屏不分块（上游 T04/T09）；
 - 200 个 focusNode 规模下键盘弹收焦点不跳动、输入 <16ms/键；
 - 降级预案不变：若 M2 超期，先交付单 `TextField` + 手动分块按钮保 M5。
+
+**2026-10-10 真机验收结论（MIX 2S，自带国产 IME）**：软键盘「换行」
+拆块、空块退格删除、非空块首退格合并（光标落接合处）、5s 防抖落盘
+（chip「已保存 HH:mm」）、返回日列表预览与块数刷新全部通过；
+200 块懒加载有 widget 测试（ListView.builder，视口外不构建）。
+
+### 4.4 M2/M3 交付偏差与遗留打磨项
+
+- 层级路由须 `opaque:true`：`opaque:false` 时 Flutter 在转场结束后把
+  secondaryAnimation 复位为 dismissed，退场淡出失效，两级页面永久叠绘
+  （真机实测，已加 widget 回归断言）。机械网格画在内层 Navigator 之外，
+  opaque 不影响其透显；Shell 加命中屏障防空白区点击穿透。
+- 仓储/模板接口在 M2 即抽象（`DiaryRepository`、`DiaryTemplate`），
+  M5 换 sqflite、M4 加模板集均为平替换/增实现，不动调用方。
+- 遗留（后续 patch 迭代，不阻塞 M4/M5）：块操作浮层工具栏与 Slash 菜单、
+  思源 CSS 变量真实底色 RGB 桥接、↑/↓ 逐行跳焦、月行「当前月/有内容」
+  视觉层级、撤销重做的 UI 入口（canUndo/canRedo 接口已就绪）。
 
 ## 5. M4：模板与数据注入
 
@@ -206,8 +239,8 @@ abstract interface class DiaryDataProvider {
 |---|---|---|---|
 | M0 ✅ | 完成 | 两份金标准样本 + 格式对照表 | 2026-10-10 完成 |
 | M1 ✅ | 完成 | sy/ 格式层 + 金标准单测 + 示例包思源导入通过 | 2026-10-10 完成：38 个日记测试 + 全量 62 测试绿、analyze 0 问题；示例包在 3.8.6 真机导入验收通过 |
-| M2 | 1–1.5 周 | 编辑器核心：分块/合并/越界/自动保存/崩溃恢复 | 上游 T01–T05/T08–T09 widget 化；200 块性能 |
-| M3 | 1 周 | 选中/底色 13 色桥/转标题/撤销/Slash | T06/T07；底色导出往返一致 |
+| M2 ✅ | 1–1.5 周 | 编辑器核心：分块/合并/越界/自动保存/崩溃恢复；年→月→日三级浏览页 + DiaryRepository 内存实现 | 2026-10-10 完成：T01/T02/T04/T05/T08/T09 单测化，层级下钻与落盘预览 widget 化，200 块懒加载测试；真机国产 IME 拆/合块+防抖落盘验收 |
+| M3 ✅（核心） | 1 周 | 选中/底色 13 色桥/转标题/撤销/Slash | 2026-10-10 核心完成：selectBlock/setBackground/turnInto 命令 + serializer 往返 + 50 步撤销重做，非法参数/只读守卫齐；底色导出随序列化往返一致。**Slash 菜单与浮层工具栏 UI、思源真实色板留后续 patch 打磨** |
 | M4 | 1 周 | 模板实例化 + Provider 假实现 + data 块刷新 | 晨间自动成稿；失败占位降级 |
 | M5 | 1 周 | meta 表/状态机/增量导出/分享/只读 | mood 字段可在思源属性视图出图；T10 |
 | M6 | 0.5–1 周 | ≥2 台真机连写 7 天、粘贴/撤销边界 | 全流程零异常 |
@@ -222,5 +255,18 @@ abstract interface class DiaryDataProvider {
     首块 background=12）；子集往返幂等；底色 canonical 串逐字符相等；
   - 打包：金标准 zip 解包结构断言（conf 14 键、sort 覆盖全文档、
     三级路径）；自打包字节的 UTF-8 标志位、无目录条目、幂等容器；
-- 编辑器用例直接搬上游 T01–T10 写成 widget 测试；
+- 编辑器用例直接搬上游 T01–T10 写成测试：M2/M3 已落地为 controller 单测
+  （直接赋 TextEditingValue 模拟 IME：拆块/合并/边界跳焦/命令/撤销/
+  composing 不拆）与 widget 测试（层级下钻、空日落盘后预览刷新、
+  200 块懒加载、硬件退格合并、opaque 路由不叠绘回归）；
 - 每里程碑末人工跑金标准验证回路（格式对照表 §7），思源版本锁定 3.8.6。
+
+## 9. 版本与分支记录
+
+- M2/M3 在 `feat/diary-m2-editor` 分支（从 `feat/notes-page` 拉出）交付，
+  2026-10-10 发布 **v0.7.0（0.7.0+31）**，分支与 MINOR tag 已推远程
+  （未开 PR，不自行合并）。
+- 版本规则（项目铁律）：0.MINOR.PATCH + 单调递增 build 号；M2/M3 之后的
+  接续开发（M3 打磨、M4、M5…）只升 PATCH（0.7.1+32 起）；patch tag 只打
+  本地，远程只推 vX.Y.0 的 MINOR tag。
+- M2/M3 交付时门禁基线：`flutter analyze` 零 issue，全量 95 测试通过。
