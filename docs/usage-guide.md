@@ -315,3 +315,16 @@ Echo 是一个实验型底部手势导航 App。屏幕上**没有常规底部 Ta
    「开发中」SnackBar 是**预期行为**，不要报为 bug；真正要报的是
    「按了完全无反馈」。
 5. 手感、热区、弧轨迹是否跟手以**真机**验收为准，模拟器与单元测试不能替代。
+6. **思源桌面端验证（v3.8.6 + sisyphus MCP，日记导入/聚合测试）**：
+   - 测试工作空间只用仓库内 `siyuan-repo/`（已 gitignore），**禁止操作用户
+     的其他思源空间**；内核日志 `workspace directory` 一行可确认；
+   - 一律走 MCP 工具（system / notebook / document / block / av…），禁止
+     curl 直连带 token 的接口（凭证只能由 MCP 客户端注入）；
+   - 写操作是严格两阶段：同一参数先 `validateOnly:true` 拿 `requestId`
+     （+`expectedStateHash`），再带 id 提交；报状态漂移就重新预检；
+   - MCP 新建笔记本默认只读且无法提权，测试在 rwd 的 My Notebook 内搭建；
+   - 所有操作热生效，**不要重启思源**（重启后 MCP 会话失效需重载窗口），
+     也不要手改 `data/storage/av/*.json`（定义常驻内存不热加载）；
+   - AV 语法与聚合结论见 [engineering_standards.md](engineering_standards.md)
+     事故 15；完整操作手册（含现场 ID）在主助手项目记忆
+     `siyuan-mcp-ops.md`，换 agent 时要求其先调取。
