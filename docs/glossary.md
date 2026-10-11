@@ -170,7 +170,9 @@
 | **年行导出** | 年列表每行右侧入口：该年全部 draft 打成一个「日记」笔记本 .sy.zip，经系统分享送出，返回后人工确认才置 exported | `export/diary_export_service.dart`、`year_list_page.dart` |
 | **块标浮层** | 编辑器点块左侧块标弹出的工具浮层：转正文/H1–H3、13 色底色、无色 | `editor/block_widget.dart` 等 |
 | **金标准** | 思源 3.8.6 实采的 .sy/.sy.zip 格式对照基准（字段、ID、CSS 变量、conf/sort），格式层测试锁定 | [diary/sy-format-golden-3.8.6.md](diary/sy-format-golden-3.8.6.md) |
-| **ECP** | 规划中的应用控制协议：adb/slash/MCP 三通道直接驱动 App 的命令总线（diary.prune、sys.clock.set 等），尚未开发 | [ecp/ecp-design.md](ecp/ecp-design.md) |
+| **ECP（控制面）** | 应用控制协议：命令经总线裁决（级别/确认/审计）后调 UI 同源 API。P1 已落地协议核心 + sys/auth/nav/diary 四域 + adb 通道（仅 debug，`scripts/echo-cmd` 入口）；slash/MCP 通道与 chat/console/badge 域为 P2 | [ecp/ecp-design.md](ecp/ecp-design.md)、[ecp/ecp-commands.md](ecp/ecp-commands.md) |
+| **通道级别** | 命令最小权限 0..3（guest/owner/user/admin）；会话按通道独立：mcp 起始 0 且永不解锁，adb 起始 2、PIN 解锁后升 3；息屏/切后台立即焚会话 | `control/auth/auth_session.dart` |
+| **稳定页 id** | ECP 导航寻址名，与显示文案解耦：console/chat/notes/me；UI 改名不动协议 | `navigation/nav_destination_specs.dart` |
 
 ---
 

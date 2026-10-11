@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../control/bootstrap.dart';
 import '../diary/data/diary_repository.dart';
 import '../services/chat_store.dart';
 import '../services/haptics.dart';
@@ -255,6 +256,10 @@ class _SmartNavScreenState extends State<SmartNavScreen>
     _nav.addListener(_handleNavSearchToggled);
 
     _searchFocusNode.addListener(_handleFocusChange);
+
+    // ECP 接线：nav.goto 与横滑手势共用这同一个控制器
+    //（widget 测试未走 ControlBootstrap.init 时为 null，跳过）。
+    ControlBootstrap.instance?.registry.set(_nav);
   }
 
   @override

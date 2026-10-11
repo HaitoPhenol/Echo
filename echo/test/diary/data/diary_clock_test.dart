@@ -49,4 +49,24 @@ void main() {
       expect(clock2.today(), DateTime(2026, 3, 8));
     });
   });
+
+  group('DiaryClock 拨钟（ECP sys.clock.set 同路基础）', () {
+    test('overrideTo 固定 now/today，clearOverride 恢复墙钟', () {
+      var wall = DateTime(2026, 10, 11, 10);
+      final clock = DiaryClock(now: () => wall);
+      expect(clock.isOverridden, isFalse);
+
+      clock.overrideTo(DateTime(2026, 10, 12, 3, 59));
+      expect(clock.isOverridden, isTrue);
+      expect(clock.now(), DateTime(2026, 10, 12, 3, 59));
+      // 拨钟期间墙钟走动不影响读数。
+      wall = DateTime(2026, 10, 11, 22);
+      expect(clock.today(), DateTime(2026, 10, 11)); // 03:59 归前一天
+
+      clock.clearOverride();
+      expect(clock.isOverridden, isFalse);
+      expect(clock.now(), wall);
+      expect(clock.today(), DateTime(2026, 10, 11));
+    });
+  });
 }

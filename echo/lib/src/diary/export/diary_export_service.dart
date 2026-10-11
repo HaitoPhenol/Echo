@@ -4,7 +4,37 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../data/diary_repository.dart';
+import '../sy/diary_model.dart';
 import '../sy/sy_zip_exporter.dart';
+
+/// 一次「只打包不分享」导出的产物信息（ECP `diary.export`）。
+class DiaryZipBuild {
+  const DiaryZipBuild({
+    required this.path,
+    required this.entries,
+    required this.sizeBytes,
+    required this.notebook,
+  });
+
+  /// .sy.zip 的沙盒绝对路径（不外带内容，调用方自行 pull / 分享）。
+  final String path;
+
+  /// 包内日记篇数。
+  final int entries;
+
+  final int sizeBytes;
+
+  /// 实际使用的笔记本名（缺省回落到固定名）。
+  final String notebook;
+}
+
+/// 没有任何 draft 可导出（ECP 命令据此返回业务失败，而不是生成空包）。
+class DiaryExportEmptyException implements Exception {
+  const DiaryExportEmptyException();
+
+  @override
+  String toString() => '没有可导出的 draft 日记';
+}
 
 /// 分享通道：把打包好的 zip 交给系统分享面板。
 ///
@@ -139,6 +169,55 @@ class DiaryExportService {
     }
 
     return DiaryExportOutcome(year: year, exportedCount: diaries.length);
+  }
+
+  /// 只打包、不分享、不迁移状态（ECP `diary.export` 的同路入口）：
+  ///
+  /// 收集 [year]（null = 全部年份）下的 draft 交给同一个
+  /// [SyZipExporter] 打成一个 `.sy.zip`，写入 [outputDirectory]。
+  /// 与 UI 的 [exportYear] 区别仅在「不触发系统分享、不做 draft→
+  /// exported 迁移」——分享确认流属于 UI 流程；打包链路完全一致，
+  /// 因此产物可重复生成。
+  ///
+  /// [notebookName] 缺省或空白时回落 UI 固定名 [DiaryExportService
+  /// .notebookName]（用户裁定：命令侧该参数可选）。无任何 draft 时
+  /// 抛 [DiaryExportEmptyException]，不生成空包。
+  Future<DiaryZipBuild> buildDraftZip({
+    String? notebookName,
+    int? year,
+    required Directory outputDirectory,
+  }) async {
+    final name = (notebookName == null || notebookName.trim().isEmpty)
+        ? DiaryExportService.notebookName
+        : notebookName.trim();
+
+    final years =
+        year == null ? await repository.availableYears() : <int>[year];
+    final diaries = <DiaryDocument>[];
+    for (final y in years) {
+      diaries.addAll(await repository.draftDocumentsOfYear(y));
+    }
+    if (diaries.isEmpty) throw const DiaryExportEmptyException();
+
+    final exportedAt = _now();
+    final bytes = _exporter.build(
+      notebookName: name,
+      diaries: diaries,
+      exportedAt: exportedAt,
+    );
+
+    await outputDirectory.create(recursive: true);
+    final scope = year?.toString() ?? 'all';
+    final zipFile = File(
+      '${outputDirectory.path}/$name-$scope-${_stamp(exportedAt)}.sy.zip',
+    );
+    await zipFile.writeAsBytes(bytes, flush: true);
+    return DiaryZipBuild(
+      path: zipFile.path,
+      entries: diaries.length,
+      sizeBytes: bytes.length,
+      notebook: name,
+    );
   }
 
   /// 文件名时间戳：yyyyMMdd-HHmmss。

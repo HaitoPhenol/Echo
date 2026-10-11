@@ -41,13 +41,18 @@ DiaryDocState requireStateTransition(
 class DiaryDaySummary {
   const DiaryDaySummary({
     required this.date,
+    required this.title,
     required this.preview,
     required this.blockCount,
     required this.state,
+    required this.updatedAt,
   });
 
   /// 归属自然日（年月日有效，时分秒不参与语义）。
   final DateTime date;
+
+  /// 文档标题（与 meta 表同源；ECP diary.list 同口径返回）。
+  final String title;
 
   /// 首个非空块的单行预览（无正文为空串）。
   final String preview;
@@ -57,6 +62,9 @@ class DiaryDaySummary {
 
   /// 草稿/导出/归档状态。
   final DiaryDocState state;
+
+  /// 最近内容更新时间（meta 反范式列；archived 为归档前快照）。
+  final DateTime updatedAt;
 
   /// 列表预览规则：用户写下的第一段非空文字（跳过 readonly data
   /// 快照与标题骨架），单行化并截 40 字；一个字没写返回空串。
@@ -77,11 +85,48 @@ class DiaryDaySummary {
   }) {
     return DiaryDaySummary(
       date: DateTime(doc.date.year, doc.date.month, doc.date.day),
+      title: doc.title,
       preview: previewOf(doc),
       blockCount: doc.blocks.length,
       state: state,
+      updatedAt: doc.updatedAt,
     );
   }
+}
+
+/// 跨天清理（[DiaryRepository.pruneEmptyBefore]）的结构化结果。
+///
+/// ECP `diary.prune` 需要在真机上即时核查「会删什么」，故清理不再只
+/// 返回计数：实际执行与 `dryRun` 预演共用同一结果形状。
+class DiaryPruneResult {
+  const DiaryPruneResult({
+    required this.deleted,
+    required this.kept,
+  });
+
+  /// 被删除（dry-run 时为「若执行将删除」）的日记日。
+  final List<DateTime> deleted;
+
+  /// 保留项：`(日期, 原因)`，原因取值 `non-empty`（有用户文字）/
+  /// `exported` / `archived`。
+  final List<(DateTime, String)> kept;
+
+  /// 删除篇数（实际删除时有效）。
+  int get deletedCount => deleted.length;
+}
+
+/// 清空仓储（[DiaryRepository.wipeAll]）的计数结果。
+class DiaryWipeResult {
+  const DiaryWipeResult({
+    required this.removedDocs,
+    required this.removedFiles,
+  });
+
+  /// 删除的 meta 条数（含 archived 索引）。
+  final int removedDocs;
+
+  /// 删除的 .sy 正文文件数。
+  final int removedFiles;
 }
 
 // ====================================================================
@@ -161,12 +206,26 @@ abstract class DiaryRepository extends ChangeNotifier {
   /// （tech-plan §5.2 第 4 条）。
   ///
   /// 判定函数由 composer 提供（忽略 readonly data 块与模板骨架预填块），
-  /// 仓储只负责日期筛选与删除。exported/archived 永不参与清理。
-  /// 返回删除篇数，完成后 notify 一次。
-  Future<int> pruneEmptyBefore(
+  /// 仓储只负责日期筛选与删除。exported/archived 永不参与删除，但会
+  /// 带原因进入结果的 kept 列表（ECP `diary.prune` 报告需要）。
+  ///
+  /// [dryRun] 为真时只判定、不删任何数据，返回「若执行将删除」清单
+  /// （ECP `--dry-run`，同一路径而非另造扫描逻辑）。实际执行完成后
+  /// notify 一次。
+  Future<DiaryPruneResult> pruneEmptyBefore(
     DateTime cutoff,
-    bool Function(DiaryDocument document) isEmpty,
-  );
+    bool Function(DiaryDocument document) isEmpty, {
+    bool dryRun = false,
+  });
+
+  /// 清空全部日记数据：删除所有 meta（含 exported/archived 索引）与
+  /// 全部 `.sy` 正文文件。
+  ///
+  /// 这是 ECP `diary.reset`（debug 通道 3 级命令）的正式仓储入口，
+  /// 替代伤全 App 的 `pm clear`；调用方负责鉴权与确认，仓储只做
+  /// 域内清空。完成后 notify 一次，仓储本身仍可继续使用
+  /// （数据库连接保持打开）。
+  Future<DiaryWipeResult> wipeAll();
 }
 
 /// 向子树提供 [DiaryRepository]（与 ChatStoreScope 同范式）。

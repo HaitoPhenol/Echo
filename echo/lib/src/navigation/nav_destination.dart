@@ -1,6 +1,8 @@
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 
+import 'nav_destination_specs.dart';
+
 import '../diary/data/diary_repository.dart';
 import '../diary/ui/diary_page.dart';
 import '../pages/chat_page.dart';
@@ -49,26 +51,21 @@ List<NavDestination> buildDefaultDestinations({
   /// fake-async 区无法完成真实文件 I/O）；生产环境传 null。
   DiaryRepository? diaryRepository,
 }) {
-  /// (id, 标题) 列表。
-  const specs = <(String, String)>[
-    ('console', '终端'),
-    ('chat', '聊天'),
-    ('notes', '笔记'),
-    ('me', '主页'),
-  ];
+  /// (id, 标题) 列表：唯一来源在 [kNavDestinationSpecs]（控制层共用）。
+  const specs = kNavDestinationSpecs;
 
   // 终端页调试面板的作用下标：按稳定 id 从配置解析，不写死序号。
-  final consoleIndex = specs.indexWhere((s) => s.$1 == 'console');
+  final consoleIndex = specs.indexWhere((s) => s.id == 'console');
 
   return [
-    for (final (id, label) in specs)
+    for (final spec in specs)
       NavDestination(
-        id: id,
-        label: label,
+        id: spec.id,
+        label: spec.label,
         icon: null, // TODO: 各页面定型后在此填入图标
         // 聊天页已进入真实页面开发（无标题栏的会话列表骨架）。
         // 笔记页 M2 起承载日记模块：年→月→日层级 + 块编辑器。
-        pageBuilder: (_) => switch (id) {
+        pageBuilder: (_) => switch (spec.id) {
           'chat' => const ChatPage(),
           'notes' => DiaryPage(repository: diaryRepository),
           // 仅终端页挂锚点调试面板（新消息/异常模拟与处理，验收用，
@@ -76,21 +73,21 @@ List<NavDestination> buildDefaultDestinations({
           // kDebugMode 守卫：debug 构建可见，release/profile 构建 footer 为
           // null，调试组件随树摇移除，不会进入发布包。
           _ => TemplatePage(
-            title: label,
+            title: spec.label,
             // 机能风模板页分区小标题（编号与轨道顺序一致）。
-            secCode: switch (id) {
+            secCode: switch (spec.id) {
               'console' => 'SEC.01',
               'notes' => 'SEC.03',
               'me' => 'SEC.04',
               _ => null,
             },
-            secName: switch (id) {
+            secName: switch (spec.id) {
               'console' => 'CONSOLE',
               'notes' => 'NOTES',
               'me' => 'ME',
               _ => null,
             },
-            footer: kDebugMode && id == 'console'
+            footer: kDebugMode && spec.id == 'console'
                 ? ConsoleBadgeControls(consolePageIndex: consoleIndex)
                 : null,
           ),

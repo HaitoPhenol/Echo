@@ -76,8 +76,29 @@ class MainActivity : FlutterActivity() {
             null
         }
 
+        // 版本信息走 PackageManager（不引 package_info_plus）；
+        // 长版本号即 pubspec 的 +buildNumber。
+        val pkgInfo = packageManager.getPackageInfo(packageName, 0)
+        @Suppress("DEPRECATION") // 新版 API 在 28 以下不可用，minSdk 26
+        val buildNumber = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            pkgInfo.longVersionCode
+        } else {
+            pkgInfo.versionCode.toLong()
+        }
+
+        // flavor 以包的 debuggable 标志为准：debug 构建自动置位，
+        // release 清单不置位（本项目未开 buildConfig feature，
+        // 直接读 PackageManager 标志，免生成 BuildConfig）。
+        val debuggable =
+            (pkgInfo.applicationInfo!!.flags and
+                android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0
+
         return mapOf(
             "model" to Build.MODEL,
+            "osVersion" to Build.VERSION.RELEASE,
+            "version" to pkgInfo.versionName,
+            "buildNumber" to buildNumber,
+            "flavor" to if (debuggable) "debug" else "release",
             "tempC" to tempC,
             "powerW" to powerW,
         )

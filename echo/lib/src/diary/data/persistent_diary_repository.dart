@@ -361,37 +361,82 @@ CREATE TABLE $_table(
   }
 
   @override
-  Future<int> pruneEmptyBefore(
+  Future<DiaryPruneResult> pruneEmptyBefore(
     DateTime cutoff,
-    bool Function(DiaryDocument document) isEmpty,
-  ) async {
+    bool Function(DiaryDocument document) isEmpty, {
+    bool dryRun = false,
+  }) async {
     final cutoffKey = _keyOf(cutoff);
-    var removed = 0;
+    final deleted = <DateTime>[];
+    final kept = <(DateTime, String)>[];
     await _db.transaction((txn) async {
+      // cutoff 之前的全部日记（含 exported/archived）都要进报告；
+      // exported/archived 只带保留原因，不读正文。
       final candidates = await txn.query(
         _table,
-        where: "state = 'draft' AND date < ?",
+        where: 'date < ?',
         whereArgs: [cutoffKey],
+        orderBy: 'date ASC',
       );
       for (final row in candidates) {
+        final rawDate = row['date']! as int;
+        final day = DateTime(
+          rawDate ~/ 10000,
+          (rawDate ~/ 100) % 100,
+          rawDate % 100,
+        );
+        final state = _stateOf(row['state']! as String);
+        if (state != DiaryDocState.draft) {
+          kept.add((day, state.name));
+          continue;
+        }
         final relative = row['file_path'] as String?;
         if (relative == null) continue;
         final file = File('${root.path}/$relative');
         if (!await file.exists()) continue;
         final doc =
             _serializer.decodeBytes(await file.readAsBytes()).document;
-        if (!isEmpty(doc)) continue;
-        await file.delete();
-        await txn.delete(
-          _table,
-          where: 'date = ?',
-          whereArgs: [row['date']],
-        );
-        removed++;
+        if (!isEmpty(doc)) {
+          kept.add((day, 'non-empty'));
+          continue;
+        }
+        deleted.add(day);
+        if (!dryRun) {
+          await file.delete();
+          await txn.delete(
+            _table,
+            where: 'date = ?',
+            whereArgs: [rawDate],
+          );
+        }
       }
     });
-    if (removed > 0) notifyListeners();
-    return removed;
+    if (deleted.isNotEmpty && !dryRun) notifyListeners();
+    return DiaryPruneResult(deleted: deleted, kept: kept);
+  }
+
+  @override
+  Future<DiaryWipeResult> wipeAll() async {
+    final removedDocs = Sqflite.firstIntValue(
+          await _db.rawQuery('SELECT COUNT(*) FROM $_table'),
+        ) ??
+        0;
+    var removedFiles = 0;
+    // 整个 diary/ 正文目录连同空的年月父目录一起删掉；diary.db 保留
+    // （连接仍打开，清空后可继续写）。
+    final diaryDir = Directory('${root.path}/diary');
+    if (await diaryDir.exists()) {
+      await for (final entity in diaryDir.list(recursive: true)) {
+        if (entity is File && entity.path.endsWith('.sy')) removedFiles++;
+      }
+      await diaryDir.delete(recursive: true);
+    }
+    await _db.delete(_table);
+    if (removedDocs > 0) notifyListeners();
+    return DiaryWipeResult(
+      removedDocs: removedDocs,
+      removedFiles: removedFiles,
+    );
   }
 
   // ---- 行映射 -------------------------------------------------------------
@@ -433,9 +478,13 @@ CREATE TABLE $_table(
     final day = rawDate % 100;
     return DiaryDaySummary(
       date: DateTime(year, month, day),
+      title: row['title']! as String,
       preview: row['preview']! as String,
       blockCount: row['block_count']! as int,
       state: _stateOf(row['state']! as String),
+      updatedAt: DateTime.fromMillisecondsSinceEpoch(
+        row['updated_at']! as int,
+      ),
     );
   }
 

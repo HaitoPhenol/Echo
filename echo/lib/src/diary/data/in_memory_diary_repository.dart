@@ -158,32 +158,63 @@ class InMemoryDiaryRepository extends DiaryRepository {
   }
 
   @override
-  Future<int> pruneEmptyBefore(
+  Future<DiaryPruneResult> pruneEmptyBefore(
     DateTime cutoff,
-    bool Function(DiaryDocument document) isEmpty,
-  ) async {
+    bool Function(DiaryDocument document) isEmpty, {
+    bool dryRun = false,
+  }) async {
     final cutoffDay = _dayOnly(cutoff);
-    final doomed = _entries.entries
-        .where((kv) =>
-            kv.value.state == DiaryDocState.draft &&
-            kv.value.date.isBefore(cutoffDay) &&
-            isEmpty(kv.value.doc!))
-        .map((kv) => kv.key)
-        .toList(growable: false);
-    for (final key in doomed) {
-      _entries.remove(key);
+    //  cutoff 之前的全部日记（含 exported/archived），按日期升序，
+    //  保证删除清单与保留原因报告稳定。
+    final before = _entries.values
+        .where((e) => e.date.isBefore(cutoffDay))
+        .toList()
+      ..sort((a, b) => a.date.compareTo(b.date));
+    final deleted = <DateTime>[];
+    final kept = <(DateTime, String)>[];
+    for (final entry in before) {
+      final day = _dayOnly(entry.date);
+      switch (entry.state) {
+        case DiaryDocState.draft:
+          if (isEmpty(entry.doc!)) {
+            deleted.add(day);
+            if (!dryRun) _entries.remove(_keyOf(day));
+          } else {
+            kept.add((day, 'non-empty'));
+          }
+        case DiaryDocState.exported:
+          kept.add((day, 'exported'));
+        case DiaryDocState.archived:
+          kept.add((day, 'archived'));
+      }
     }
-    if (doomed.isNotEmpty) notifyListeners();
-    return doomed.length;
+    if (deleted.isNotEmpty && !dryRun) notifyListeners();
+    return DiaryPruneResult(deleted: deleted, kept: kept);
+  }
+
+  @override
+  Future<DiaryWipeResult> wipeAll() async {
+    // archived 条目的正文已物理删除，故「文件数」只数仍持有正文者。
+    final removedFiles =
+        _entries.values.where((e) => e.doc != null).length;
+    final removedDocs = _entries.length;
+    _entries.clear();
+    notifyListeners();
+    return DiaryWipeResult(
+      removedDocs: removedDocs,
+      removedFiles: removedFiles,
+    );
   }
 
   DiaryDaySummary _summaryOf(_Entry entry) {
     if (entry.state == DiaryDocState.archived || entry.doc == null) {
       return DiaryDaySummary(
         date: _dayOnly(entry.date),
+        title: entry.title,
         preview: entry.preview,
         blockCount: entry.blockCount,
         state: DiaryDocState.archived,
+        updatedAt: entry.updatedAt,
       );
     }
     return DiaryDaySummary.fromDocument(entry.doc!, state: entry.state);
@@ -191,7 +222,7 @@ class InMemoryDiaryRepository extends DiaryRepository {
 }
 
 /// 一条 meta 行的内存形态：archived 后 [doc] 为 null，
-/// [preview]/[blockCount] 保留归档前快照供列表渲染。
+/// [title]/[preview]/[blockCount]/[updatedAt] 保留归档前快照供列表渲染。
 class _Entry {
   _Entry._({
     required this.date,
@@ -205,15 +236,19 @@ class _Entry {
   final DateTime date;
   DiaryDocState state;
   DiaryDocument? doc;
+  String title = '';
   String preview = '';
   int blockCount = 0;
+  DateTime updatedAt = DateTime.fromMillisecondsSinceEpoch(0);
   DateTime? exportedAt;
 
   /// 状态迁移前固化列表摘要（exported/archived 后不再依赖正文计算）。
   void captureSummary() {
     final document = doc;
     if (document == null) return;
+    title = document.title;
     preview = DiaryDaySummary.previewOf(document);
     blockCount = document.blocks.length;
+    updatedAt = document.updatedAt;
   }
 }

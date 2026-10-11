@@ -38,6 +38,9 @@ dependencies:
   sqflite: ^2.4.4+1
   path_provider: ^2.1.6
   share_plus: ^13.3.1
+  # ECP 管理员 PIN 的加盐 PBKDF2-HMAC-SHA256 慢速哈希（仅哈希原语，
+  # KDF 迭代在 pin_store.dart 内实现以便固定参数与测试）。
+  crypto: ^3.0.6
 
 dev_dependencies:
   flutter_test:

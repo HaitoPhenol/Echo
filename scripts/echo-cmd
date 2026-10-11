@@ -1,0 +1,288 @@
+#!/usr/bin/env bash
+#
+# echo-cmd —— ECP adb 通道工作站侧包装（docs/ecp/ecp-commands.md §9.1）。
+#
+# 职责：
+#   1. App 未运行时冷启动并等到 sys.ping 可应答（引擎就绪再发命令）；
+#   2. 把 `--k v / --flag` 参数编成 args JSON，经 am broadcast 发给
+#      debug 包的 DebugControlReceiver；
+#   3. PIN 只在本机 stdin 交互采集（不回显），绝不进进程参数/历史；
+#   4. 解析 resultData 信封，stdout 原样打印 JSON，退出码对齐手册 §1.4。
+#
+# 仅适用 debug 包：release 包物理无 receiver（am 会报无组件）。
+# 依赖：adb、python3（仅标准库，做 JSON 编解码）；不需要 jq。
+#
+# 用法：
+#   scripts/echo-cmd sys.ping
+#   scripts/echo-cmd diary.list --month 2026-10 --limit 10
+#   scripts/echo-cmd diary.prune --confirm --dry-run
+#   scripts/echo-cmd auth.unlock            # stdin 提示输 PIN，不回显
+set -euo pipefail
+
+# ---- 常量（与 debug 源集/AdbControlWire 逐字一致）---------------------
+readonly PKG="com.everse.echo"
+readonly RECEIVER="com.everse.echo/.DebugControlReceiver"
+readonly ACTION="com.everse.echo.CTRL"
+readonly MAIN_ACTIVITY="com.everse.echo/.MainActivity"
+
+# 布尔开关名（出现即真，不吃下一个 token）。
+readonly BOOL_FLAGS=(
+  confirm dry-run reset keep-seeds wait-snapshot
+)
+
+ADB_BIN="${ADB:-/home/phenol/Android/Sdk/platform-tools/adb}"
+SERIAL=""
+
+# ---- 工具 -------------------------------------------------------------
+
+die() {
+  echo "echo-cmd: $*" >&2
+  exit 2
+}
+
+# 选 adb 设备：--serial/-s 优先，其次 ANDROID_SERIAL；单设备直连。
+adb() {
+  if [[ -n "$SERIAL" ]]; then
+    "$ADB_BIN" -s "$SERIAL" "$@"
+  else
+    "$ADB_BIN" "$@"
+  fi
+}
+
+# 生成仅本次调用的回响 nonce（logcat 匹配与串扰识别用）。
+make_nonce() {
+  local rnd
+  rnd=$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')
+  echo "ecp-$$-$rnd"
+}
+
+# 冷启动并轮询 sys.ping：正常情况下首帧后 1~2s 引擎就绪。
+ensure_app_ready() {
+  local pid_out
+  pid_out=$(adb shell pidof "$PKG" 2>/dev/null || true)
+  if [[ -z "${pid_out//[[:space:]]/}" ]]; then
+    echo "echo-cmd: App 未运行，冷启动并等待引擎就绪…" >&2
+    adb shell am start -n "$MAIN_ACTIVITY" >/dev/null
+  fi
+
+  local i
+  for ((i = 0; i < 30; i++)); do
+    # ping 走完整广播链路；引擎未就绪时接收器回 CONFLICT，继续重试。
+    local out
+    out=$(send_broadcast "sys.ping" "" "false" "$(make_nonce)" || true)
+    if [[ -n "$out" ]] && envelope_ok "$out"; then
+      return 0
+    fi
+    sleep 0.5
+  done
+  die "App 引擎在 15s 内未就绪（检查设备/包是否为 debug 构建）"
+}
+
+# 远端 sh 单引号转义：adb shell 把参数拼成一行再交给设备端 sh 解析，
+# 存在两层 shell；含空格/引号/中文的 JSON 必须在远端重新成对引用。
+remote_quote() {
+  printf "'%s'" "${1//\'/\'\\\'\'}"
+}
+
+# 发一次广播，stdout 输出 resultData 里的信封 JSON（无则空串）。
+# 参数：cmd、argsJson、confirm(true/false)、nonce。
+send_broadcast() {
+  local cmd="$1" args_json="$2" confirm="$3" nonce="$4"
+  local remote line json="" capture=0
+
+  remote="am broadcast -a $(remote_quote "$ACTION")"
+  remote+=" -n $(remote_quote "$RECEIVER")"
+  remote+=" --es cmd $(remote_quote "$cmd")"
+  remote+=" --es nonce $(remote_quote "$nonce")"
+  if [[ "$confirm" == "true" ]]; then
+    remote+=" --ez confirm true"
+  fi
+  if [[ -n "$args_json" ]]; then
+    remote+=" --es args $(remote_quote "$args_json")"
+  fi
+
+  # 逐行取 data="…"：am 输出形如
+  #   Broadcast completed: result=0, data="{\"ok\":true,…}"
+  # 剥掉外层一对引号即可，JSON 内部转义引号原样保留（绝不能用 eval）。
+  while IFS= read -r line; do
+    if [[ "$line" == *"data="* ]]; then
+      capture=1
+      line="${line#*data=}"
+      line="${line%\"}"
+      line="${line#\"}"
+      json="$line"
+    elif [[ $capture -eq 1 ]]; then
+      json+="$line"
+    fi
+  done < <(adb shell "$remote")
+  printf '%s' "$json"
+}
+
+# 判断信封是否为成功（python 标准库解析，避免引 jq 依赖）。
+envelope_ok() {
+  ENVELOPE_JSON="$1" python3 - <<'PY'
+import json, os, sys
+try:
+    sys.exit(0 if json.loads(os.environ["ENVELOPE_JSON"]).get("ok") else 1)
+except Exception:
+    sys.exit(1)
+PY
+}
+
+# 打印信封并按错误码退出（成功 0）。
+emit_envelope() {
+  local json="$1"
+  [[ -n "$json" ]] || die "接收器无回包（release 包？接收器未注册？）"
+  printf '%s\n' "$json"
+  # 退出码映射与 ControlErrorCode.exitCode 逐字一致。
+  local exit_code
+  exit_code=$(ENVELOPE_JSON="$json" python3 - <<'PY'
+import json, os, sys
+code_to_exit = {
+    "UNKNOWN_COMMAND": 127, "USAGE": 2,
+    "AUTH_REQUIRED": 3, "AUTH_DENIED": 3, "AUTH_COOLDOWN": 3,
+    "PIN_NOT_SET": 3,
+    "CONFIRM_REQUIRED": 4, "CONFLICT": 4,
+    "NOT_FOUND": 5,
+    "EXPORT_EMPTY": 1, "TIMEOUT": 124, "BUSINESS": 1,
+}
+try:
+    env = json.loads(os.environ["ENVELOPE_JSON"])
+    if env.get("ok"):
+        print(0)
+    else:
+        print(code_to_exit.get((env.get("error") or {}).get("code"), 1))
+except Exception:
+    print(2)
+PY
+)
+  exit "$exit_code"
+}
+
+# stdin 不回显采集一行。
+read_secret() {
+  local prompt="$1" var_name="$2"
+  local value
+  read -r -s -p "$prompt" value
+  echo >&2
+  printf -v "$var_name" '%s' "$value"
+}
+
+# ---- 参数解析 ---------------------------------------------------------
+
+[[ $# -ge 1 ]] || die "用法：echo-cmd <命令> [--参数 值|--开关]…"
+
+# 可选 --serial/-s 必须在命令之前。
+while [[ "$1" == "--serial" || "$1" == "-s" ]]; do
+  [[ $# -ge 2 ]] || die "$1 需要设备序列号"
+  SERIAL="$2"
+  shift 2
+done
+
+CMD="$1"
+shift
+
+CONFIRM="false"
+declare -a PAIRS=()
+
+is_bool_flag() {
+  local f="$1"
+  local b
+  for b in "${BOOL_FLAGS[@]}"; do [[ "$f" == "$b" ]] && return 0; done
+  return 1
+}
+
+while [[ $# -gt 0 ]]; do
+  token="$1"
+  [[ "$token" == --* ]] || die "参数必须以 -- 开头：$token"
+  name="${token#--}"
+  if [[ "$name" == "confirm" ]]; then
+    CONFIRM="true"
+    shift
+    continue
+  fi
+  if is_bool_flag "$name" || [[ $# -eq 1 || "$2" == --* ]]; then
+    # 已知布尔，或最后一个 token，或下一个是新参数：按布尔开关。
+    PAIRS+=("$name=true")
+    shift
+  else
+    PAIRS+=("$name=$2")
+    shift 2
+  fi
+done
+
+# ---- PIN 交互（绝不进命令行/历史）------------------------------------
+# 直接重写对应键值；包装脚本自己拼 JSON，PIN 只存在于本进程内存。
+inject_secret_pair() { # key value
+  local key="$1" value="$2" i
+  for ((i = 0; i < ${#PAIRS[@]}; i++)); do
+    if [[ "${PAIRS[$i]%%=*}" == "$key" ]]; then
+      PAIRS[$i]="$key=$value"
+      return 0
+    fi
+  done
+  PAIRS+=("$key=$value")
+}
+
+case "$CMD" in
+  auth.unlock)
+    PIN=""
+    read_secret "PIN（不回显）: " PIN
+    [[ -n "$PIN" ]] || die "PIN 不能为空"
+    inject_secret_pair "pin" "$PIN"
+    unset PIN
+    ;;
+  auth.set-pin)
+    NEW="" CONFIRM_PIN="" OLD=""
+    read_secret "新 PIN（4-32 位字母数字，不回显）: " NEW
+    read_secret "再输一遍新 PIN: " CONFIRM_PIN
+    [[ "$NEW" == "$CONFIRM_PIN" && -n "$NEW" ]] || die "两次输入不一致（或为空）"
+    # 是否首装：不额外查询，旧 PIN 一律按「有旧 PIN 则给」交互；
+    # 接收器/总线会按 pinSet 状态裁决（首装给了旧 PIN 也会被忽略）。
+    read_secret "旧 PIN（首次初始化直接回车）: " OLD
+    inject_secret_pair "newPin" "$NEW"
+    inject_secret_pair "newPinConfirm" "$CONFIRM_PIN"
+    [[ -n "$OLD" ]] && inject_secret_pair "oldPin" "$OLD"
+    unset NEW CONFIRM_PIN OLD
+    ;;
+esac
+
+# 键值对 → JSON 对象（python 转义，杜绝手工拼引号注入）。
+ARGS_JSON=""
+if [[ ${#PAIRS[@]} -gt 0 ]]; then
+  PAIR_DATA=$(printf '%s\n' "${PAIRS[@]}")
+  ARGS_JSON=$(PAIR_DATA="$PAIR_DATA" python3 - <<'PY'
+import json, os
+
+def camelize(key):
+    # CLI 一律 kebab-case（--dry-run/--keep-seeds/--wait-snapshot），
+    # 总线 ParamSpec 用 camelCase；此处是唯一转换点。
+    if "-" not in key:
+        return key
+    head, *tail = key.split("-")
+    return head + "".join(p[:1].upper() + p[1:] for p in tail if p)
+
+obj = {}
+for line in os.environ["PAIR_DATA"].splitlines():
+    k, _, v = line.partition("=")
+    k = camelize(k)
+    if v == "true":
+        obj[k] = True
+    else:
+        # 数字形态直接转 int（--limit/--year 等），其余保字符串；
+        # 日期/月/时间由总线按清单类型解析。
+        try:
+            obj[k] = int(v)
+        except ValueError:
+            obj[k] = v
+print(json.dumps(obj, ensure_ascii=False))
+PY
+)
+fi
+
+# ---- 执行 -------------------------------------------------------------
+
+ensure_app_ready
+NONCE="$(make_nonce)"
+REPLY="$(send_broadcast "$CMD" "$ARGS_JSON" "$CONFIRM" "$NONCE")"
+emit_envelope "$REPLY"

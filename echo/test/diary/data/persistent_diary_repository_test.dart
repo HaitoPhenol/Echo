@@ -284,11 +284,13 @@ void main() {
 
       // 次日跨 04:00 冷启：bootstrap 调 prune。
       final repo2 = await open(root, now: DateTime(2026, 10, 12, 12));
-      final removed = await repo2.pruneEmptyBefore(
+      final result = await repo2.pruneEmptyBefore(
         DateTime(2026, 10, 12),
         (d) => d.blocks.every((b) => b.text.trim().isEmpty),
       );
-      expect(removed, 1);
+      expect(result.deletedCount, 1);
+      expect(result.kept.map((e) => (e.$1.day, e.$2)),
+          [(8, 'non-empty'), (10, 'exported')]);
       expect(await repo2.dayExists(empty), isFalse);
       expect(await repo2.findDay(written), isNotNull);
       expect(await repo2.stateOfDay(exported), DiaryDocState.exported);
@@ -324,17 +326,41 @@ void main() {
       // 次日冷启：bootstrap 的真实调用形态。
       final repo2 = await open(root, now: DateTime(2026, 10, 11, 12));
       addTearDown(repo2.close);
-      final removed = await repo2.pruneEmptyBefore(
+      final result = await repo2.pruneEmptyBefore(
         DateTime(2026, 10, 11),
         composer.isUserEmpty,
       );
-      expect(removed, 1);
+      expect(result.deletedCount, 1);
       expect(await repo2.dayExists(empty), isFalse);
       expect(await repo2.dayExists(written), isTrue);
       expect(
         (await repo2.findDay(written))!.blocks[3].text,
         '写了内容',
       );
+    });
+  });
+
+  group('PersistentDiaryRepository.wipeAll（ECP diary.reset）', () {
+    test('meta 与 diary/ 目录全清，库仍可写；重开后为空仓', () async {
+      final root = await tempRoot();
+      addTearDown(() => root.delete(recursive: true));
+      final repo = await open(root, now: fixedNow);
+      await repo.upsertDraft(doc(DateTime(2026, 10, 10), ['a']));
+      await repo.upsertDraft(doc(DateTime(2026, 9, 9), ['b']));
+
+      final result = await repo.wipeAll();
+      expect(result.removedDocs, 2);
+      expect(result.removedFiles, 2);
+      expect(Directory('${root.path}/diary').existsSync(), isFalse);
+      expect(await repo.availableYears(), isEmpty);
+
+      // 同一连接继续写；随后重开确认落盘为空。
+      await repo.upsertDraft(doc(DateTime(2026, 10, 11), ['新的']));
+      await repo.close();
+      final reopened = await open(root, now: fixedNow);
+      addTearDown(reopened.close);
+      expect(await reopened.draftCountOfMonth(2026, 10), 1);
+      expect(await reopened.draftCountOfMonth(2026, 9), 0);
     });
   });
 

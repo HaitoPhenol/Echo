@@ -134,18 +134,20 @@
 
 ### `nav.page`
 - 类 读 · 级 0 · 幂等 · 起始 P1
-- 返回：`{"index": 0..3, "name": "terminal|chat|template|diary"}`
+- 返回：`{"index": 0..3, "name": "console|chat|notes|me"}`
+  （name 为与 UI 标签解耦的稳定 id：终端=console、聊天=chat、
+  笔记=notes、主页=me；显示文案改名不影响协议）
 
 ### `nav.goto`
 - 类 写 · 级 2 · 幂等 · 起始 P1
-- 参数：`--page <name|index>`（必填；terminal/chat/template/diary）
-- 走 NavController 与横滑手势同一路径（带动画落位），返回切换前后页。
+- 参数：`--page <name|index>`（必填；console/chat/notes/me 或 0..3）
+- 走 NavPhysicsController 与横滑手势同一路径（带动画落位），返回切换前后页。
 - 冲突：日记编辑中有未落盘防抖内容时不拦截（防抖服务会照常 flush），
   但返回 `warnings: ["diary-flush-pending"]`。
 - 示例：
   ```bash
-  scripts/echo-cmd nav.goto --page diary
-  /nav goto diary --stay
+  scripts/echo-cmd nav.goto --page notes
+  /nav goto notes --stay
   ```
 
 ---
@@ -206,7 +208,7 @@
 
 ### `diary.export`
 - 类 写 · 级 **3**（用户裁定：导出暂定三级）· 幂等 · 起始 P1
-- 参数：`--notebook <名>`（必填，思源笔记本名）、
+- 参数：`--notebook <名>`（可选，思源笔记本名，缺省「日记」）、
   `--year YYYY`（可选，缺省导出全部年份）、`--confirm`（必填）
 - 作用：跳过 UI 直接走 M5 导出服务生成 `.sy.zip`，写入沙盒导出目录。
 - 返回：`{"path":"…","entries":n,"sizeBytes":n,"notebook":"…"}`；
@@ -263,7 +265,7 @@
 ## 8. `badge` —— 导航锚点状态（P2）
 
 对应 `NavBadgeService` 既有接口，全部作用于指定页
-（`--page terminal|chat|template|diary`）。
+（`--page console|chat|notes|me`，稳定 id 同 nav 域）。
 
 | 命令 | 类/级 | 幂等 | 对应接口 |
 |---|---|---|---|
@@ -303,7 +305,7 @@ adb pull /data/local/tmp/…  # 实际路径以返回 path 为准（debug 可拉
 ```
 /diary list 2026-10
 /sys status
-/nav goto diary
+/nav goto notes
 /diary prune?                      ← 只看帮助，不执行
 /diary prune --confirm             ← 弹 PIN 面板 → 确认卡 → 执行
 ```

@@ -163,12 +163,16 @@ void main() {
       var notified = 0;
       repo.addListener(() => notified++);
 
-      final removed = await repo.pruneEmptyBefore(
+      final result = await repo.pruneEmptyBefore(
         DateTime(2026, 12, 15),
         (d) => d.blocks.every((b) => b.text.trim().isEmpty),
       );
 
-      expect(removed, 2);
+      expect(result.deletedCount, 2);
+      expect(result.deleted.map((d) => d.day), [13, 14]);
+      expect(result.kept.map((e) => (e.$1.day, e.$2)), [
+        (12, 'non-empty'),
+      ]);
       expect(notified, 1);
       expect(await repo.findDay(DateTime(2026, 12, 13)), isNull);
       expect(await repo.findDay(DateTime(2026, 12, 14)), isNull);
@@ -182,12 +186,30 @@ void main() {
       var notified = 0;
       repo.addListener(() => notified++);
 
-      final removed = await repo.pruneEmptyBefore(
+      final result = await repo.pruneEmptyBefore(
         DateTime(2026, 12, 15),
         (d) => d.blocks.every((b) => b.text.trim().isEmpty),
       );
-      expect(removed, 0);
+      expect(result.deletedCount, 0);
+      expect(result.kept.single.$2, 'non-empty');
       expect(notified, 0);
+    });
+
+    test('dryRun 只报告不删除、不 notify', () async {
+      final repo = repoAt(DateTime(2026, 12, 15));
+      await repo.upsertDraft(doc(DateTime(2026, 12, 13), ['']));
+      var notified = 0;
+      repo.addListener(() => notified++);
+
+      final preview = await repo.pruneEmptyBefore(
+        DateTime(2026, 12, 15),
+        (d) => d.blocks.every((b) => b.text.trim().isEmpty),
+        dryRun: true,
+      );
+      expect(preview.deleted.map((d) => d.day), [13]);
+      expect(notified, 0);
+      // 预演后数据原样仍在。
+      expect(await repo.findDay(DateTime(2026, 12, 13)), isNotNull);
     });
 
     test('连续多天未打开：一次性清掉多天', () async {
@@ -195,12 +217,55 @@ void main() {
       await repo.upsertDraft(doc(DateTime(2026, 12, 10), ['']));
       await repo.upsertDraft(doc(DateTime(2026, 12, 11), ['']));
       await repo.upsertDraft(doc(DateTime(2026, 12, 12), ['']));
-      final removed = await repo.pruneEmptyBefore(
+      final result = await repo.pruneEmptyBefore(
         DateTime(2026, 12, 15),
         (d) => d.blocks.every((b) => b.text.trim().isEmpty),
       );
-      expect(removed, 3);
+      expect(result.deletedCount, 3);
       expect(await repo.daysOfMonth(2026, 12), isEmpty);
+    });
+
+    test('exported/archived 进 kept 报告且永不删除', () async {
+      final repo = repoAt(DateTime(2026, 12, 15));
+      await repo.upsertDraft(doc(DateTime(2026, 12, 10), ['']));
+      await repo.upsertDraft(doc(DateTime(2026, 12, 11), ['']));
+      // 状态机：draft → exported → archived。
+      await repo.markExported(
+        [DateTime(2026, 12, 10), DateTime(2026, 12, 11)],
+        exportedAt: DateTime(2026, 12, 15),
+      );
+      await repo.archiveDay(DateTime(2026, 12, 11));
+
+      final result = await repo.pruneEmptyBefore(
+        DateTime(2026, 12, 15),
+        (d) => d.blocks.every((b) => b.text.trim().isEmpty),
+      );
+      expect(result.deleted, isEmpty);
+      expect(result.kept.map((e) => (e.$1.day, e.$2)), [
+        (10, 'exported'),
+        (11, 'archived'),
+      ]);
+    });
+  });
+
+  group('InMemoryDiaryRepository.wipeAll（ECP diary.reset）', () {
+    test('清空全部 meta；archived 不计正文文件数', () async {
+      final repo = repoAt(DateTime(2026, 12, 15));
+      await repo.upsertDraft(doc(DateTime(2026, 12, 14), ['a']));
+      await repo.upsertDraft(doc(DateTime(2026, 12, 13), ['b']));
+      await repo.markExported(
+        [DateTime(2026, 12, 13)],
+        exportedAt: DateTime(2026, 12, 14),
+      );
+      await repo.archiveDay(DateTime(2026, 12, 13));
+
+      final result = await repo.wipeAll();
+      expect(result.removedDocs, 2);
+      expect(result.removedFiles, 1); // archived 正文此前已删
+      expect(await repo.availableYears(), isEmpty);
+      // 清空后仓储仍可继续写入。
+      await repo.upsertDraft(doc(DateTime(2026, 12, 15), ['新的']));
+      expect(await repo.dayExists(DateTime(2026, 12, 15)), isTrue);
     });
   });
 

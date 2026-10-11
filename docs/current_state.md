@@ -1,7 +1,9 @@
 # Echo 当前实现现状
 
-> 本文件是 **v0.9.0+34（main，tag `v0.9.0`，2026-10-11）时点的现状快照**，
-> 记录"今天代码实际是怎么实现的"。这些不是规定——工具与手段可以换，
+> 本文件是 **v0.9.0+34（main，tag `v0.9.0`，2026-10-11）+
+> 分支 `feat/ecp-p1-core`（ECP P1，2026-10-13）时点的现状快照**，
+> 记录"今天代码实际是怎么实现的"。ECP 条目为分支新增，合并后并入主线基线。
+> 这些不是规定——工具与手段可以换，
 > 但更换时必须满足 [engineering_standards.md](engineering_standards.md)
 > 的原则、通过测试与真机验收，并更新本文件。历史 patch 级变更叙述不进
 > 本文件（查 git 历史与
@@ -21,9 +23,14 @@
   `path_provider`（沙盒目录）、`share_plus`（系统分享）；
   测试侧 `sqflite_common_ffi`。其余为 cupertino_icons / flutter_lints。
 - 状态管理：**ChangeNotifier + InheritedNotifier**（规模够用，不引框架）。
-- Android 原生侧仅 `MainActivity.kt` 两个 MethodChannel：
+- Android 原生侧主源集 `MainActivity.kt` 两个 MethodChannel：
   `echo/haptics`（直接驱动 Vibrator，带振幅降级，声明 VIBRATE 权限）、
-  `echo/device_stats`（电池温度/瞬时功率/型号，零权限粘性广播）。
+  `echo/device_stats`（电池温度/瞬时功率/型号/版本/flavor，零权限粘性广播）。
+  **debug 源集另有 ECP 三件套**（release 物理不打包，aapt2 已验证）：
+  `DebugEchoApp`（Application，反射缓存当前引擎）、
+  `DebugControlReceiver`（exported 广播接收器，goAsync 转
+  `echo/control` MethodChannel）、debug Manifest（tools:replace
+  application name + INTERNET 权限）。
 - lint：flutter_lints 默认集；**无 CI**（门禁靠本地 `flutter analyze` +
   `flutter test` 自觉执行）。
 - **发布配置**：release 尚用 debug 签名，无独立 keystore / R8；
@@ -92,6 +99,34 @@
 - debug 包空库灌种子两篇（上月 28 日 + 昨天，今天不种）；
   release 空仓。测试可注入仓储/时钟。
 
+## ECP 控制面（P1 已落地，分支 feat/ecp-p1-core）
+
+设计 [ecp/ecp-design.md](ecp/ecp-design.md)、30 条命令契约手册
+[ecp/ecp-commands.md](ecp/ecp-commands.md)；代码在 `lib/src/control/`。
+
+- **协议**：信封（ok/cmd/ms/result|error/nonce）、错误码→进程退出码
+  映射、`CommandSpec` 冻结动词表、`ControlBus`（注册重名检查、
+  参数解析、级别/确认裁决、≥2 级审计、slow 60s 预算标记）。
+- **鉴权**：PIN 只存 PBKDF2 加盐哈希（`echo_control/pin.json`）；
+  通道起始级别 mcp=0/adb=2；adb 解锁升 3 级，mcp 永不解锁；
+  连续 5 次错误冷却（30/60/120/240s/5min 退避）；App paused
+  （息屏/切后台）立即销毁全部会话；审计不记 PIN 与正文。
+- **P1 命令域**：`sys.*`（ping/help/info/status/audit + debug-only
+  clock.set）、`auth.*`（status/unlock/lock/set-pin）、`nav.*`
+  （page/goto，稳定 id `console|chat|notes|me`）、`diary.*`
+  （list/get/ensure/prune/reset/export；reset 仅 debug，
+  export 的 --notebook 可选缺省「日记」）。
+- **同路装配**：`ControlBootstrap.init()` 在 main() 内 await
+  （建 echo_control 目录、注册常驻服务）；导航屏 initState 注册
+  NavPhysicsController，日记页 bootstrap 注册与 UI 同源的
+  clock/仓储/composer/导出服务；未注册时命令回 CONFLICT。
+- **工作站入口**：`scripts/echo-cmd <命令>`（冷启动轮询 ping、
+  kebab→camel 参数、stdin 收 PIN 不进历史、退出码对齐手册）。
+- **门禁**：`test/control/` 31 用例（含 manifest↔手册双向一致性）；
+  MIX 2S 真机逐命令验收通过：日界 03:59/04:00、PIN 首装/解锁/
+  冷却/后台即焚、prune dry-run、导出落 .sy.zip（1807B 结构正确）、
+  release APK 清单无 ECP 组件。
+
 ## 状态与服务
 
 - `ChatStore`（services/，ChangeNotifier + Scope）：内存会话列表，
@@ -114,17 +149,22 @@
 
 ## 测试现状
 
-- **194 个测试，18 个文件**：
+- **230 个测试，22 个文件**：
   - `test/widget_test.dart`（导航/浮层集成 12）、
     `navigation/`（几何纯函数）、`pages/`（聊天交互）；
   - `test/diary/`：sy 格式层金标准、ID、序列化往返、zip 打包、
     时钟边界、内存/持久仓储、成稿器、编辑器命令/控制器、
-    导出服务、年日月浏览 widget、M5 三态/分享流/崩溃恢复。
+    导出服务、年日月浏览 widget、M5 三态/分享流/崩溃恢复；
+  - `test/control/`（31）：总线注册/解析/审计脱敏、鉴权矩阵
+    （通道×级别/退避/前后台即焚/PinStore 规则）、四域命令、
+    manifest↔命令手册一致性。
 - 动画用例逐帧 pump、不用 pumpAndSettle（常驻循环动画）；
   持久仓储测试用 FFI 工厂 + 临时目录。
 - 真机回归：M1 格式包思源 3.8.6 导入通过；M2–M5 每个里程碑
   MIX 2S 真机验收（见 tech-plan 里程碑表）。
-- 待补：ECP（命令总线）建成后的 prune/日界命令化回归、
+- 已补：ECP P1 的 prune dry-run/03:59-04:00 日界命令化回归
+  已在 MIX 2S 真机通过（2026-10-13）。
+- 待补：ECP P2（chat/console/badge 域 + slash/MCP 通道）、
   M6 ≥2 台真机连写 7 天。
 
 ## 已知问题与待决策

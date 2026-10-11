@@ -12,6 +12,7 @@ import '../data/persistent_diary_repository.dart';
 import '../export/diary_export_service.dart';
 import '../template/daily_default_template.dart';
 import '../template/diary_composer.dart';
+import '../../control/bootstrap.dart';
 import 'browser/year_list_page.dart';
 import 'diary_composer_scope.dart';
 import 'diary_export_scope.dart';
@@ -78,9 +79,27 @@ class _DiaryPageState extends State<DiaryPage> {
         template: template,
         provider: _dataProvider,
         idGenerator: repository.idGenerator,
+        // 显式走日记日时钟：ECP sys.clock.set 拨钟后，成稿时间戳与
+        // 「今天」判定随之同步（同一实例，同路原则）。
+        now: _clock.now,
       );
       final exportService =
           widget.exportService ?? DiaryExportService(repository: repository);
+
+      // ECP 接线：把与 UI 完全同源的实例注册给控制面（widget 测试
+      // 未走 ControlBootstrap.init 时 instance 为 null，静默跳过）。
+      // 同路原则：命令调的就是本页正在用的同一个时钟/仓储/composer。
+      final control = ControlBootstrap.instance;
+      if (control != null) {
+        control.paths.diaryRoot =
+            widget.repository == null ? await _storageRoot() : null;
+        control.registry
+          ..set(_clock)
+          ..set(repository)
+          ..set(composer)
+          ..set(exportService);
+      }
+
       if (!mounted) return;
       setState(() {
         _repository = repository;

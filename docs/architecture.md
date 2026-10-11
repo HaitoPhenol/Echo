@@ -54,6 +54,14 @@ echo/
 │       │   ├── haptics.dart               # 触感反馈统一入口
 │       │   ├── nav_badge_service.dart     # 导航锚点状态：通知/异常接口
 │       │   └── search_service.dart        # 搜索服务/数据源/历史接口
+│       ├── control/                       # ★ ECP 控制面（P1 已落地；模块文档 docs/ecp/）
+│       │   ├── protocol/                  # 信封/错误码/命令规格（受控动词表）/ControlBus
+│       │   ├── auth/                      # PinStore(PBKDF2)、AuthManager（通道会话/退避/前后台失效）、AuditLog
+│       │   ├── channels/                  # adb MethodChannel 适配（仅 debug 挂载）
+│       │   ├── commands/                  # sys/auth/nav/diary 四域命令 + JSON 工具
+│       │   ├── control_registry.dart      # 业务实例注册表（同路原则：命令与 UI 用同一实例）
+│       │   ├── control_app_state.dart     # 前后台生命周期 + 设备快照顾问
+│       │   └── bootstrap.dart             # 应用启动装配（main.dart await）+ WidgetsBindingObserver
 │       └── navigation/                    # 智能导航线
 │           ├── nav_destination.dart       # ★ 导航目的地配置（页面）
 │           ├── quick_action.dart          # ★ 快捷操作配置（全局快捷弧）
@@ -81,7 +89,8 @@ echo/
 │   │   └── dock_geometry_test.dart        # 快捷弧布局纯函数测试
 │   ├── pages/
 │   │   └── chat_page_test.dart            # 会话列表交互测试
-│   └── diary/                             # 日记：sy 金标准/时钟/仓储/成稿/编辑器/导出/浏览 widget（15 个文件）
+│   ├── diary/                             # 日记：sy 金标准/时钟/仓储/成稿/编辑器/导出/浏览 widget（15 个文件）
+│   └── control/                           # ECP：协议总线/鉴权矩阵/四域命令/手册一致性（4 个文件 31 用例）
 ├── assets/
 │   └── diary/templates/                   # 每日模板 JSON（daily-default.json 六块骨架）
 └── README.md                              # Flutter 默认工程说明
@@ -96,7 +105,7 @@ docs/
 ├── diary/                                 # 日记模块：技术方案 + 思源 3.8.6 金标准格式
 │   ├── flutter-tech-plan.md
 │   └── sy-format-golden-3.8.6.md
-├── ecp/                                   # ECP 应用控制协议（设计 + 命令手册，待开发）
+├── ecp/                                   # ECP 应用控制协议（设计 + 命令手册；P1 已落地）
 │   ├── ecp-design.md
 │   └── ecp-commands.md
 ├── proposals/                             # 规则变更提案与登记册（永不删除）
@@ -571,18 +580,41 @@ ui/（年/月/日浏览、编辑页）
 - **生命周期注意**：`DiaryPage` State 在主屏 Row 中常驻，bootstrap
   （打开仓储、自动成稿、prune）与编辑器防抖 flush 都挂在它上面；
   未来若做页面窗口化懒加载（问题清单 Q3），必须先迁移这些假设。
-- **ECP 接缝**：规划中的应用控制协议（[ecp/ecp-design.md](ecp/ecp-design.md)）
-  将直接调用本层公开 API（diary.list/ensure/prune/export 等），
-  命令与 UI 同路，不另建测试实现。
+- **ECP 接缝（P1 已落地）**：[ecp/ecp-design.md](ecp/ecp-design.md) 控制面
+  经 `ControlRegistry` 直接拿到本页 bootstrap 创建的同一组实例
+  （clock/repository/composer/exportService），diary.list/get/ensure/
+  prune/reset/export 与 UI 完全同路，不存在第二套测试实现；
+  `sys.clock.set` 只覆盖 `DiaryClock` 注入值（不碰系统时间）。
+
+### 3.13 ECP 控制面（P1 已落地）
+
+- **分层**：`protocol/`（信封、错误码→退出码、`CommandSpec` 受控动词表、
+  `ControlBus` 注册/解析/裁决/审计）→ `auth/`（PinStore PBKDF2、
+  AuthManager 三通道级别矩阵、5 次失败退避、paused 即焚会话、AuditLog）
+  → `commands/`（sys/auth/nav/diary 31 条规格中的 P1 子集）。
+- **同路原则**：命令不持有业务逻辑，全部经 `ControlRegistry` 调 UI
+  同源公开 API；业务实例只在各自 bootstrap 注册（导航屏注册
+  `NavPhysicsController`，日记页注册时钟/仓储/composer/导出服务），
+  未就绪统一回 `CONFLICT`。
+- **物理入口**：adb 通道是唯一 P1 入口，仅 debug 源集存在
+  （`DebugControlReceiver` + `DebugEchoApp` 反射借引擎 +
+  `echo/control` MethodChannel）；release APK 清单经 aapt2 验证
+  无任何 ECP 组件。工作站侧包装脚本 `scripts/echo-cmd` 负责冷启动
+  等待、kebab→camel 参数转换、stdin 收 PIN、退出码映射。
+- **契约冻结**：`test/control/manifest_consistency_test.dart` 双向
+  校验 manifest 与 `docs/ecp/ecp-commands.md` 小节（含 debugOnly/
+  destructive/confirm 结构约束），改协议先改手册。
 
 ---
 
 ## 4. 常见扩展操作
 
 ### 新增一个页面
-在 `buildDefaultDestinations()` 列表中增加一个 `NavDestination`，
-写好 `id / label / pageBuilder`（`icon` 可后补）。
-导航线、转鼓、页名牌、页面搜索会自动纳入，无需改动其他代码。
+在 `navigation/nav_destination_specs.dart` 的 `kNavDestinationSpecs`
+（稳定 id + 显示 label；ECP `nav.goto` 按 id 寻址）与
+`buildDefaultDestinations()`（pageBuilder 装配）中同步增加一项。
+导航线、转鼓、页名牌、页面搜索会自动纳入；新增页面要走 ECP 的话，
+稳定 id 还需登记进 `docs/ecp/ecp-commands.md`。
 
 ### 把某个模板页替换为真实页面
 把该 `NavDestination` 的 `pageBuilder` 从 `TemplatePage` 换成真实页面
