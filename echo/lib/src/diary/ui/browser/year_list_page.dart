@@ -11,7 +11,8 @@ import 'month_list_page.dart';
 /// 年级别：只列含日记的年份；当前年由进模块自动成稿保证出现。
 ///
 /// M5 起每行 trailing 为年增量导出入口：打包该年全部 draft 为
-/// 「日记」笔记本 .sy.zip 并经系统分享送出，成功后批量置 exported。
+/// 「日记」笔记本 .sy.zip 并经系统分享送出，用户在「确认已发送」
+/// 对话框确认后批量置 exported；否认则保留 draft 可再次导出。
 class YearListPage extends StatefulWidget {
   const YearListPage({super.key});
 
@@ -29,13 +30,20 @@ class _YearListPageState extends State<YearListPage> {
     final service = DiaryExportServiceScope.of(context);
     final messenger = ScaffoldMessenger.maybeOf(context);
     try {
-      final outcome = await service.exportYear(year);
+      final outcome = await service.exportYear(
+        year,
+        // Android 分享面板取消/成功无法区分，返回后由用户人工确认
+        // 是否真的送达；否认则草稿保留、可再次导出。
+        confirmShared: _confirmSent,
+      );
       messenger?.clearSnackBars();
       messenger?.showSnackBar(
         SnackBar(
           content: Text(
             outcome.didShare
                 ? '已分享 ${outcome.exportedCount} 篇 · 标记为已导出'
+                : outcome.userDenied
+                ? '未标记为已导出，草稿仍保留，可再次导出'
                 : '$year 年没有待导出的草稿',
           ),
           duration: const Duration(seconds: 2),
@@ -52,6 +60,32 @@ class _YearListPageState extends State<YearListPage> {
     } finally {
       if (mounted) setState(() => _exportingYear = null);
     }
+  }
+
+  /// 系统分享返回后的人工确认（share_plus 不回报真实发送结果）。
+  /// 点「尚未发送」/ 点弹窗外关闭 → false，草稿不迁移。
+  Future<bool> _confirmSent() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('确认已发送？'),
+        content: const Text(
+          '系统分享不会回报发送结果。请确认已把文件发送到思源'
+          '（或另存成功）后，再标记为已导出。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('尚未发送'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('确认已发送'),
+          ),
+        ],
+      ),
+    );
+    return confirmed ?? false;
   }
 
   @override

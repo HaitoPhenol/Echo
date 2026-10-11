@@ -18,17 +18,37 @@ import 'package:echo/src/diary/ui/widgets/diary_list_row.dart';
 
 /// 不碰平台通道 / 文件 IO 的假导出服务（widget 测试专用；
 /// 真实打包链路由 diary_export_service_test.dart 覆盖）。
+///
+/// 默认行为模拟生产服务的确认编排：先回调 confirmShared（由年列表
+/// 弹「确认已发送」对话框），否认返回 userDenied，确认则把今天的
+/// bootstrap 草稿迁移为 exported。
 class _FakeExportService extends DiaryExportService {
   _FakeExportService({required super.repository, this.handler});
 
-  final Future<DiaryExportOutcome> Function(int year)? handler;
+  final Future<DiaryExportOutcome> Function(
+    int year,
+    DiaryExportConfirm? confirmShared,
+  )?
+  handler;
   int calls = 0;
 
   @override
-  Future<DiaryExportOutcome> exportYear(int year) {
+  Future<DiaryExportOutcome> exportYear(
+    int year, {
+    DiaryExportConfirm? confirmShared,
+  }) async {
     calls++;
-    return handler?.call(year) ??
-        Future.value(DiaryExportOutcome(year: year, exportedCount: 0));
+    final h = handler;
+    if (h != null) return h(year, confirmShared);
+    final confirmed = await confirmShared?.call() ?? false;
+    if (!confirmed) {
+      return DiaryExportOutcome(year: year, exportedCount: 0, userDenied: true);
+    }
+    await repository.markExported(
+      [DateTime(2026, 6, 15)],
+      exportedAt: DateTime(2026, 6, 15, 12),
+    );
+    return DiaryExportOutcome(year: year, exportedCount: 1);
   }
 }
 
@@ -85,7 +105,7 @@ void main() {
       final completer = Completer<DiaryExportOutcome>();
       final export = _FakeExportService(
         repository: repo,
-        handler: (_) => completer.future,
+        handler: (_, _) => completer.future,
       );
       await tester.pumpWidget(app(repository: repo, exportService: export));
       await tester.pumpAndSettle();
@@ -108,15 +128,60 @@ void main() {
     testWidgets('当年无草稿：SnackBar 提示且不分享文案正确', (tester) async {
       final repo = emptyRepo();
       addTearDown(repo.dispose);
-      // 默认假实现返回 exportedCount=0（bootstrap 自动成稿的今天是
+      // 假实现返回 exportedCount=0（bootstrap 自动成稿的今天是
       // 空稿但仍属 draft——这里假服务按 0 模拟「无待导出」口径）。
-      final export = _FakeExportService(repository: repo);
+      final export = _FakeExportService(
+        repository: repo,
+        handler: (_, _) async =>
+            const DiaryExportOutcome(year: 2026, exportedCount: 0),
+      );
       await tester.pumpWidget(app(repository: repo, exportService: export));
       await tester.pumpAndSettle();
 
       await tester.tap(find.byIcon(Icons.ios_share));
       await tester.pumpAndSettle();
       expect(find.text('2026 年没有待导出的草稿'), findsOneWidget);
+    });
+
+    testWidgets('分享后确认对话框：否认保留 draft，确认才置 exported',
+        (tester) async {
+      final repo = emptyRepo();
+      addTearDown(repo.dispose);
+      // 无自定义 handler：默认假服务模拟真实确认编排（不碰文件 IO）。
+      final export = _FakeExportService(repository: repo);
+      await tester.pumpWidget(app(repository: repo, exportService: export));
+      await tester.pumpAndSettle(); // bootstrap 自动成稿今天（draft）
+
+      // 第一次：点分享 → 确认对话框 → 否认。
+      await tester.tap(find.byIcon(Icons.ios_share));
+      await tester.pump();
+      expect(find.text('确认已发送？'), findsOneWidget);
+      await tester.tap(find.text('尚未发送'));
+      await tester.pump();
+      expect(
+        find.text('未标记为已导出，草稿仍保留，可再次导出'),
+        findsOneWidget,
+      );
+      expect(
+        await repo.stateOfDay(DateTime(2026, 6, 15)),
+        DiaryDocState.draft,
+      );
+      expect(export.calls, 1);
+
+      // SnackBar 让其自行消失，再次导出 → 对话框 → 确认。
+      await tester.pump(const Duration(seconds: 3));
+      await tester.tap(find.byIcon(Icons.ios_share));
+      await tester.pump();
+      expect(find.text('确认已发送？'), findsOneWidget);
+      await tester.tap(find.text('确认已发送'));
+      await tester.pump();
+      await tester.pumpAndSettle();
+      expect(find.text('已分享 1 篇 · 标记为已导出'), findsOneWidget);
+      expect(
+        await repo.stateOfDay(DateTime(2026, 6, 15)),
+        DiaryDocState.exported,
+      );
+      expect(export.calls, 2);
     });
   });
 
