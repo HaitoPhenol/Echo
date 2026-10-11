@@ -182,6 +182,10 @@ class DiaryComposer {
   /// 3. 其余块中存在任一 trim 后非空文本即非空。
   ///
   /// 用户写了字又删光 → 文本归空 → 仍判为空，次日照常清理。
+  ///
+  /// 注意 readonly 不进 .sy 序列化，只在编辑器 attach 时按确定性 ID
+  /// 恢复；prune 直接从磁盘解码、不挂控制器，故这里也必须以 ID 身份
+  /// 识别 data 块，不能只信 [DiaryBlock.readonly] 标志。
   bool isUserEmpty(DiaryDocument document) {
     final expected = template.spec.blocks
         .where((b) => b.type != DiaryTemplateBlockType.data)
@@ -189,7 +193,9 @@ class DiaryComposer {
         .toList();
 
     for (final block in document.blocks) {
-      if (block.readonly) continue;
+      if (block.readonly || SyIdGenerator.isDataBlockId(block.id)) {
+        continue;
+      }
       final key = (
         kind: block.kind,
         level: block.level,

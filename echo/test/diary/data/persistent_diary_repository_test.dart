@@ -5,13 +5,17 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_common_ffi.dart';
 
 import 'package:echo/src/diary/data/diary_clock.dart';
+import 'package:echo/src/diary/data/diary_data_provider.dart';
 import 'package:echo/src/diary/data/persistent_diary_repository.dart';
 import 'package:echo/src/diary/data/diary_repository.dart';
 import 'package:echo/src/diary/sy/diary_model.dart';
 import 'package:echo/src/diary/sy/sy_id.dart';
+import 'package:echo/src/diary/template/daily_default_template.dart';
+import 'package:echo/src/diary/template/diary_composer.dart';
 
 void main() {
   setUpAll(() {
+    TestWidgetsFlutterBinding.ensureInitialized(); // loadAsset 需要
     sqfliteFfiInit();
     databaseFactory = databaseFactoryFfi;
   });
@@ -295,6 +299,42 @@ void main() {
       addTearDown(repo3.close);
       expect(await repo3.dayExists(empty), isFalse);
       expect(await repo3.draftCountOfMonth(2026, 10), 2);
+    });
+
+    test('真实 composer 谓词经磁盘往返：模板空稿被清、有字稿保留', () async {
+      // 回归 M5 真机 bug：prune 从 .sy 直读的文档 readonly 未恢复，
+      // 含内容的 data 快照曾把所有历史稿误判为「写过」。
+      final root = await tempRoot();
+      addTearDown(() => root.delete(recursive: true));
+      final composer = DiaryComposer(
+        template: await DailyDefaultTemplate.loadAsset(),
+        provider: FakeDiaryDataProvider(),
+        idGenerator: SyIdGenerator(random: Random(1), now: () => fixedNow),
+      );
+
+      final empty = DateTime(2026, 10, 9);
+      final written = DateTime(2026, 10, 8);
+      final repo1 = await open(root, now: DateTime(2026, 10, 10, 12));
+      await composer.ensureDay(empty, repo1); // 只有模板 + data 快照
+      final withText = await composer.ensureDay(written, repo1);
+      withText.blocks[3].text = '写了内容';
+      await repo1.upsertDraft(withText);
+      await repo1.close();
+
+      // 次日冷启：bootstrap 的真实调用形态。
+      final repo2 = await open(root, now: DateTime(2026, 10, 11, 12));
+      addTearDown(repo2.close);
+      final removed = await repo2.pruneEmptyBefore(
+        DateTime(2026, 10, 11),
+        composer.isUserEmpty,
+      );
+      expect(removed, 1);
+      expect(await repo2.dayExists(empty), isFalse);
+      expect(await repo2.dayExists(written), isTrue);
+      expect(
+        (await repo2.findDay(written))!.blocks[3].text,
+        '写了内容',
+      );
     });
   });
 

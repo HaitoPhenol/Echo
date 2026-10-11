@@ -236,6 +236,33 @@ void main() {
       expect(composer.isUserEmpty(doc), isTrue);
     });
 
+    test('磁盘往返后 readonly 未恢复：data 快照仍不影响空判定（prune 实路径）',
+        () async {
+      // 复现 M5 真机 bug：prune 直接从 .sy 解码文档，不经过编辑器
+      // attach，readonly 标志未恢复；此时 data 快照文本不得被当成
+      // 用户写过的内容。
+      final doc = await composer.ensureDay(today, buildRepo());
+      final restored =
+          const SySerializer()
+              .decodeBytes(const SySerializer().encodeBytes(doc))
+              .document;
+      final dataBlock = restored.blocks
+          .firstWhere((b) => SyIdGenerator.isDataBlockId(b.id));
+      expect(dataBlock.readonly, isFalse); // 标志确实不进序列化
+      expect(dataBlock.text.trim(), isNotEmpty); // 快照有实际内容
+      expect(composer.isUserEmpty(restored), isTrue);
+    });
+
+    test('磁盘往返：用户写过字的稿仍判非空', () async {
+      final doc = await composer.ensureDay(today, buildRepo());
+      doc.blocks[3].text = '今天写了一句';
+      final restored =
+          const SySerializer()
+              .decodeBytes(const SySerializer().encodeBytes(doc))
+              .document;
+      expect(composer.isUserEmpty(restored), isFalse);
+    });
+
     test('写过字判为非空', () {
       final doc = DailyDefaultTemplate(
         spec: DiaryTemplateSpec.fromJson(_json),
