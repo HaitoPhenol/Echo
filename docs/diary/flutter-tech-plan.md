@@ -351,6 +351,17 @@ M4 反转。**
   思源目标；实际路径为 App 内 Documents → ＋ → Import → SiYuan .sy.zip
   → SAF 选 Downloads 中的 zip。导入时思源重新生成全部块 ID；同名笔记本
   重复导入会新建第二份而非合并，去重需用户在思源内手动处理。
+- **mood 属性视图聚合（桌面端 MCP 复验，2026-10-11 当晚补验）**：数据库
+  字段与块自定义属性确实是两套数据。① Template 列做只读桥接的正确写法
+  是裸表达式 `.action{ index . "custom-mood" }`（无值兜底用 sprig：
+  `.action{ default "—" (index . "custom-mood") }`）；**不要包 `{{ }}`**
+  ——`{{ }}` 在 AV 模板列里被当字面量输出（实测显示 `{{ 🙂 }}`）。
+  ② 模板列是渲染文本、不能作为分组依据；要"聚合成图"应建原生 **select
+  列**（选项 🙂/😢 可配色）逐行写值，再建 **kanban 视图**即自动按心情
+  分组成列。③ sisyphus MCP 可全程 API 完成建库/树/块属性/AV 物化/绑定
+  行/加列/选项/写值/看板（strict 写模式：先 validateOnly 拿 requestId 再
+  提交），但模板列公式与库重命名未暴露接口；内核 AV 定义常驻内存，外部
+  改 `data/storage/av/*.json` 需重启才生效，正常应只走 API。
 
 ## 7. 里程碑
 
@@ -361,7 +372,7 @@ M4 反转。**
 | M2 ✅ | 1–1.5 周 | 编辑器核心：分块/合并/越界/自动保存；年→月→日三级浏览页 + DiaryRepository 内存实现 | 2026-10-10 完成：T01/T02/T04/T05/T08/T09 单测化，层级下钻与落盘预览 widget 化，200 块懒加载测试；真机国产 IME 拆/合块+防抖落盘验收。注：**崩溃恢复（进程被杀不丢字）随 M5 持久化一起验收**——M2 仓储为内存实现，5s 防抖只落内存 |
 | M3 ✅（核心 + 打磨 patch） | 1 周 | 选中/底色 13 色桥/转标题/撤销/Slash | 2026-10-10 核心完成：selectBlock/setBackground/turnInto 命令 + serializer 往返 + 50 步撤销重做，非法参数/只读守卫齐；底色导出随序列化往返一致。同日 M3 打磨 patch 接线完成：块标浮层（正文/H1–H3/13 色/无色）、标题栏撤销重做按钮、月行三态，底色换思源 midnight 实值（MIX 2S 真机验收）。**仅余 Slash 菜单留下个 patch** |
 | M4 ✅ | 1 周 | 模板实例化 + Provider 假实现 + data 块刷新；04:00 日记日时钟、进模块自动成稿、空草稿跨天清理、月日列表去枚举化（§5.2） | 2026-10-10 完成：全量 164 测试绿（基线 107，新增 57）、analyze 0 问题；MIX 2S 真机验收通过（进模块今天自动成稿六块、data 块深蓝底反色+「（示例数据）」+↻ 可刷新、月页补记选择器未来日禁选/过去日成稿、今天在日列表倒序自然位不置顶、空稿标注、列表只显真实日记）；3:59/4:00 日界与跨天空草稿清理由单测/widget 测试锁定。偏差：①无后台调度，自动成稿在进模块时执行；②data 块 ID 确定性生成（非随机）以支持刷新按 ID 还原；③月/日列表同步去枚举化。真机注：MIX 2S（Adreno 630）+ Flutter 3.47.6 Impeller 对横向滚筒非当前槽位首帧白屏，息屏亮屏重建 surface 即恢复，与 M4 代码无关（同机 TemplatePage 也复现） |
-| M5 ✅ | 1 周 | meta 表/状态机/增量导出/分享/只读/持久化 | 2026-10-11 完成：全量 194 测试绿（基线 189，新增 5）、analyze 0 问题；MIX 2S 真机验收通过——①杀进程冷启草稿不丢（5s 防抖窗口文字在盘）；②跨天 prune 自然复验（10/8 空稿 meta+.sy 双删，keep 文档与今稿保留）；③导出 zip（9 entries、.siyuan conf/sort）→ 思源 v3.8.6 真机两次导入：年/月/日树与星期标题正确、正文分块正确、custom-iot-* / custom-weather / custom-mood 自定义属性全部落盘（7日 🙂、10日 😢）；④三态 UI（draft/exported/archived）与分享确认流（裁定 B）真机走通。**偏差/边界**：schema 反范式（meta 增 title/preview/block_count，列表不解析正文）；`readonly` 不进 .sy 序列化，prune 改按确定性 data 块 ID 识别快照块；share_plus 在 Android 无发送回执，导出后弹「确认已发送？」对话框，确认才 markExported、否认保留 draft；**思源 Android 不响应 ACTION_SEND**，只能在 App 内 Documents → Import 走 SAF 选 zip；**思源导入会重新生成全部块 ID**，重复导入是**新建同名笔记本而非合并/幂等**（原计划"容器幂等"假设不成立，Echo 侧 zip 本身可重复生成不受影响）；mood 在属性视图（数据库）聚合出图延后：v3.8.6 数据库字段与块自定义属性是两套数据，需 Template 字段 `{{ index . "custom-mood" }}` 桥接，移动端未完成配置验证（文档属性直读已证明数据正确） |
+| M5 ✅ | 1 周 | meta 表/状态机/增量导出/分享/只读/持久化 | 2026-10-11 完成：全量 194 测试绿（基线 189，新增 5）、analyze 0 问题；MIX 2S 真机验收通过——①杀进程冷启草稿不丢（5s 防抖窗口文字在盘）；②跨天 prune 自然复验（10/8 空稿 meta+.sy 双删，keep 文档与今稿保留）；③导出 zip（9 entries、.siyuan conf/sort）→ 思源 v3.8.6 真机两次导入：年/月/日树与星期标题正确、正文分块正确、custom-iot-* / custom-weather / custom-mood 自定义属性全部落盘（7日 🙂、10日 😢）；④三态 UI（draft/exported/archived）与分享确认流（裁定 B）真机走通。**偏差/边界**：schema 反范式（meta 增 title/preview/block_count，列表不解析正文）；`readonly` 不进 .sy 序列化，prune 改按确定性 data 块 ID 识别快照块；share_plus 在 Android 无发送回执，导出后弹「确认已发送？」对话框，确认才 markExported、否认保留 draft；**思源 Android 不响应 ACTION_SEND**，只能在 App 内 Documents → Import 走 SAF 选 zip；**思源导入会重新生成全部块 ID**，重复导入是**新建同名笔记本而非合并/幂等**（原计划"容器幂等"假设不成立，Echo 侧 zip 本身可重复生成不受影响）；**mood 属性视图聚合已在桌面端 MCP 复验通过**（当晚补验）：select 心情列（🙂绿/😢蓝）逐行绑定 + kanban 视图自动按心情分组成列（无 mood 行入「未设置」）；Template 列只读桥接块属性的正确写法为裸表达式 `.action{ index . "custom-mood" }`（勿包 `{{ }}`），但模板文本列不能分组，"成图"仍须 select 列（详见 §6 结论） |
 | M6 | 0.5–1 周 | ≥2 台真机连写 7 天、粘贴/撤销边界 | 全流程零异常 |
 
 依赖关系：M1 独立先行；M4 依赖 M2；M5 依赖 M1+M4。
