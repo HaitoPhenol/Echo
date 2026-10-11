@@ -1,204 +1,137 @@
 # Echo 当前实现现状
 
-> 本文件是 **v0.6.2+30（main，tag `v0.6.2`）时点的现状快照**
-> ——底部三条（把手 / AI / 导航）、侧边抽屉，快捷弧沿手指轨迹
-> 椭圆弧的弧长等距布局（`DockGeometry.layoutQuickArc`，数量驱动），
-> 全屏套有机能风视觉层（固定背景/读数条/大页码/转鼓/衬线页名牌，
-> 见架构 3.11），
-> 记录"今天代码实际是怎么实现的"。这些都不是规定——工具与手段可以换，
-> 但更换时必须满足 [engineering_standards.md](engineering_standards.md) 的原则、
-> 通过测试与真机验收，并更新本文件。机能风视觉层经 RCR-2026-001
-> 采纳转正，详见
-> [proposals/2026-10-09-mechanical-visual-tokens.md](proposals/2026-10-09-mechanical-visual-tokens.md)。
+> 本文件是 **v0.9.0+34（main，tag `v0.9.0`，2026-10-11）时点的现状快照**，
+> 记录"今天代码实际是怎么实现的"。这些不是规定——工具与手段可以换，
+> 但更换时必须满足 [engineering_standards.md](engineering_standards.md)
+> 的原则、通过测试与真机验收，并更新本文件。历史 patch 级变更叙述不进
+> 本文件（查 git 历史与
+> [component-reports/](component-reports/) 归档）。
 >
-> **v0.6.1（patch，已合并 main）**：首页中文页名控制台→**终端**
-> （英文 kicker 保留 CONSOLE）；转鼓精简（删顶行右上 NO.0N 编号与
-> 视窗右侧刻度列，面板 206→176dp，mech 色组 15→13 token）；新增
-> **左下衬线页名牌**（64sp 系统 serif、底边与转鼓对齐、同升同收，
-> 叠加赛博故障入场：唤醒播一次、成功翻页重播、边界回弹不播，
-> 副本为 mechInkDim 灰色重影的极简单色风）。
->
-> **v0.6.2（patch，已合并 main）**：页名牌左边距与转鼓右边距对齐
-> 为 DockGeometry.sideMargin 14dp；页名面板改仿转鼓的开口框
-> （左/上通线、底边半线、右边不画，左上/左下 16px 亮角标）；
-> 第四页页名「我」改「主页」，四页统一两字（英文 kicker 仍 ME）；
-> 指示器退场改 340ms 水平百叶窗故障（横带错峰两明两暗），抽出
-> 两个指示器共用的 MechanicalIndicatorLifecycle，上甩/进搜索
-> 仍瞬隐。
->
-> **未发布（分支 `feat/notes-page`，版本号待合入 main 时排）**：
-> 日志页改名**笔记**（label「日志」→「笔记」、英文 kicker
-> LOGS→NOTES，SEC.03 保留），笔记功能暂不做、笔记页不挂任何
-> 调试按钮；异常模拟/处理从日志页收拢到终端页调试面板
-> （终端页共三个按钮：模拟聊天新消息 / 模拟异常 / 处理异常），
-> 终端页下标由 nav_destination 按稳定 id 解析后经构造参数传入，
-> 消除脚手架写死页序（P2-10 的脚手架一半已还，接口按 int 索引的
-> 债务仍在）。
->
-> 相关文档：[架构与接口说明](architecture.md) ·
+> 相关：[架构与接口说明](architecture.md) ·
 > [工程规范](engineering_standards.md) · [规则演进机制](governance.md) ·
-> [术语表](glossary.md) · [问题清单](code_review_report.md)
+> [术语表](glossary.md) · [问题清单](code_review_report.md) ·
+> [日记模块技术方案](diary/flutter-tech-plan.md)
 
 ---
 
 ## 技术栈与工程
 
-- **Flutter**，Dart SDK ^3.13.5；零三方业务依赖（仅 cupertino_icons、
-  flutter_lints）。
-- 状态管理用 **ChangeNotifier + InheritedNotifier**：当前规模下的选择，不是禁令；
-  服务数量与跨页共享状态真正增长后再评估框架。
-- Android 原生侧只有一个 MethodChannel `echo/haptics`（触感，直接驱动 Vibrator，
-  有振幅控制降级，已声明 VIBRATE 权限）；iOS 走系统 HapticFeedback。
-- lint 为 flutter_lints 默认集；无 CI。
-- **发布配置**：Android release 尚用 debug 签名，无独立 keystore / R8 加固；
-  无全局崩溃钩子（FlutterError.onError / runZonedGuarded）。
+- **Flutter 3.47.6 / Dart ^3.13.5**；业务三方依赖：
+  `archive`（.sy.zip 打包）、`sqflite`（日记 meta 库）、
+  `path_provider`（沙盒目录）、`share_plus`（系统分享）；
+  测试侧 `sqflite_common_ffi`。其余为 cupertino_icons / flutter_lints。
+- 状态管理：**ChangeNotifier + InheritedNotifier**（规模够用，不引框架）。
+- Android 原生侧仅 `MainActivity.kt` 两个 MethodChannel：
+  `echo/haptics`（直接驱动 Vibrator，带振幅降级，声明 VIBRATE 权限）、
+  `echo/device_stats`（电池温度/瞬时功率/型号，零权限粘性广播）。
+- lint：flutter_lints 默认集；**无 CI**（门禁靠本地 `flutter analyze` +
+  `flutter test` 自觉执行）。
+- **发布配置**：release 尚用 debug 签名，无独立 keystore / R8；
+  无全局崩溃钩子（FlutterError.onError / runZonedGuarded）；
+  release 包人工检查尚未执行。
 
 ## 页面与导航
 
-- **4 个页面**：终端 / 聊天 / 笔记 / 主页（见 `navigation/nav_destination.dart`；
-  首页中文页名 v0.6.1 起由「控制台」改「终端」，第三页由「日志」改「笔记」
-  （分支 feat/notes-page，版本号待合入 main 时排定）；英文 kicker 分别为
-  CONSOLE / NOTES / ME）。
-  聊天页已替换为真实页面 `ChatPage`（`pages/chat_page.dart`，数据来自
-  `services/chat_store.dart` 的 `ChatStore`）：**无标题栏**，
-  列表初始为空，空态整屏居中显示 13px 小字「暂无消息」（tone2）；
-  有会话时整页 ListView 铺满轨道（会话行高 72px：48px 圆形头像占位框
-  （tone1 空心描边）+ 昵称 tone4 16px + 消息预览 tone2 14px 单行省略，
-  行间分隔线为屏宽 80%、水平居中的 1px tone1 细线；顶部避让状态栏、
-  底部预留 26px 停靠条高度）。行交互已接通数据：
-  **左滑**露出右侧操作区（恒为两个等宽按钮、总宽恒定：左为读状态切换，
-  已读行显示「未读」、未读行显示「已读」，tone2 底；右为「删除」anchorRed 底），
-  按速度/半程 180ms 吸附、全局只开一行、竖滚自动收回；
-  未读行右上角有**呼吸绿点**（anchorGreen，1.7s 往返，与导航锚点同参数），
-  点按未读行即已读；终端页「模拟：聊天新消息」经 `ChatStore.addIncoming()`
-  在最前插入未读会话。
-  其余三页仍是只显示标题的 TemplatePage；仅终端页挂锚点调试面板
-  （模拟聊天新消息 / 模拟异常 / 处理异常，共 3 个按钮），笔记与主页无调试按钮。
-  **四页均套有机能风视觉层（v0.6.0 转正，RCR-2026-001）**：主屏 Stack
-  最底层为固定的网格/点阵/十字背景（RepaintBoundary 静态层），状态栏下沿
-  是设备读数条，页面底色透明；模板页带 SEC kicker 与 48sp w700 大字距标题，
-  每页轨道内有空心大页码；右下角为精简后的 3D 数字转鼓（176dp，顶行仅
-  blip+PAGE、底部跟手进度条，仅横滑唤醒，圆点/双击路径不显示；旧横向
-  圆点胶囊 NavRoller 与原稿 NO.0N 编号/右侧刻度列均已删），横滑时左下角
-  同步浮现衬线页名牌（与转鼓底边对齐、同升同收）。架构说明见 3.11。
-- 页面**全部常驻构建**（一个 Row 一次性 build）。注意这与 `pageBuilder`
-  "按需构建"的注释意图不符，是已知债务（P2-08）；聊天页已成为首个
-  常驻的真实页面（空态仅一个 Center+Text，有会话时为 itemExtent
-  定高 ListView，负载很轻），更多真实页面接入前需评估
-  窗口化懒加载（activePage±1）方案，离屏页 State 销毁重建的接受度需用户确认。
-- 导航物理为自研 `NavPhysicsController`：`position`（线性物理）与
-  `displayPosition`（橡胶带 + Hermite 磁力曲线）两层分离；fling 指数摩擦、
-  snap 弹簧、速度自适应增益等参数均为 **4 页场景下手调验收值**，页面数变化需整体重评。
-- 几何全部由静态常量 + MediaQuery 推算，不用 GlobalKey
-  （原因见规范事故 4）：底部三条（把手 / AI / 导航整体）统一收在
-  `navigation/dock_geometry.dart` 的 `DockGeometry`（12vw 把手、
-  38vw-56 AI 条、50vw 右对齐导航整体、间距统一 14、底边距 16），
-  导航条自身的剩余常量仍在 `SearchCapsule`。
-- **底部三条（v0.5.0）**：左下角把手条（点按呼出本页操作竖单，
-  配置在 `page_action.dart`，当前刷新/分享/置顶三个「开发中」占位；
-  右拖跟手拉出侧边抽屉，松手吸附，把手同步滑到抽屉右缘停靠位）；
-  中段 AI 虹彩流动条（7s 循环 + 光晕，长按 450ms 呼出对话框；对话框
-  当前消息区为空、发送键恒禁用，仅可打字）；右侧导航条整体不变。
-  抽屉与 AI 对话框均为**空壳**，内容留待后续。竖单 / 对话框 / 抽屉 /
-  搜索 / 快捷弧互斥，同屏至多一个浮层。
-- 搜索开合为**真实导航条与独立搜索 pill 双组件交接**（`_CapsuleMorph` 驱动）。
-- **滑块为不透明灰** `_thumbFill`（0xFF838383，亮度等同旧 tone1+tone2
-  合成白量 ≈.513）；**锚点始终全部挂载、画在滑块下层**，当前页段靠不透明
-  滑块物理遮挡，无位置显隐逻辑（v0.4.7/8 改，事故 12/13）。
-- 按压反馈（v0.4.9/10 拍板）：端点圆点按下 tone1→tone2，**滑块按下无
-  外观变化**，State 中无按压视觉字段；历史上的变黑/描边/近黑方案均已回退。
-- 快捷操作弧固定 3 项（应用 / 新建 / 语音，均为"开发中"占位），数量在角度数组、
-  初始选中项、入场动画三处写死。
+横向 4 页固定（`navigation/nav_destination.dart` 的
+`buildDefaultDestinations()`，稳定 id）：
+
+| 序 | id | 页名 | 实现 |
+|---|---|---|---|
+| 0 | console | **终端** | TemplatePage + debug 面板（3 按钮，仅 debug） |
+| 1 | chat | **聊天** | 真实 `ChatPage`：会话列表、左滑操作、未读绿点 |
+| 2 | notes | **笔记** | **真实日记模块**（见下节；2026-10-10 起替换纯模板页） |
+| 3 | me | **主页** | TemplatePage |
+
+- 主屏 `SmartNavScreen`（1525 行）一次性常驻构建全部页面（Row + Stack），
+  **日记页 State 常驻**：进模块自动成稿、防抖 flush 等生命周期挂在该
+  常驻 State 上——改懒加载前必须先迁移这些假设。
+- 导航物理为自研 `NavPhysicsController`（position 线性物理 +
+  displayPosition 橡胶带/Hermite 双层）；几何单一事实来源
+  `DockGeometry`（静态常量+MediaQuery，不用 GlobalKey）。
+- 底部三条：把手（竖单/右拖抽屉）、AI 虹彩条（长按弹空壳对话框）、
+  导航条（横滑/圆点/双击/上甩快捷弧/长按搜索）。全部手势的坐标、
+  死区、互斥与返回键顺序详见
+  [usage-guide.md](usage-guide.md)（操作细节以该文件为准）。
+- 机能风视觉层（v0.6.0 转正，RCR-2026-001）：固定网格/点阵背景、
+  顶部读数条、空心大页码、3D 转鼓、衬线页名牌；代码在
+  `navigation/widgets/mechanical_*.dart`，token 在
+  `theme/app_colors.dart` + `mechanical_style.dart`。
+- 浮层（竖单/AI 对话框/抽屉/搜索/快捷弧）同屏至多一个，返回键统一拦截。
+- debug 面板（模拟聊天新消息/模拟异常/处理异常）仅挂终端页，
+  `kDebugMode` 守卫，release 树摇移除。
+
+## 日记模块（笔记页，M1–M5 已交付）
+
+模块文档：[diary/flutter-tech-plan.md](diary/flutter-tech-plan.md)；
+思源格式：[diary/sy-format-golden-3.8.6.md](diary/sy-format-golden-3.8.6.md)。
+代码在 `lib/src/diary/`：
+
+| 子目录 | 职责 |
+|---|---|
+| `sy/` | 思源格式层：`DiaryDocument` 模型、确定性 ID 生成器、子集序列化器、.sy.zip 打包 |
+| `data/` | `DiaryRepository` 抽象 + 内存实现 / **sqflite 持久实现**、`DiaryClock`（04:00 日界）、`DiaryDataProvider`（现为 Fake 常量）、debug 种子 |
+| `template/` | 模板 JSON 解析、每日成稿 `DiaryComposer`（幂等/并发去重/快照填充） |
+| `editor/` | 分块编辑器：命令、控制器（50 步撤销重做）、块视图、块标浮层 |
+| `export/` | 导出服务（年行增量导出 .sy.zip） |
+| `ui/` | 年→月→日浏览页、日记编辑页、三态 UI、心情选择、分享确认流 |
+
+- **生产装配用持久仓储**（M5 起）：sqflite 库
+  `<app_flutter>/echo_diary/diary.db`（diary_meta 单表：状态/时间戳/
+  title/preview/block_count 反范式），正文
+  `diary/{yyyy}/{mm}/{docId}.sy` 原子写（tmp+rename）。
+- **三态**：`draft`（可写）/ `exported`（只读横幅）/ `archived`
+  （删文件留 meta、列表弱化）。
+- **自动成稿**：进笔记页 bootstrap 时 `ensureDay(clock.today())`，
+  模板六块骨架（data 块深蓝底只读 + ↻ 刷新 +「（示例数据）」）；
+  月页「+」补记，日期选择器禁未来日。
+- **04:00 日界**：`DiaryClock.diaryDate`，hour<4 归前一自然日；
+  测试注入时钟，生产取墙钟。
+- **空稿清理**：进模块 prune 早于今天的空草稿（meta+.sy 双删）。
+- **导出**：share_plus 调系统分享；Android 思源不响应 ACTION_SEND，
+  实际走思源内 SAF 导入；分享返回后人工「确认已发送」才置 exported。
+- debug 包空库灌种子两篇（上月 28 日 + 昨天，今天不种）；
+  release 空仓。测试可注入仓储/时钟。
 
 ## 状态与服务
 
-- 搜索历史（`InMemorySearchHistoryStore`）与锚点状态
-  （`InMemoryNavBadgeService`）均为**内存实现，重启清空**；抽象接口已定义，
-  待业务接入时换持久化实现。
-- **聊天会话数据 `ChatStore`**（`services/chat_store.dart`，ChangeNotifier，
-  经 `ChatStoreScope` 提供）：内存保存会话列表，支持新消息插入 / 删除 /
-  已读 / 置未读，`hasUnread` 聚合未读态；重启清空。
-- **聊天页锚点为数据驱动例外**：`SmartNavScreen` 监听 `ChatStore`
-  （`_syncChatBadge`）——有未读即绿色呼吸，**页内所有会话已读才恢复**，
-  停留 700ms 计时器对聊天页不启动；「置未读」会重新点亮锚点。
-  其余页面仍是「停留 700ms 即已读」。
-- 搜索数据源仅接入了"页面搜索"一个；`SearchProvider.search` 当前为同步接口。
-- 锚点状态**按页序号 int 索引**，与 NavDestination 稳定 id 的设计相矛盾
-  （code_review_report P2-10：脚手架一侧的写死序号已消除，但接口层债务仍在）；
-  做任何锚点持久化之前，必须先改为按 destinationId 索引。
-- 调试模拟按钮（模拟聊天新消息 / 模拟异常 / 处理异常）全部收拢在
-  终端页一个面板，由 `kDebugMode` 守卫（v0.4.11 起），release/profile
-  包不挂载；「聊天新消息」调 `ChatStore.addIncoming()`，异常模拟/处理
-  作用于终端页自身，其下标由 `buildDefaultDestinations()` 按 id
-  （indexWhere(id == 'console')）解析后经构造参数传入，脚手架内已无
-  写死页序；笔记页（原日志页）不挂任何调试按钮。
-- 返回键（v0.4.12 起）由根 `PopScope` 统一拦截：任一浮层（搜索 / 快捷弧
-  / 竖单 / AI 对话框 / 抽屉）存在时先关浮层不退出 App；`feat/handle-ai-bars`
-  分支把新浮层全部纳入同一 canPop 判定。
-- SnackBar 在 `EchoApp` 主题层固定为 `overlaySurface` 深底白字
-  （M3 默认反色浅底与暗色界面冲突，已覆盖）。
-
-## 时间源
-
-- 物理积分与搜索 fuse 烧蚀用**帧时间戳**（currentFrameTimeStamp）；
-- 另有若干**墙钟 Timer** 尚未统一：导航条长按 450ms、AI 条长按 450ms、
-  焦点延时 150ms、圆点按压视觉 200ms、已读停留 700ms（仅非聊天页，
-  聊天页锚点改由 ChatStore 数据驱动）、转鼓/页名牌延时隐藏
-  650ms、历史胶囊闪白 180ms；浮层时长（竖单 340ms、AI 对话框 320ms、
-  抽屉开 420ms / 关 100ms、虹彩 7s 循环、会话行左滑吸附 180ms）
-  走各自的 AnimationController 墙钟。
-- 两套时间线在 App 后台 / 测试 pump 时行为不同，改动时需分别考虑。
+- `ChatStore`（services/，ChangeNotifier + Scope）：内存会话列表，
+  新消息/删除/已读/未读，`hasUnread` 聚合；重启清空。聊天锚点数据
+  驱动（全部会话已读才恢复），其余页停留 700ms 已读。
+- `InMemoryNavBadgeService`：锚点三态（正常/通知/异常），**按页序
+  int 索引**（已知债务，改持久化前须先换稳定 id）。
+- `SearchService`：多 Provider 聚合搜索；当前仅"页面搜索"一个源，
+  同步接口；历史为内存实现。
+- 日记仓储单例在 `DiaryPage` bootstrap 打开（debug 自动成稿+种子），
+  测试/装配可注入。
 
 ## 平台与适配
 
-- 主要在 **Android 真机**验证；几何按手机竖屏、单手握持设计：
-  导航簇占右半屏，把手 + AI 条占左半到底边（间距统一 14）。
-- 平板 / 折叠屏 / 横屏未适配（vw 比例的三条、半屏宽导航条、弧半径 108
-  等在大屏上会失衡），目标设备形态待用户确认。
-- 文案仅中文硬编码，未引入 l10n。
-- 无 Semantics 无障碍标注，TalkBack 下自定义手势组件不可用。
+- 主验证设备：Android 真机（MIX 2S，1080×2160/440dpi，MIUI）；
+  手机竖屏单手握持设计，平板/折叠/横屏未适配（待 Q2 决策）。
+- 文案仅中文硬编码，无 l10n；无 Semantics 标注。
+- Impeller 注记：MIX 2S + Flutter 3.47.6 横向滚筒非当前槽位首帧偶发
+  白屏，息屏亮屏重建 surface 恢复，与业务代码无关。
 
 ## 测试现状
 
-- 共 24 个测试，分三个文件：`widget_test.dart` 11 个导航/浮层集成用例
-  （初始渲染、搜索闭环、转鼓/快捷弧互斥、圆点翻页、**双击导航条直达且
-  中转页不算已读**、锚点状态机、返回键顺序，以及把手竖单、AI 条、抽屉、
-  浮层互斥；锚点用例覆盖「聊天页停留不清除、全部已读才恢复」的数据驱动
-  机制），全部 pump 整个 EchoApp、表面固定 800×600、坐标硬编码；
-  `navigation/dock_geometry_test.dart` 6 个快捷弧布局纯函数用例；
-  `pages/chat_page_test.dart` 7 个聊天页用例（初始空态、滚动避让、
-  新消息插入与点按已读、左滑双按钮/置未读/删除、吸附重播不弹回、
-  再次拖动连续性、竖滚自动收回，直接 pump ChatPage + ChatStore）。
-  锚点用例含"锚点始终在树上、仅被物理遮挡"的断言。动画类用例必须逐帧
-  pump（单次 `pump(Duration)` 不驱动挂载当帧启动的 Ticker，见测试文件
-  头注释）；呼吸绿点是无限动画，相关用例不能用 `pumpAndSettle`
-  （永久超时），以固定帧数 pump 等待 180ms 吸附完成。
-- 物理引擎、搜索服务、锚点服务等纯逻辑尚无直接单元测试。
-- 真机回归：MIUI 真机（1080×2160/440dpi）debug 包已过六条旧手势 +
-  三条新组件全流程；`gfxinfo` 对 Flutter 自渲染管线只记录到 1 帧，
-  不是有效的帧率指标，精测需 profile 模式。
-  **v0.6.0 机能风版本六手势回归**：横滑（转鼓跟手）/圆点点按/
-  上甩快捷弧（含热区外反悔）/长按搜索胶囊真机通过；双击直达与多指边界
-  因 user 版无 root、adb 无法在 300ms 窗内有序注入双击/多指，以
-  widget 双击用例 + pointer 过滤代码走查兜底，**留人工真机复核**；
-  背景静态层重绘隔离经结构核查 + 密集交互录屏无肉眼掉帧；转正合并后
-  已再次构建 debug 包装机复验无功能缺失。
+- **194 个测试，18 个文件**：
+  - `test/widget_test.dart`（导航/浮层集成 12）、
+    `navigation/`（几何纯函数）、`pages/`（聊天交互）；
+  - `test/diary/`：sy 格式层金标准、ID、序列化往返、zip 打包、
+    时钟边界、内存/持久仓储、成稿器、编辑器命令/控制器、
+    导出服务、年日月浏览 widget、M5 三态/分享流/崩溃恢复。
+- 动画用例逐帧 pump、不用 pumpAndSettle（常驻循环动画）；
+  持久仓储测试用 FFI 工厂 + 临时目录。
+- 真机回归：M1 格式包思源 3.8.6 导入通过；M2–M5 每个里程碑
+  MIX 2S 真机验收（见 tech-plan 里程碑表）。
+- 待补：ECP（命令总线）建成后的 prune/日界命令化回归、
+  M6 ≥2 台真机连写 7 天。
 
----
+## 已知问题与待决策
 
-## 已知问题与待决策事项
+见 [code_review_report.md](code_review_report.md)：日记线 D1–D7
+（真实数据源、空稿标注回归、Slash 菜单、mood 桥接等）、
+通用工程 G1–G13、待拍板 Q2/Q3/Q4/Q5/Q6/Q8。
 
-当前已知缺陷、结构债务与分阶段修复路线，以
-[code_review_report.md](code_review_report.md) 为权威清单（含行号、改法、验收）。
-需要用户拍板、agent 不得自行决定的开放问题见该报告第 4 节 Q1~Q9
-（目标设备形态、懒加载策略、持久化时点、快捷弧数量、语言等）。
-其中 Q1（按压色意图）已在 v0.4.9/v0.4.10 拍板：圆点按下 tone2、滑块无变化。
-
-**v0.6.0 转正遗留**：
-① 人工真机复核双击导航条直达与双指同按边界（G4/G6，widget 用例与
-代码走查已兜底）；
-② 可选项（用户已看过未要求）：粗网格 α .10→.08 微调（长列表灰文案
-偶被穿线）、打包 Roboto Mono 让 kicker 真等宽（包体/许可另议）。
-
-**本文件的维护规则**：实现手段变化并合并后，立即更新对应条目并在提交信息中说明；
-问题修复后从问题清单移除，不要让本文件描述一个已经不存在的现状。
+**本文件的维护规则**：实现手段变化并合并后，立即更新对应条目并在提交
+信息中说明；问题修复后从问题清单移除，不要让本文件描述已经不存在的现状。

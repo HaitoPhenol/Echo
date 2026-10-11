@@ -42,6 +42,13 @@ echo/
 │       │   ├── chat_page.dart             # 聊天页（数据驱动会话列表：左滑操作/未读绿点）
 │       │   ├── template_page.dart         # 模板页（大标题 + SEC kicker，可挂 footer）
 │       │   └── debug_badge_controls.dart  # 锚点通知/异常的测试按钮（脚手架）
+│       ├── diary/                         # 日记模块（笔记页；模块文档 docs/diary/）
+│       │   ├── sy/                        # 思源格式层：模型/确定性 ID/序列化器/.sy.zip
+│       │   ├── data/                      # Repository 抽象 + 内存/sqflite 实现、04:00 时钟、数据 Provider
+│       │   ├── template/                  # 每日模板：JSON 解析、成稿器（幂等/并发去重）
+│       │   ├── editor/                    # 分块编辑器：命令、控制器（撤销重做）、块视图/浮层
+│       │   ├── export/                    # 年行增量导出服务
+│       │   └── ui/                        # 年/月/日浏览页、编辑页、三态 UI（含 widgets/）
 │       ├── services/                      # 与界面无关的能力层
 │       │   ├── chat_store.dart            # 聊天会话数据：增删/已读未读 + 未读聚合
 │       │   ├── haptics.dart               # 触感反馈统一入口
@@ -69,27 +76,37 @@ echo/
 │               ├── ai_dialog.dart         # AI 对话框（聊天面板）
 │               └── side_drawer.dart       # 侧边抽屉（毛玻璃空壳）
 ├── test/
-│   ├── widget_test.dart                   # 导航/浮层 Widget 集成测试（11 个用例）
+│   ├── widget_test.dart                   # 导航/浮层 Widget 集成测试（12 个用例）
 │   ├── navigation/
-│   │   └── dock_geometry_test.dart        # 快捷弧布局纯函数测试（6 个用例）
-│   └── pages/
-│       └── chat_page_test.dart            # 会话列表交互测试（7 个用例）
+│   │   └── dock_geometry_test.dart        # 快捷弧布局纯函数测试
+│   ├── pages/
+│   │   └── chat_page_test.dart            # 会话列表交互测试
+│   └── diary/                             # 日记：sy 金标准/时钟/仓储/成稿/编辑器/导出/浏览 widget（15 个文件）
+├── assets/
+│   └── diary/templates/                   # 每日模板 JSON（daily-default.json 六块骨架）
 └── README.md                              # Flutter 默认工程说明
 docs/
 ├── architecture.md                        # 本文档：架构与接口
 ├── engineering_standards.md               # 工程原则、交付门禁、事故档案
 ├── current_state.md                       # 当前实现现状快照（会随版本更新）
-├── code_review_report.md                  # 已知问题清单与修复路线
+├── code_review_report.md                  # 当前已知问题清单（权威）
 ├── glossary.md                            # 组件命名称呼表
-├── governance.md                         # 规则演进机制（RCR 流程、级别、复审）
-├── maintainer-charter.md                 # AI 维护者常设职责（审查/问题登记/文档维护）
-├── proposals/                            # 规则变更提案与登记册（永不删除）
+├── governance.md                          # 规则演进机制（RCR 流程、级别、复审）
+├── maintainer-charter.md                  # AI 维护者常设职责（审查/问题登记/文档维护）
+├── diary/                                 # 日记模块：技术方案 + 思源 3.8.6 金标准格式
+│   ├── flutter-tech-plan.md
+│   └── sy-format-golden-3.8.6.md
+├── ecp/                                   # ECP 应用控制协议（设计 + 命令手册，待开发）
+│   ├── ecp-design.md
+│   └── ecp-commands.md
+├── proposals/                             # 规则变更提案与登记册（永不删除）
 │   ├── README.md
 │   └── 2026-10-09-mechanical-visual-tokens.md # RCR-2026-001 机能风视觉层
 ├── templates/
-│   └── rule-proposal.md                  # RCR 提案模板
-└── component-reports/                     # 组件阶段开发总结（归档，只增不改）
-    └── smart-nav-line-v0.4.10-2026-10-06.md
+│   └── rule-proposal.md                   # RCR 提案模板
+└── component-reports/                     # 组件/审查的阶段性归档（只读，只增不改）
+    ├── smart-nav-line-v0.4.10-2026-10-06.md
+    └── codebase-review-v0.5.0-2026-10-06.md
 ideas/
 ├── smart_line.html                        # 原型：导航线设计与手感基准
 ├── another_two_lines.html                 # 原型：把手条 / AI 条 / 抽屉基准
@@ -120,13 +137,16 @@ AGENT.md                                   # 给开发 agent 的工作提示（�
 
 默认配置由 `buildDefaultDestinations()` 构建，当前为 4 页：
 终端（console）、聊天（chat）、笔记（notes）、主页（me）。
-其中**聊天页已替换为真实页面** `ChatPage`（`pages/chat_page.dart`，
-会话数据来自 `ChatStore`，见 3.10）：无标题栏；列表初始为空，
-空态整屏居中显示 13px 小字「暂无消息」（tone2），有会话时切换为
-铺满轨道的 ListView。会话行高 72px——每行含 48px 圆形头像占位框
-（tone1 空心圆描边）、昵称（tone4 16px）与消息预览（tone2 14px，
-均单行省略），行间分隔线为屏宽 80%、水平居中的 1px tone1 细线，
-内边距避让状态栏与底部悬浮停靠条。行交互：
+其中**聊天页**为真实页面 `ChatPage`（见 3.10），
+**笔记页为真实日记模块** `DiaryPage`（见 3.12），
+终端与主页仍是 `TemplatePage`。
+
+`ChatPage`（`pages/chat_page.dart`，数据来自 `ChatStore`，见 3.10）：
+无标题栏；列表初始为空，空态整屏居中显示 13px 小字「暂无消息」
+（tone2），有会话时切换为铺满轨道的 ListView。会话行高 72px——
+每行含 48px 圆形头像占位框（tone1 空心圆描边）、昵称（tone4 16px）
+与消息预览（tone2 14px，均单行省略），行间分隔线为屏宽 80%、
+水平居中的 1px tone1 细线，内边距避让状态栏与底部悬浮停靠条。行交互：
 
 - **未读绿点**：未读会话行右上角显示 8px 呼吸绿点（anchorGreen，
   1.7s 缓动往返 + 同色发光，参数与导航锚点 `_NavAnchor` 完全一致）；
@@ -511,6 +531,49 @@ Stack 分层在 `SmartNavScreen.build`（机能风层见 3.11）：
   预览文案在粗线恰好穿字时略花、随滚动变化，整体可读）；kicker
   未打包真等宽字体（`fontFamily: monospace` 在 Flutter/Android
   不解析，要真等宽需引 Roboto Mono 等字体，包体/许可另议）。
+
+### 3.12 日记模块 `diary/`
+
+笔记页是独立的有界上下文，模块内部细节（格式位级定义、里程碑决策、
+验收记录）以 [diary/flutter-tech-plan.md](diary/flutter-tech-plan.md)
+与 [diary/sy-format-golden-3.8.6.md](diary/sy-format-golden-3.8.6.md)
+为权威，本节只描述**跨模块可见的架构契约**。
+
+分层与依赖方向（外层依赖内层，UI 不碰 sqflite/zip）：
+
+```
+ui/（年/月/日浏览、编辑页）
+  └─ template/（DiaryComposer 成稿编排）
+       └─ data/（DiaryRepository 抽象 · DiaryClock · DiaryDataProvider）
+            └─ sy/（DiaryDocument 模型 · SySerializer · SyZipExporter · ID）
+```
+
+- **`DiaryRepository`（ChangeNotifier，data/）** 是唯一持久化契约，
+  两实现平替换：`InMemoryDiaryRepository`（测试/早期）与
+  `PersistentDiaryRepository`（M5 起生产装配：sqflite meta 表 +
+  原子写 `.sy` 正文文件）。浏览三页只用反范式摘要
+  （`availableYears / monthsOfYear / daysOfMonth / draftCountOfMonth`），
+  编辑器用 `findDay / upsertDraft`；状态流转
+  `markExported / archiveDay / pruneEmptyBefore`。
+  仓储构造可注入 idGenerator、clock、dbFactory（测试 FFI + 临时目录）。
+- **`DiaryClock`（data/）**：日记日口径 `hour < 4 归前一自然日`；
+  仓储 `today()` 与成稿器都经它取日，禁止业务代码直取 `DateTime.now()`。
+- **`DiaryDataProvider`（data/）**：环境/日程/天气三源（填 data 块与
+  custom-* 字段）；当前 `FakeDiaryDataProvider` 常量实现，接真实源只
+  新增实现、不动成稿链路。
+- **`DiaryComposer`（template/）**：`ensureDay` 幂等成稿
+  （未来日拒绝、in-flight 按日去重、已存在直接返回）+ 三源快照填充；
+  是"进笔记页自动成稿"与月页补记的共同入口。
+- **`sy/` 格式层**：`SyIdGenerator` 确定性 ID（容器日 ID / data 块
+  角色 ID），序列化只覆盖思源子集（跳过子集外块类型，结果带
+  skippedTypes），`SyZipExporter` 打思源 3.8.6 可导入的 .sy.zip。
+  金标准单测锁格式位级行为。
+- **生命周期注意**：`DiaryPage` State 在主屏 Row 中常驻，bootstrap
+  （打开仓储、自动成稿、prune）与编辑器防抖 flush 都挂在它上面；
+  未来若做页面窗口化懒加载（问题清单 Q3），必须先迁移这些假设。
+- **ECP 接缝**：规划中的应用控制协议（[ecp/ecp-design.md](ecp/ecp-design.md)）
+  将直接调用本层公开 API（diary.list/ensure/prune/export 等），
+  命令与 UI 同路，不另建测试实现。
 
 ---
 

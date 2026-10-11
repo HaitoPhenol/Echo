@@ -41,7 +41,9 @@
 | [docs/architecture.md](docs/architecture.md) | 了解目录结构、核心接口、扩展操作（加页面/快捷操作/搜索源等） |
 | [docs/engineering_standards.md](docs/engineering_standards.md) | **改动前必读**：工程原则、交付门禁、测试约定、历史事故档案 |
 | [docs/current_state.md](docs/current_state.md) | 了解当前实现手段（会变化，勿当教条）与已知债务 |
-| [docs/code_review_report.md](docs/code_review_report.md) | 已知问题的权威清单（含行号、改法、验收、路线图）与待用户决策的问题 |
+| [docs/code_review_report.md](docs/code_review_report.md) | 当前已知问题的权威清单（日记线 D1–D7、通用工程 G1–G13、待决策 Q2–Q8） |
+| [docs/diary/](docs/diary/flutter-tech-plan.md) | 日记模块：技术方案（里程碑/裁定/验收）与思源 3.8.6 金标准格式；动日记代码前必读 |
+| [docs/ecp/](docs/ecp/ecp-design.md) | ECP 应用控制协议改造方案与命令手册（待开发，新 agent 接手 P1 的施工依据） |
 | [docs/glossary.md](docs/glossary.md) | 讨论界面、写注释、写提交信息时统一称呼 |
 | [docs/governance.md](docs/governance.md) | **觉得规则碍事/过时/缺失时读**：规则如何变更（快通道 vs 提案）、谁有权改、多久复审 |
 | [docs/maintainer-charter.md](docs/maintainer-charter.md) | **主助手常设职责**：何时主动审查代码、如何登记问题、如何定期维护 docs（版本节点触发） |

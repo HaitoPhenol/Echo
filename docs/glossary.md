@@ -152,4 +152,26 @@
 
 ---
 
+## 十、日记模块（笔记页）
+
+日记域的完整语义以 [diary/flutter-tech-plan.md](diary/flutter-tech-plan.md)
+为准，本表只统一讨论时的称呼。
+
+| 称呼 | 说明 | 代码位置 |
+|---|---|---|
+| **笔记页 / 日记模块** | 导航第 3 页（id=notes）：日记生产端，年→月→日浏览 + 分块编辑器，单向导出 .sy.zip 归档到思源，App 内不做导入 | `diary/` |
+| **年/月/日列表** | 三级浏览页；只显真实存在日记的时间单位（无空日枚举），倒序排列，今天在自然位但 label 显「今天」 | `diary/ui/browser/year_list_page.dart` 等 |
+| **补记** | 月页右上「+」经日期选择器给过去日期成稿（未来日置灰） | `month_list_page.dart`、`DiaryComposer` |
+| **成稿 / ensureDay** | 无日记日期首次进入时按模板建稿；进笔记页对当天自动执行一次；幂等、并发去重 | `template/diary_composer.dart` |
+| **data 块 / 快照块** | 模板第二块：深蓝底（3 号色）只读段，显示天气/温湿度/日程，尾部 ↻ 手动刷新，确定性 ID 按日期+角色生成 | `template/daily_default_template.dart`、`sy/sy_id.dart` |
+| **三态** | `draft` 草稿（可写）/ `exported` 已导出（只读横幅）/ `archived` 已归档（删本机正文留索引、列表弱化） | `data/diary_repository.dart`（DiaryDocState） |
+| **日记日时钟 / 04:00 日界** | 凌晨 4 点前算前一天的日记；全模块取日唯一入口 | `data/diary_clock.dart`（DiaryClock） |
+| **空稿清理 / prune** | 进笔记页时删除早于今天的空草稿（meta 与正文文件同生共死），写过字的保留 | `DiaryRepository.pruneEmptyBefore` |
+| **年行导出** | 年列表每行右侧入口：该年全部 draft 打成一个「日记」笔记本 .sy.zip，经系统分享送出，返回后人工确认才置 exported | `export/diary_export_service.dart`、`year_list_page.dart` |
+| **块标浮层** | 编辑器点块左侧块标弹出的工具浮层：转正文/H1–H3、13 色底色、无色 | `editor/block_widget.dart` 等 |
+| **金标准** | 思源 3.8.6 实采的 .sy/.sy.zip 格式对照基准（字段、ID、CSS 变量、conf/sort），格式层测试锁定 | [diary/sy-format-golden-3.8.6.md](diary/sy-format-golden-3.8.6.md) |
+| **ECP** | 规划中的应用控制协议：adb/slash/MCP 三通道直接驱动 App 的命令总线（diary.prune、sys.clock.set 等），尚未开发 | [ecp/ecp-design.md](ecp/ecp-design.md) |
+
+---
+
 新增组件时同步更新本表。
