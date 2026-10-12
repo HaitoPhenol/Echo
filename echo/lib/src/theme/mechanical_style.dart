@@ -192,8 +192,7 @@ abstract final class MechanicalStyle {
 
   /// 赛博故障单段总时长：唤醒时播一次，唤醒期间每成功翻页
   /// （activePage 硬切）重播一次；边界回弹不播。
-  static const Duration nameGlitchDuration =
-      Duration(milliseconds: 620);
+  static const Duration nameGlitchDuration = Duration(milliseconds: 620);
 
   /// 整字数码抖动最大位移（px，幅度按序列递减到 0）。
   static const double nameGlitchShakeMax = 6;

@@ -49,11 +49,20 @@ void main() {
       ['blocks 空', '{"id":"t","blocks":[]}'],
       ['块类型非法', '{"id":"t","blocks":[{"type":"quote"}]}'],
       ['heading 缺 level', '{"id":"t","blocks":[{"type":"heading"}]}'],
-      ['heading level 越界', '{"id":"t","blocks":[{"type":"heading","level":7}]}'],
-      ['paragraph 带 level', '{"id":"t","blocks":[{"type":"paragraph","level":1}]}'],
+      [
+        'heading level 越界',
+        '{"id":"t","blocks":[{"type":"heading","level":7}]}',
+      ],
+      [
+        'paragraph 带 level',
+        '{"id":"t","blocks":[{"type":"paragraph","level":1}]}',
+      ],
       ['data 缺 role', '{"id":"t","blocks":[{"type":"data"}]}'],
       ['data role 为 0', '{"id":"t","blocks":[{"type":"data","role":0}]}'],
-      ['heading 带 role', '{"id":"t","blocks":[{"type":"heading","level":1,"role":1}]}'],
+      [
+        'heading 带 role',
+        '{"id":"t","blocks":[{"type":"heading","level":1,"role":1}]}',
+      ],
       ['JSON 语法错误', '{not json'],
       ['根是数组', '[]'],
     ]) {
@@ -107,10 +116,7 @@ void main() {
     test('所有块 ID 合 22 位规范；data 之外为随机 ID', () {
       final doc = build();
       expect(doc.blocks.every((b) => SyIdGenerator.isValid(b.id)), isTrue);
-      expect(
-        doc.blocks[0].id,
-        isNot(SyIdGenerator.dataBlock(date, 1)),
-      );
+      expect(doc.blocks[0].id, isNot(SyIdGenerator.dataBlock(date, 1)));
     });
 
     test('同日重复实例化 data 块 ID 幂等', () {

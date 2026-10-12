@@ -24,14 +24,14 @@ class AuditEntry {
   final int ms;
 
   Map<String, Object?> toJson() => {
-        'time': time.toIso8601String(),
-        'channel': channel,
-        'cmd': cmd,
-        'params': paramSummary,
-        'ok': ok,
-        if (errorCode != null) 'error': errorCode,
-        'ms': ms,
-      };
+    'time': time.toIso8601String(),
+    'channel': channel,
+    'cmd': cmd,
+    'params': paramSummary,
+    'ok': ok,
+    if (errorCode != null) 'error': errorCode,
+    'ms': ms,
+  };
 }
 
 /// 审计流水：P1 落内存环形缓冲（设计 §6：≥200 条），
@@ -41,7 +41,7 @@ class AuditEntry {
 /// 会话失效、PIN 初始化/变更（鉴权层写入）。
 class AuditLog {
   AuditLog({this.capacity = 200})
-      : assert(capacity >= 200, '审计缓冲下限 200 条（设计 §6）');
+    : assert(capacity >= 200, '审计缓冲下限 200 条（设计 §6）');
 
   final int capacity;
   final Queue<AuditEntry> _entries = Queue();

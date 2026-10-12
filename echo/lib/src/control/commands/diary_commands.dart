@@ -14,13 +14,13 @@ import 'control_json.dart';
 /// 全部走 UI 同源的仓储/composer/导出服务实例（DiaryPage bootstrap
 /// 后注册），命令层不直连 sqflite / 文件序列化器。
 List<CommandSpec> buildDiaryCommands() => [
-      diaryList,
-      diaryGet,
-      diaryEnsure,
-      diaryPrune,
-      diaryReset,
-      diaryExport,
-    ];
+  diaryList,
+  diaryGet,
+  diaryEnsure,
+  diaryPrune,
+  diaryReset,
+  diaryExport,
+];
 
 /// `diary.list`：按月或全量摘要，倒序 + 不透明游标分页。
 final CommandSpec diaryList = CommandSpec(
@@ -31,10 +31,8 @@ final CommandSpec diaryList = CommandSpec(
   level: ControlLevel.owner,
   params: [
     ParamSpec('month', type: ArgType.month, summary: 'YYYY-MM，缺省列全部'),
-    ParamSpec('limit',
-        type: ArgType.integer, defaults: 50, summary: '每页条数'),
-    ParamSpec('cursor',
-        type: ArgType.string, summary: '上一页返回的不透明游标（yyyymmdd）'),
+    ParamSpec('limit', type: ArgType.integer, defaults: 50, summary: '每页条数'),
+    ParamSpec('cursor', type: ArgType.string, summary: '上一页返回的不透明游标（yyyymmdd）'),
   ],
   handler: (ctx) async {
     final repo = ctx.requireService<DiaryRepository>('日记仓储');
@@ -98,8 +96,12 @@ final CommandSpec diaryGet = CommandSpec(
   kind: CommandKind.read,
   level: ControlLevel.owner,
   params: [
-    ParamSpec('date',
-        type: ArgType.date, required: true, summary: 'YYYY-MM-DD'),
+    ParamSpec(
+      'date',
+      type: ArgType.date,
+      required: true,
+      summary: 'YYYY-MM-DD',
+    ),
   ],
   handler: (ctx) async {
     final repo = ctx.requireService<DiaryRepository>('日记仓储');
@@ -143,7 +145,7 @@ final CommandSpec diaryGet = CommandSpec(
       filePath: root == null
           ? null
           : '${root.path}/diary/${day.year}/'
-              '${day.month.toString().padLeft(2, '0')}/${doc.id}.sy',
+                '${day.month.toString().padLeft(2, '0')}/${doc.id}.sy',
     );
   },
 );
@@ -157,10 +159,12 @@ final CommandSpec diaryEnsure = CommandSpec(
   level: ControlLevel.user,
   params: [
     ParamSpec('date', type: ArgType.date, summary: 'YYYY-MM-DD，缺省=日记日今天'),
-    ParamSpec('waitSnapshot',
-        type: ArgType.boolean,
-        defaults: true,
-        summary: '是否等待 data 快照拉取（成稿始终注入快照）'),
+    ParamSpec(
+      'waitSnapshot',
+      type: ArgType.boolean,
+      defaults: true,
+      summary: '是否等待 data 快照拉取（成稿始终注入快照）',
+    ),
   ],
   handler: (ctx) async {
     final repo = ctx.requireService<DiaryRepository>('日记仓储');
@@ -190,20 +194,25 @@ final CommandSpec diaryPrune = CommandSpec(
   level: ControlLevel.admin,
   destructive: true,
   params: [
-    ParamSpec('before',
-        type: ArgType.date,
-        summary: '截止日期 YYYY-MM-DD，缺省=日记日今天'),
-    ParamSpec('dryRun',
-        type: ArgType.boolean,
-        defaults: true,
-        summary: '只报告不删除（真机核查用）'),
+    ParamSpec(
+      'before',
+      type: ArgType.date,
+      summary: '截止日期 YYYY-MM-DD，缺省=日记日今天',
+    ),
+    ParamSpec(
+      'dryRun',
+      type: ArgType.boolean,
+      defaults: true,
+      summary: '只报告不删除（真机核查用）',
+    ),
   ],
   handler: (ctx) async {
     final repo = ctx.requireService<DiaryRepository>('日记仓储');
     final composer = ctx.requireService<DiaryComposer>('日记成稿器');
     final clock = ctx.requireService<DiaryClock>('日记日时钟');
-    final cutoff =
-        _dayOnly(ctx.optionalArg<DateTime>('before') ?? clock.today());
+    final cutoff = _dayOnly(
+      ctx.optionalArg<DateTime>('before') ?? clock.today(),
+    );
     final dryRun = ctx.arg<bool>('dryRun');
 
     final result = await repo.pruneEmptyBefore(
@@ -234,10 +243,12 @@ final CommandSpec diaryReset = CommandSpec(
   destructive: true,
   debugOnly: true,
   params: [
-    ParamSpec('keepSeeds',
-        type: ArgType.boolean,
-        defaults: false,
-        summary: '清空后重灌「上月 28 + 昨天」种子'),
+    ParamSpec(
+      'keepSeeds',
+      type: ArgType.boolean,
+      defaults: false,
+      summary: '清空后重灌「上月 28 + 昨天」种子',
+    ),
   ],
   handler: (ctx) async {
     final repo = ctx.requireService<DiaryRepository>('日记仓储');
@@ -277,15 +288,11 @@ final CommandSpec diaryExport = CommandSpec(
   destructive: true, // 数据外带按破坏级对待：解锁 + --confirm。
   slow: true,
   params: [
-    ParamSpec('notebook',
-        type: ArgType.string,
-        summary: '思源笔记本名，缺省固定「日记」'),
-    ParamSpec('year',
-        type: ArgType.integer, summary: '只打某年，缺省全部年份'),
+    ParamSpec('notebook', type: ArgType.string, summary: '思源笔记本名，缺省固定「日记」'),
+    ParamSpec('year', type: ArgType.integer, summary: '只打某年，缺省全部年份'),
   ],
   handler: (ctx) async {
-    final exporter =
-        ctx.requireService<DiaryExportService>('日记导出服务');
+    final exporter = ctx.requireService<DiaryExportService>('日记导出服务');
     final paths = ctx.requireService<ControlPaths>('沙盒路径');
     final diaryRoot = paths.diaryRoot;
     if (diaryRoot == null) {
@@ -323,10 +330,7 @@ DateTime _dayOnly(DateTime d) => DateTime(d.year, d.month, d.day);
 int _dayKey(DateTime d) => d.year * 10000 + d.month * 100 + d.day;
 
 /// 从月列表里取某一天的摘要（archived 单篇返回 title/preview 用）。
-Future<DiaryDaySummary?> _summaryOf(
-  DiaryRepository repo,
-  DateTime day,
-) async {
+Future<DiaryDaySummary?> _summaryOf(DiaryRepository repo, DateTime day) async {
   final rows = await repo.daysOfMonth(day.year, day.month);
   for (final row in rows) {
     if (row.date.year == day.year &&

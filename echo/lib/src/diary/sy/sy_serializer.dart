@@ -22,10 +22,19 @@ class SySerializer {
 
   static const String spec = '2';
 
-  static final RegExp _backgroundPattern =
-      RegExp(r'var\(--b3-font-background(\d+)\)');
+  static final RegExp _backgroundPattern = RegExp(
+    r'var\(--b3-font-background(\d+)\)',
+  );
 
-  static const List<String> _weekdays = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+  static const List<String> _weekdays = [
+    '周一',
+    '周二',
+    '周三',
+    '周四',
+    '周五',
+    '周六',
+    '周日',
+  ];
 
   // ---- 编码 ----------------------------------------------------------------
 
@@ -42,13 +51,15 @@ class SySerializer {
     required DateTime updatedAt,
     Map<String, String>? custom,
   }) {
-    return jsonEncode(_rootNode(
-      id: id,
-      title: title,
-      updatedAt: updatedAt,
-      custom: custom,
-      children: null,
-    ));
+    return jsonEncode(
+      _rootNode(
+        id: id,
+        title: title,
+        updatedAt: updatedAt,
+        custom: custom,
+        children: null,
+      ),
+    );
   }
 
   Map<String, Object?> _encodeDocument(DiaryDocument doc) {
@@ -116,8 +127,7 @@ class SySerializer {
 
   // ---- 解码 ----------------------------------------------------------------
 
-  SyDecodeResult decodeBytes(List<int> bytes) =>
-      decode(utf8.decode(bytes));
+  SyDecodeResult decodeBytes(List<int> bytes) => decode(utf8.decode(bytes));
 
   SyDecodeResult decode(String source) {
     final root = jsonDecode(source) as Map<String, Object?>;
@@ -144,16 +154,18 @@ class SySerializer {
       final updated = blockProps['updated'] != null
           ? _parseStamp('${blockProps['updated']}')
           : date;
-      blocks.add(DiaryBlock(
-        id: (blockProps['id'] ?? map['ID']) as String,
-        kind: type == 'NodeHeading'
-            ? DiaryBlockKind.heading
-            : DiaryBlockKind.paragraph,
-        level: (map['HeadingLevel'] as num?)?.toInt(),
-        text: _extractText(map['Children'] as List<Object?>?),
-        background: _extractBackground('${blockProps['style'] ?? ''}'),
-        updatedAt: updated,
-      ));
+      blocks.add(
+        DiaryBlock(
+          id: (blockProps['id'] ?? map['ID']) as String,
+          kind: type == 'NodeHeading'
+              ? DiaryBlockKind.heading
+              : DiaryBlockKind.paragraph,
+          level: (map['HeadingLevel'] as num?)?.toInt(),
+          text: _extractText(map['Children'] as List<Object?>?),
+          background: _extractBackground('${blockProps['style'] ?? ''}'),
+          updatedAt: updated,
+        ),
+      );
     }
 
     return SyDecodeResult(

@@ -1,7 +1,6 @@
 /// 控制面运行时状态：`sys.*` 命令读取的 App 现场。
 library;
 
-
 ///
 /// 与业务模块不同，这两个持有器没有自身逻辑——bootstrap 装配时
 /// 注册到 ControlRegistry，平台侧实现（生命周期观察、MethodChannel

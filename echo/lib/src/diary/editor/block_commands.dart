@@ -46,8 +46,7 @@ abstract final class BlockBackgroundPalette {
   };
 
   /// 块底色填充。
-  static Color? fillOf(int? number) =>
-      number == null ? null : colors[number];
+  static Color? fillOf(int? number) => number == null ? null : colors[number];
 
   /// 该填充色上是否应改用深色正文（仅 13 号近白；其余暗色用白字）。
   static bool needsDarkInk(int? number) {

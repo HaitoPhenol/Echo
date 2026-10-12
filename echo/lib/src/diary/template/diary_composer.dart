@@ -30,8 +30,8 @@ class DiaryComposer {
     required this.provider,
     required SyIdGenerator idGenerator,
     DateTime Function()? now,
-  })  : _ids = idGenerator,
-        _now = now ?? DateTime.now;
+  }) : _ids = idGenerator,
+       _now = now ?? DateTime.now;
 
   final DailyDefaultTemplate template;
   final DiaryDataProvider provider;
@@ -84,8 +84,9 @@ class DiaryComposer {
 
     final document = template.instantiate(day, _ids);
     final snapshot = await fetchSnapshot(day);
-    final dataBlock = document.blocks
-        .firstWhere((b) => SyIdGenerator.isDataBlockId(b.id));
+    final dataBlock = document.blocks.firstWhere(
+      (b) => SyIdGenerator.isDataBlockId(b.id),
+    );
     dataBlock.text = snapshot.text;
     snapshot.customPatch.forEach((key, value) {
       if (value != null) document.custom[key] = value;
@@ -101,11 +102,7 @@ class DiaryComposer {
 
   /// 拉取三个数据源（互不连坐）并渲染快照行；供成稿与 ↻ 复用。
   Future<DataSnapshotResult> fetchSnapshot(DateTime diaryDate) async {
-    final day = DateTime(
-      diaryDate.year,
-      diaryDate.month,
-      diaryDate.day,
-    );
+    final day = DateTime(diaryDate.year, diaryDate.month, diaryDate.day);
 
     HomeEnvironment? env;
     int? scheduleCount;
@@ -155,10 +152,7 @@ class DiaryComposer {
 
     final text = fragments.isEmpty
         ? _placeholderText
-        : [
-            fragments.join('　'),
-            if (provider.isSampleData) '（示例数据）',
-          ].join('　');
+        : [fragments.join('　'), if (provider.isSampleData) '（示例数据）'].join('　');
 
     return DataSnapshotResult(text: text, customPatch: patch);
   }
@@ -196,11 +190,7 @@ class DiaryComposer {
       if (block.readonly || SyIdGenerator.isDataBlockId(block.id)) {
         continue;
       }
-      final key = (
-        kind: block.kind,
-        level: block.level,
-        text: block.text,
-      );
+      final key = (kind: block.kind, level: block.level, text: block.text);
       final match = expected.indexOf(key);
       if (match >= 0) {
         expected.removeAt(match);
@@ -217,20 +207,20 @@ class DiaryComposer {
   ) {
     return switch (spec.type) {
       DiaryTemplateBlockType.heading => (
-          kind: DiaryBlockKind.heading,
-          level: spec.level,
-          text: spec.text,
-        ),
+        kind: DiaryBlockKind.heading,
+        level: spec.level,
+        text: spec.text,
+      ),
       DiaryTemplateBlockType.paragraph => (
-          kind: DiaryBlockKind.paragraph,
-          level: null,
-          text: spec.text,
-        ),
+        kind: DiaryBlockKind.paragraph,
+        level: null,
+        text: spec.text,
+      ),
       DiaryTemplateBlockType.data => (
-          kind: DiaryBlockKind.paragraph,
-          level: null,
-          text: spec.placeholder,
-        ),
+        kind: DiaryBlockKind.paragraph,
+        level: null,
+        text: spec.placeholder,
+      ),
     };
   }
 }

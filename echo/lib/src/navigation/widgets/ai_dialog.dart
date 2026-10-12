@@ -27,14 +27,15 @@ class AiDialog extends StatefulWidget {
 
 class AiDialogState extends State<AiDialog>
     with SingleTickerProviderStateMixin {
-  late final AnimationController _controller = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 320),
-  )..addStatusListener((status) {
-      if (status == AnimationStatus.dismissed) {
-        widget.onDismissed();
-      }
-    });
+  late final AnimationController _controller =
+      AnimationController(
+        vsync: this,
+        duration: const Duration(milliseconds: 320),
+      )..addStatusListener((status) {
+        if (status == AnimationStatus.dismissed) {
+          widget.onDismissed();
+        }
+      });
 
   late final Animation<double> _opacity = CurvedAnimation(
     parent: _controller,
@@ -176,11 +177,13 @@ class AiDialogState extends State<AiDialog>
           decoration: const BoxDecoration(
             shape: BoxShape.circle,
             color: AppColors.tone4,
-            boxShadow: [
-              BoxShadow(color: Color(0x66FFFFFF), blurRadius: 18),
-            ],
+            boxShadow: [BoxShadow(color: Color(0x66FFFFFF), blurRadius: 18)],
           ),
-          child: const Icon(Icons.arrow_upward, size: 16, color: AppColors.inverse),
+          child: const Icon(
+            Icons.arrow_upward,
+            size: 16,
+            color: AppColors.inverse,
+          ),
         ),
       ),
     );

@@ -61,10 +61,7 @@ void main() {
     });
 
     test('普通块/容器 ID 不被识别为 data 块', () {
-      expect(
-        SyIdGenerator.isDataBlockId('20261010080000-echo000'),
-        isFalse,
-      );
+      expect(SyIdGenerator.isDataBlockId('20261010080000-echo000'), isFalse);
       final gen = SyIdGenerator(random: Random(1));
       expect(SyIdGenerator.isDataBlockId(gen.next()), isFalse);
     });

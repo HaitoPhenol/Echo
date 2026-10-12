@@ -50,9 +50,7 @@ void main() {
     return store;
   }
 
-  testWidgets('初始为空：无列表/头像/绿点，居中显示「暂无消息」小字', (
-    tester,
-  ) async {
+  testWidgets('初始为空：无列表/头像/绿点，居中显示「暂无消息」小字', (tester) async {
     tester.view
       ..devicePixelRatio = 1.0
       ..physicalSize = const Size(800, 1200);
@@ -85,9 +83,7 @@ void main() {
     expect(hintCenter, const Offset(400, 600));
   });
 
-  testWidgets('列表可纵向滚动；状态栏与底部停靠条通过内边距避让', (
-    tester,
-  ) async {
+  testWidgets('列表可纵向滚动；状态栏与底部停靠条通过内边距避让', (tester) async {
     // 常规手机表面：上 30 状态栏、下 20 手势条安全区
     tester.view
       ..devicePixelRatio = 1.0
@@ -122,9 +118,7 @@ void main() {
     expect(lastRect.bottom, 600 - 20 - 26);
   });
 
-  testWidgets('新消息：空态切为列表，最前插入未读行（绿点+80%居中分隔线），点行已读', (
-    tester,
-  ) async {
+  testWidgets('新消息：空态切为列表，最前插入未读行（绿点+80%居中分隔线），点行已读', (tester) async {
     tester.view
       ..devicePixelRatio = 1.0
       ..physicalSize = const Size(800, 1200);
@@ -209,9 +203,7 @@ void main() {
     expect(find.text(ChatPage.emptyHint), findsNothing);
   });
 
-  testWidgets('左滑：操作区恒为「读状态切换 + 删除」两按钮，切换/删除行为正确且删光回空态', (
-    tester,
-  ) async {
+  testWidgets('左滑：操作区恒为「读状态切换 + 删除」两按钮，切换/删除行为正确且删光回空态', (tester) async {
     tester.view
       ..devicePixelRatio = 1.0
       ..physicalSize = const Size(800, 1200);
@@ -306,9 +298,7 @@ void main() {
     expect(find.text(ChatPage.emptyHint), findsOneWidget);
   });
 
-  testWidgets('松手吸附从手指离开位置起播，不弹回旧状态重播（开/合两方向）', (
-    tester,
-  ) async {
+  testWidgets('松手吸附从手指离开位置起播，不弹回旧状态重播（开/合两方向）', (tester) async {
     tester.view
       ..devicePixelRatio = 1.0
       ..physicalSize = const Size(800, 1200);
@@ -321,10 +311,8 @@ void main() {
     await tester.pump();
 
     final row = find.byKey(const ValueKey<String>('chat-row-incoming-1'));
-    Finder avatar() => find.descendant(
-      of: row,
-      matching: find.byType(ChatAvatar),
-    );
+    Finder avatar() =>
+        find.descendant(of: row, matching: find.byType(ChatAvatar));
 
     // 起播首帧前景位置（头像左边距 14 + 前景偏移）。
     double avatarLeft() => tester.getRect(avatar()).left;
@@ -356,11 +344,7 @@ void main() {
     await gesture.up();
     // 吸附动画第 0 帧：必须停在手指离开位置，不能弹回 0 再打开
     await tester.pump(Duration.zero);
-    expect(
-      avatarLeft(),
-      closeTo(beforeOpen, 0.5),
-      reason: '松手后首帧不应弹回关闭态',
-    );
+    expect(avatarLeft(), closeTo(beforeOpen, 0.5), reason: '松手后首帧不应弹回关闭态');
     await pumpSnap(tester);
     // 落位到全开 -152
     expect(avatarLeft(), closeTo(14 - 152, 0.5));
@@ -376,11 +360,7 @@ void main() {
     await gesture.up();
     // 首帧必须停在手指离开位置，不能弹回全开位 -152 再播关闭
     await tester.pump(Duration.zero);
-    expect(
-      avatarLeft(),
-      closeTo(beforeClose, 0.5),
-      reason: '松手后首帧不应弹回打开态',
-    );
+    expect(avatarLeft(), closeTo(beforeClose, 0.5), reason: '松手后首帧不应弹回打开态');
     await pumpSnap(tester);
     expect(avatarLeft(), closeTo(14, 0.5));
     expect(
@@ -389,9 +369,7 @@ void main() {
     );
   });
 
-  testWidgets('吸附落位后再次拖动：从当前呈现位连续跟手，不跳回上一次松手位置', (
-    tester,
-  ) async {
+  testWidgets('吸附落位后再次拖动：从当前呈现位连续跟手，不跳回上一次松手位置', (tester) async {
     tester.view
       ..devicePixelRatio = 1.0
       ..physicalSize = const Size(800, 1200);
@@ -403,12 +381,9 @@ void main() {
     await tester.pump();
 
     final row = find.byKey(const ValueKey<String>('chat-row-incoming-1'));
-    double avatarLeft() =>
-        tester
-            .getRect(
-              find.descendant(of: row, matching: find.byType(ChatAvatar)),
-            )
-            .left;
+    double avatarLeft() => tester
+        .getRect(find.descendant(of: row, matching: find.byType(ChatAvatar)))
+        .left;
 
     // 左拖到半程与全开之间（约 -120）松手，吸附落位到全开 -152。
     // 注意：此时内部记录的上次松手位置仍在 -120 一带，与呈现位不同。
@@ -431,17 +406,11 @@ void main() {
     await tester.pump();
     await second.moveBy(const Offset(-30, 0));
     await tester.pump();
-    expect(
-      avatarLeft(),
-      closeTo(14 - 152, 0.6),
-      reason: '再次拖动不应跳回上一次松手位置',
-    );
+    expect(avatarLeft(), closeTo(14 - 152, 0.6), reason: '再次拖动不应跳回上一次松手位置');
     await second.up();
   });
 
-  testWidgets('左滑展开一行后，竖向滚动列表会自动收回操作区', (
-    tester,
-  ) async {
+  testWidgets('左滑展开一行后，竖向滚动列表会自动收回操作区', (tester) async {
     tester.view
       ..devicePixelRatio = 1.0
       ..physicalSize = const Size(800, 600);

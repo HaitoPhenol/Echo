@@ -21,8 +21,10 @@ class DailyDefaultTemplate implements DiaryTemplate {
 
   /// 从 rootBundle 加载；测试可注入自定义 [bundle]。
   static Future<DailyDefaultTemplate> loadAsset({AssetBundle? bundle}) async {
-    final source =
-        await (bundle ?? rootBundle).loadString(assetPath, cache: false);
+    final source = await (bundle ?? rootBundle).loadString(
+      assetPath,
+      cache: false,
+    );
     return DailyDefaultTemplate(spec: DiaryTemplateSpec.fromJson(source));
   }
 
@@ -36,21 +38,21 @@ class DailyDefaultTemplate implements DiaryTemplate {
       for (final b in spec.blocks)
         switch (b.type) {
           DiaryTemplateBlockType.heading => DiaryBlock(
-              id: ids.next(),
-              kind: DiaryBlockKind.heading,
-              level: b.level,
-              text: b.text,
-            ),
+            id: ids.next(),
+            kind: DiaryBlockKind.heading,
+            level: b.level,
+            text: b.text,
+          ),
           DiaryTemplateBlockType.paragraph => DiaryBlock(
-              id: ids.next(),
-              text: b.text,
-            ),
+            id: ids.next(),
+            text: b.text,
+          ),
           DiaryTemplateBlockType.data => DiaryBlock(
-              id: SyIdGenerator.dataBlock(day, b.role!),
-              text: b.placeholder,
-              background: _dataBackground,
-              readonly: true,
-            ),
+            id: SyIdGenerator.dataBlock(day, b.role!),
+            text: b.placeholder,
+            background: _dataBackground,
+            readonly: true,
+          ),
         },
     ];
     return DiaryDocument(

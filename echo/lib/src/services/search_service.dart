@@ -155,10 +155,7 @@ class InMemorySearchHistoryStore implements SearchHistoryStore {
 ///
 /// 界面层只与本类打交道，不关心数据来自哪些数据源。
 class SearchService {
-  SearchService({
-    required this.providers,
-    required this.history,
-  });
+  SearchService({required this.providers, required this.history});
 
   /// 已注册的全部数据源。
   final List<SearchProvider> providers;

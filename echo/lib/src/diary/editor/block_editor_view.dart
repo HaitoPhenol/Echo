@@ -28,7 +28,10 @@ class BlockEditorView extends StatelessWidget {
           keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
           itemBuilder: (context, index) {
             final state = states[index];
-            return BlockWidget(key: ValueKey<String>(state.block.id), state: state);
+            return BlockWidget(
+              key: ValueKey<String>(state.block.id),
+              state: state,
+            );
           },
         );
       },

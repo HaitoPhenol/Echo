@@ -91,8 +91,9 @@ class _DiaryPageState extends State<DiaryPage> {
       // 同路原则：命令调的就是本页正在用的同一个时钟/仓储/composer。
       final control = ControlBootstrap.instance;
       if (control != null) {
-        control.paths.diaryRoot =
-            widget.repository == null ? await _storageRoot() : null;
+        control.paths.diaryRoot = widget.repository == null
+            ? await _storageRoot()
+            : null;
         control.registry
           ..set(_clock)
           ..set(repository)

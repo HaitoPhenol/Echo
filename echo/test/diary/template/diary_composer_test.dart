@@ -78,9 +78,9 @@ void main() {
   }
 
   InMemoryDiaryRepository buildRepo() => InMemoryDiaryRepository(
-        clock: DiaryClock(now: () => DateTime(2026, 10, 10, 9)),
-        seedDebugData: false,
-      );
+    clock: DiaryClock(now: () => DateTime(2026, 10, 10, 9)),
+    seedDebugData: false,
+  );
 
   group('DiaryComposer.ensureDay 成稿', () {
     test('空日成稿：六块骨架 + 快照文本 + 四个 custom + 立即落盘', () async {
@@ -95,10 +95,7 @@ void main() {
       expect(SyIdGenerator.isDataBlockId(data.id), isTrue);
       expect(data.readonly, isTrue);
       expect(data.background, 3);
-      expect(
-        data.text,
-        '🌡️ 21°C　💧 45%　📅 3 条日程　☁️ 多云　（示例数据）',
-      );
+      expect(data.text, '🌡️ 21°C　💧 45%　📅 3 条日程　☁️ 多云　（示例数据）');
 
       expect(doc.custom, {
         'custom-iot-temp': '21',
@@ -135,7 +132,9 @@ void main() {
     });
 
     test('并发双 ensureDay：in-flight 去重，只拉一次数、只落盘一次', () async {
-      final provider = _CountingProvider(delay: const Duration(milliseconds: 30));
+      final provider = _CountingProvider(
+        delay: const Duration(milliseconds: 30),
+      );
       final composer = buildComposer(provider: provider);
       final repo = buildRepo();
       var notifies = 0;
@@ -203,8 +202,7 @@ void main() {
       expect(r.customPatch.values, everyElement(isNull));
     });
 
-    test('全源异常成稿：data 块落占位文案，文档无 custom-* 数据键',
-        () async {
+    test('全源异常成稿：data 块落占位文案，文档无 custom-* 数据键', () async {
       final composer = buildComposer(
         provider: FakeDiaryDataProvider(throwOnCall: StateError('down')),
       );
@@ -236,18 +234,17 @@ void main() {
       expect(composer.isUserEmpty(doc), isTrue);
     });
 
-    test('磁盘往返后 readonly 未恢复：data 快照仍不影响空判定（prune 实路径）',
-        () async {
+    test('磁盘往返后 readonly 未恢复：data 快照仍不影响空判定（prune 实路径）', () async {
       // 复现 M5 真机 bug：prune 直接从 .sy 解码文档，不经过编辑器
       // attach，readonly 标志未恢复；此时 data 快照文本不得被当成
       // 用户写过的内容。
       final doc = await composer.ensureDay(today, buildRepo());
-      final restored =
-          const SySerializer()
-              .decodeBytes(const SySerializer().encodeBytes(doc))
-              .document;
-      final dataBlock = restored.blocks
-          .firstWhere((b) => SyIdGenerator.isDataBlockId(b.id));
+      final restored = const SySerializer()
+          .decodeBytes(const SySerializer().encodeBytes(doc))
+          .document;
+      final dataBlock = restored.blocks.firstWhere(
+        (b) => SyIdGenerator.isDataBlockId(b.id),
+      );
       expect(dataBlock.readonly, isFalse); // 标志确实不进序列化
       expect(dataBlock.text.trim(), isNotEmpty); // 快照有实际内容
       expect(composer.isUserEmpty(restored), isTrue);
@@ -256,56 +253,54 @@ void main() {
     test('磁盘往返：用户写过字的稿仍判非空', () async {
       final doc = await composer.ensureDay(today, buildRepo());
       doc.blocks[3].text = '今天写了一句';
-      final restored =
-          const SySerializer()
-              .decodeBytes(const SySerializer().encodeBytes(doc))
-              .document;
+      final restored = const SySerializer()
+          .decodeBytes(const SySerializer().encodeBytes(doc))
+          .document;
       expect(composer.isUserEmpty(restored), isFalse);
     });
 
     test('写过字判为非空', () {
-      final doc = DailyDefaultTemplate(
-        spec: DiaryTemplateSpec.fromJson(_json),
-      ).instantiate(today, SyIdGenerator(random: Random(1)));
+      final doc = DailyDefaultTemplate(spec: DiaryTemplateSpec.fromJson(_json))
+          .instantiate(today, SyIdGenerator(random: Random(1)));
       doc.blocks[3].text = '写了一句今天的事';
       expect(composer.isUserEmpty(doc), isFalse);
     });
 
     test('写了字又删光判为空（次日可清）', () {
-      final doc = DailyDefaultTemplate(
-        spec: DiaryTemplateSpec.fromJson(_json),
-      ).instantiate(today, SyIdGenerator(random: Random(1)));
+      final doc = DailyDefaultTemplate(spec: DiaryTemplateSpec.fromJson(_json))
+          .instantiate(today, SyIdGenerator(random: Random(1)));
       doc.blocks[3].text = '   ';
       expect(composer.isUserEmpty(doc), isTrue);
     });
 
     test('仅多拆了空块仍判为空', () {
-      final doc = DailyDefaultTemplate(
-        spec: DiaryTemplateSpec.fromJson(_json),
-      ).instantiate(today, SyIdGenerator(random: Random(1)));
-      doc.blocks.add(DiaryBlock(
-        id: SyIdGenerator(random: Random(2)).next(),
-        text: '',
-      ));
+      final doc = DailyDefaultTemplate(spec: DiaryTemplateSpec.fromJson(_json))
+          .instantiate(today, SyIdGenerator(random: Random(1)));
+      doc.blocks.add(
+        DiaryBlock(
+          id: SyIdGenerator(random: Random(2)).next(),
+          text: '',
+        ),
+      );
       expect(composer.isUserEmpty(doc), isTrue);
     });
 
     test('删掉一个标题但无文字仍判为空', () {
-      final doc = DailyDefaultTemplate(
-        spec: DiaryTemplateSpec.fromJson(_json),
-      ).instantiate(today, SyIdGenerator(random: Random(1)));
+      final doc = DailyDefaultTemplate(spec: DiaryTemplateSpec.fromJson(_json))
+          .instantiate(today, SyIdGenerator(random: Random(1)));
       doc.blocks.removeAt(4); // 🌙 睡前标题
       expect(composer.isUserEmpty(doc), isTrue);
     });
 
     test('在任意新增块里写了字判为非空', () {
-      final doc = DailyDefaultTemplate(
-        spec: DiaryTemplateSpec.fromJson(_json),
-      ).instantiate(today, SyIdGenerator(random: Random(1)));
-      doc.blocks.add(DiaryBlock(
-        id: SyIdGenerator(random: Random(2)).next(),
-        text: '补一句',
-      ));
+      final doc = DailyDefaultTemplate(spec: DiaryTemplateSpec.fromJson(_json))
+          .instantiate(today, SyIdGenerator(random: Random(1)));
+      doc.blocks.add(
+        DiaryBlock(
+          id: SyIdGenerator(random: Random(2)).next(),
+          text: '补一句',
+        ),
+      );
       expect(composer.isUserEmpty(doc), isFalse);
     });
   });
@@ -325,8 +320,9 @@ void main() {
       final decoded = const SySerializer().decode(json);
       expect(decoded.skippedTypes, isEmpty);
       expect(decoded.document.custom['custom-weather'], '多云');
-      final data = decoded.document.blocks
-          .firstWhere((b) => SyIdGenerator.isDataBlockId(b.id));
+      final data = decoded.document.blocks.firstWhere(
+        (b) => SyIdGenerator.isDataBlockId(b.id),
+      );
       expect(data.kind, DiaryBlockKind.paragraph);
       expect(data.background, 3);
     });

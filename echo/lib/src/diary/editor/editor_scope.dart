@@ -17,7 +17,6 @@ class BlockEditorScope extends InheritedNotifier<BlockEditorController> {
     return controller!;
   }
 
-  static BlockEditorController? maybeOf(BuildContext context) => context
-      .dependOnInheritedWidgetOfExactType<BlockEditorScope>()
-      ?.notifier;
+  static BlockEditorController? maybeOf(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<BlockEditorScope>()?.notifier;
 }

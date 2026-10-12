@@ -37,8 +37,8 @@ class DiaryListRow extends StatelessWidget {
     final headColor = dim
         ? AppColors.mechInkDim
         : highlight
-            ? AppColors.textPrimary
-            : AppColors.pageLabel;
+        ? AppColors.textPrimary
+        : AppColors.pageLabel;
     final subColor = dim
         ? AppColors.mechInkDim.withValues(alpha: 0.55)
         : AppColors.textMuted;

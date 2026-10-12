@@ -184,8 +184,7 @@ void main() {
       expect(zips, hasLength(1));
     });
 
-    test('确认钩子返回 false（用户否认）：draft 保留、zip 清理、可再次导出',
-        () async {
+    test('确认钩子返回 false（用户否认）：draft 保留、zip 清理、可再次导出', () async {
       final d = DateTime(2026, 6, 15);
       await repo.upsertDraft(draft(d, text: '写好的正文'));
 
@@ -201,9 +200,10 @@ void main() {
       expect(await repo.stateOfDay(d), DiaryDocState.draft);
       final stillThere = await repo.findDay(d);
       expect(stillThere!.blocks.single.text, '写好的正文');
-      final zips = tempDir.listSync(recursive: true).whereType<File>().where(
-        (f) => f.path.endsWith('.sy.zip'),
-      );
+      final zips = tempDir
+          .listSync(recursive: true)
+          .whereType<File>()
+          .where((f) => f.path.endsWith('.sy.zip'));
       expect(zips, isEmpty);
 
       // 再次导出并确认：重新打包、状态迁移成功。

@@ -32,10 +32,7 @@ class AdbControlChannel {
     }
     final raw = call.arguments;
     if (raw is! Map) {
-      throw PlatformException(
-        code: 'BAD_REQUEST',
-        message: 'exec 参数必须是 Map',
-      );
+      throw PlatformException(code: 'BAD_REQUEST', message: 'exec 参数必须是 Map');
     }
 
     final cmd = raw['cmd'];

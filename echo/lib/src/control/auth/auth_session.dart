@@ -55,9 +55,7 @@ class AuthManager extends ControlAuthorizer with WidgetsBindingObserver {
   ControlLevel effectiveLevel(ControlChannel channel) {
     final session = _sessions[channel];
     if (session == null) return channel.startLevel;
-    return session.value <= channel.maxLevel.value
-        ? session
-        : channel.maxLevel;
+    return session.value <= channel.maxLevel.value ? session : channel.maxLevel;
   }
 
   bool isUnlocked(ControlChannel channel) => _sessions.containsKey(channel);
@@ -100,10 +98,7 @@ class AuthManager extends ControlAuthorizer with WidgetsBindingObserver {
       // MCP 只读铁律：写级别永不向网络通道颁发。
       return _deny(
         channel,
-        ControlException(
-          ControlErrorCode.authDenied,
-          '该通道只读，不能解锁到写级别',
-        ),
+        ControlException(ControlErrorCode.authDenied, '该通道只读，不能解锁到写级别'),
       );
     }
 
@@ -115,8 +110,9 @@ class AuthManager extends ControlAuthorizer with WidgetsBindingObserver {
         'PIN 错误过多，请稍后再试',
         retryAfterMs: retryMs,
       );
-      auditLog.record(_event(channel, 'auth.unlock', false,
-          error: error.code.wire));
+      auditLog.record(
+        _event(channel, 'auth.unlock', false, error: error.code.wire),
+      );
       return error;
     }
 
@@ -142,8 +138,10 @@ class AuthManager extends ControlAuthorizer with WidgetsBindingObserver {
     final failures = (_failures[channel] ?? 0) + 1;
     _failures[channel] = failures;
     if (failures >= failuresThreshold && failures % failuresThreshold == 0) {
-      final step = ((failures ~/ failuresThreshold) - 1)
-          .clamp(0, _backoff.length - 1);
+      final step = ((failures ~/ failuresThreshold) - 1).clamp(
+        0,
+        _backoff.length - 1,
+      );
       _cooldownUntil[channel] = nowFn().add(_backoff[step]);
     }
     return _deny(
@@ -164,13 +162,15 @@ class AuthManager extends ControlAuthorizer with WidgetsBindingObserver {
     if (_sessions.isEmpty) return;
     final channels = _sessions.keys.map((c) => c.wire).toList();
     _sessions.clear();
-    auditLog.record(AuditEntry(
-      time: nowFn(),
-      channel: channels.join(','),
-      cmd: 'auth.session-expired',
-      paramSummary: {'reason': 'app-backgrounded'},
-      ok: true,
-    ));
+    auditLog.record(
+      AuditEntry(
+        time: nowFn(),
+        channel: channels.join(','),
+        cmd: 'auth.session-expired',
+        paramSummary: {'reason': 'app-backgrounded'},
+        ok: true,
+      ),
+    );
   }
 
   /// `auth.status` 的机读视图。
@@ -185,8 +185,9 @@ class AuthManager extends ControlAuthorizer with WidgetsBindingObserver {
   }
 
   ControlException _deny(ControlChannel channel, ControlException error) {
-    auditLog.record(_event(channel, 'auth.unlock', false,
-        error: error.code.wire));
+    auditLog.record(
+      _event(channel, 'auth.unlock', false, error: error.code.wire),
+    );
     return error;
   }
 

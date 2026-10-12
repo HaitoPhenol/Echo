@@ -47,25 +47,22 @@ int? _findSignature(Uint8List bytes, int from) {
 void main() {
   const serializer = SySerializer();
   final exporter = SyZipExporter(serializer: serializer);
-  final goldenZip =
-      File('test/diary/fixtures/golden_notebook_3.8.6.sy.zip').readAsBytesSync();
+  final goldenZip = File('test/diary/fixtures/golden_notebook_3.8.6.sy.zip')
+      .readAsBytesSync();
 
   group('金标准笔记本包（思源 3.8.6）', () {
     final archive = ZipDecoder().decodeBytes(goldenZip);
 
     test('仅文件条目、无目录条目，路径与实测一致', () {
       expect(archive.files.any((f) => f.name.endsWith('/')), isFalse);
-      expect(
-        archive.files.map((f) => f.name).toSet(),
-        {
-          '示例笔记本/.siyuan/conf.json',
-          '示例笔记本/.siyuan/sort.json',
-          '示例笔记本/20261010000159-mkzx9og.sy',
-          '示例笔记本/20261010000159-mkzx9og/20261010000213-y3naqzj.sy',
-          '示例笔记本/20261010000159-mkzx9og/'
-              '20261010000213-y3naqzj/20261010000332-jtbos5h.sy',
-        },
-      );
+      expect(archive.files.map((f) => f.name).toSet(), {
+        '示例笔记本/.siyuan/conf.json',
+        '示例笔记本/.siyuan/sort.json',
+        '示例笔记本/20261010000159-mkzx9og.sy',
+        '示例笔记本/20261010000159-mkzx9og/20261010000213-y3naqzj.sy',
+        '示例笔记本/20261010000159-mkzx9og/'
+            '20261010000213-y3naqzj/20261010000332-jtbos5h.sy',
+      });
     });
 
     test('全部本地文件头置 UTF-8 标志位 0x0800', () {
@@ -79,8 +76,9 @@ void main() {
     });
 
     test('conf.json 为实测 14 字段', () {
-      final file = archive.files
-          .firstWhere((f) => f.name.endsWith('.siyuan/conf.json'));
+      final file = archive.files.firstWhere(
+        (f) => f.name.endsWith('.siyuan/conf.json'),
+      );
       final conf = jsonDecode(utf8.decode(file.content)) as Map;
       expect(conf.keys, hasLength(14));
       expect(conf['name'], '示例笔记本');
@@ -93,8 +91,9 @@ void main() {
     });
 
     test('sort.json 覆盖包内全部文档（含容器）', () {
-      final file = archive.files
-          .firstWhere((f) => f.name.endsWith('.siyuan/sort.json'));
+      final file = archive.files.firstWhere(
+        (f) => f.name.endsWith('.siyuan/sort.json'),
+      );
       final sort = jsonDecode(utf8.decode(file.content)) as Map;
       final stems = archive.files
           .where((f) => f.name.endsWith('.sy'))
@@ -114,19 +113,25 @@ void main() {
 
     test('容器层级标题：2026 / 10 月；日文档为金标准全量样本', () {
       final year = serializer
-          .decodeBytes(archive.files
-              .firstWhere((f) => f.name.endsWith('20261010000159-mkzx9og.sy'))
-              .content)
+          .decodeBytes(
+            archive.files
+                .firstWhere((f) => f.name.endsWith('20261010000159-mkzx9og.sy'))
+                .content,
+          )
           .document;
       final month = serializer
-          .decodeBytes(archive.files
-              .firstWhere((f) => f.name.endsWith('20261010000213-y3naqzj.sy'))
-              .content)
+          .decodeBytes(
+            archive.files
+                .firstWhere((f) => f.name.endsWith('20261010000213-y3naqzj.sy'))
+                .content,
+          )
           .document;
       final day = serializer
-          .decodeBytes(archive.files
-              .firstWhere((f) => f.name.endsWith('20261010000332-jtbos5h.sy'))
-              .content)
+          .decodeBytes(
+            archive.files
+                .firstWhere((f) => f.name.endsWith('20261010000332-jtbos5h.sy'))
+                .content,
+          )
           .document;
       expect(year.title, '2026');
       expect(month.title, '10 月');
@@ -176,45 +181,48 @@ void main() {
     final archive = ZipDecoder().decodeBytes(bytes);
 
     test('条目顺序与三级路径', () {
-      expect(
-        archive.files.map((f) => f.name),
-        [
-          'Echo日记测试/.siyuan/conf.json',
-          'Echo日记测试/.siyuan/sort.json',
-          'Echo日记测试/20260101000000-echo000.sy',
-          'Echo日记测试/20260101000000-echo000/20260901000000-echo000.sy',
-          'Echo日记测试/20260101000000-echo000/20260901000000-echo000/'
-              '20260930080000-echo000.sy',
-          'Echo日记测试/20260101000000-echo000/20261001000000-echo000.sy',
-          'Echo日记测试/20260101000000-echo000/20261001000000-echo000/'
-              '20261009080000-echo000.sy',
-          'Echo日记测试/20260101000000-echo000/20261001000000-echo000/'
-              '20261010080000-echo000.sy',
-        ],
-      );
+      expect(archive.files.map((f) => f.name), [
+        'Echo日记测试/.siyuan/conf.json',
+        'Echo日记测试/.siyuan/sort.json',
+        'Echo日记测试/20260101000000-echo000.sy',
+        'Echo日记测试/20260101000000-echo000/20260901000000-echo000.sy',
+        'Echo日记测试/20260101000000-echo000/20260901000000-echo000/'
+            '20260930080000-echo000.sy',
+        'Echo日记测试/20260101000000-echo000/20261001000000-echo000.sy',
+        'Echo日记测试/20260101000000-echo000/20261001000000-echo000/'
+            '20261009080000-echo000.sy',
+        'Echo日记测试/20260101000000-echo000/20261001000000-echo000/'
+            '20261010080000-echo000.sy',
+      ]);
     });
 
     test('无目录条目，中文路径本地头置 UTF-8 位', () {
       expect(archive.files.any((f) => f.name.endsWith('/')), isFalse);
       final headers = localHeaders(bytes);
       expect(headers, hasLength(8));
-      expect(headers.every((h) => h.value & SyZipExporter.utf8FlagBit != 0),
-          isTrue);
+      expect(
+        headers.every((h) => h.value & SyZipExporter.utf8FlagBit != 0),
+        isTrue,
+      );
     });
 
     test('conf.json 笔记本名正确且路径字段置空', () {
-      final conf = jsonDecode(utf8.decode(archive.files
-          .firstWhere((f) => f.name.endsWith('conf.json'))
-          .content)) as Map;
+      final conf = jsonDecode(
+        utf8.decode(
+          archive.files.firstWhere((f) => f.name.endsWith('conf.json')).content,
+        ),
+      ) as Map;
       expect(conf['name'], 'Echo日记测试');
       expect(conf['dailyNoteSavePath'], '');
       expect(conf['encrypted'], isFalse);
     });
 
     test('sort.json 含年+2月+3日共 6 个文档', () {
-      final sort = jsonDecode(utf8.decode(archive.files
-          .firstWhere((f) => f.name.endsWith('sort.json'))
-          .content)) as Map;
+      final sort = jsonDecode(
+        utf8.decode(
+          archive.files.firstWhere((f) => f.name.endsWith('sort.json')).content,
+        ),
+      ) as Map;
       expect(sort.keys, {
         '20260101000000-echo000',
         '20260901000000-echo000',
@@ -227,14 +235,20 @@ void main() {
 
     test('容器文档无正文、标题正确、updated 为导包时刻', () {
       final year = serializer
-          .decodeBytes(archive.files
-              .firstWhere((f) => f.name == 'Echo日记测试/20260101000000-echo000.sy')
-              .content)
+          .decodeBytes(
+            archive.files
+                .firstWhere(
+                  (f) => f.name == 'Echo日记测试/20260101000000-echo000.sy',
+                )
+                .content,
+          )
           .document;
       final month = serializer
-          .decodeBytes(archive.files
-              .firstWhere((f) => f.name.endsWith('20261001000000-echo000.sy'))
-              .content)
+          .decodeBytes(
+            archive.files
+                .firstWhere((f) => f.name.endsWith('20261001000000-echo000.sy'))
+                .content,
+          )
           .document;
       expect(year.title, '2026');
       expect(year.blocks, isEmpty);
@@ -245,9 +259,11 @@ void main() {
 
     test('日文档内容、custom-* 与底色完整往返', () {
       final day = serializer
-          .decodeBytes(archive.files
-              .firstWhere((f) => f.name.endsWith('20261010080000-echo000.sy'))
-              .content)
+          .decodeBytes(
+            archive.files
+                .firstWhere((f) => f.name.endsWith('20261010080000-echo000.sy'))
+                .content,
+          )
           .document;
       expect(day.title, '10月10日 周六');
       expect(day.custom['custom-mood'], 'good');
@@ -264,13 +280,10 @@ void main() {
       );
       final a = ZipDecoder().decodeBytes(bytes);
       final b = ZipDecoder().decodeBytes(again);
-      expect(
-        b.files.map((f) => f.name),
-        a.files.map((f) => f.name),
+      expect(b.files.map((f) => f.name), a.files.map((f) => f.name));
+      String sortOf(Archive ar) => utf8.decode(
+        ar.files.firstWhere((f) => f.name.endsWith('sort.json')).content,
       );
-      String sortOf(Archive ar) => utf8.decode(ar.files
-          .firstWhere((f) => f.name.endsWith('sort.json'))
-          .content);
       expect(sortOf(b), sortOf(a));
     });
 

@@ -47,8 +47,7 @@ class _MonthListPageState extends State<MonthListPage> {
     await Navigator.of(context).push(
       DiarySlideRoute(
         builder: (_) => DayListPage(year: widget.year, month: month),
-        settings:
-            RouteSettings(name: '/year/${widget.year}/month/$month'),
+        settings: RouteSettings(name: '/year/${widget.year}/month/$month'),
       ),
     );
     _reload();

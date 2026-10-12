@@ -139,8 +139,7 @@ class DiaryExportService {
     }
 
     // 平台不回报真实发送结果（Android 取消也正常返回），由人工确认。
-    final confirmed =
-        confirmShared == null || await confirmShared();
+    final confirmed = confirmShared == null || await confirmShared();
     if (!confirmed) {
       // 用户否认：draft 全部保留以便重新打包导出；临时 zip 清掉，
       // 下次导出会以新时间戳重新生成。
@@ -149,11 +148,7 @@ class DiaryExportService {
       } catch (_) {
         // 清理失败不影响结论（系统缓存目录会自行回收）。
       }
-      return DiaryExportOutcome(
-        year: year,
-        exportedCount: 0,
-        userDenied: true,
-      );
+      return DiaryExportOutcome(year: year, exportedCount: 0, userDenied: true);
     }
 
     // 确认已发送后才迁移状态；markExported 整批校验，
@@ -191,8 +186,9 @@ class DiaryExportService {
         ? DiaryExportService.notebookName
         : notebookName.trim();
 
-    final years =
-        year == null ? await repository.availableYears() : <int>[year];
+    final years = year == null
+        ? await repository.availableYears()
+        : <int>[year];
     final diaries = <DiaryDocument>[];
     for (final y in years) {
       diaries.addAll(await repository.draftDocumentsOfYear(y));

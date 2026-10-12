@@ -20,12 +20,14 @@ class InMemoryDiaryRepository extends DiaryRepository {
     SyIdGenerator? idGenerator,
     DiaryClock? clock,
     bool? seedDebugData,
-  })  : _ids = idGenerator ?? SyIdGenerator(random: Random(0xE0C0)),
-        _clock = clock ?? DiaryClock() {
+  }) : _ids = idGenerator ?? SyIdGenerator(random: Random(0xE0C0)),
+       _clock = clock ?? DiaryClock() {
     // 默认 debug 构建装种子、release 空仓；测试显式传 false 关闭。
     if (seedDebugData ?? kDebugMode) {
-      for (final doc
-          in DiarySeedData.build(idGenerator: _ids, today: _clock.today())) {
+      for (final doc in DiarySeedData.build(
+        idGenerator: _ids,
+        today: _clock.today(),
+      )) {
         _entries[_keyOf(doc.date)] = _Entry.fromDraft(doc);
       }
     }
@@ -67,10 +69,11 @@ class InMemoryDiaryRepository extends DiaryRepository {
 
   @override
   Future<List<DiaryDaySummary>> daysOfMonth(int year, int month) async {
-    final list = _entries.values
-        .where((e) => e.date.year == year && e.date.month == month)
-        .toList()
-      ..sort((a, b) => a.date.compareTo(b.date));
+    final list =
+        _entries.values
+            .where((e) => e.date.year == year && e.date.month == month)
+            .toList()
+          ..sort((a, b) => a.date.compareTo(b.date));
     return list.map(_summaryOf).toList();
   }
 
@@ -103,8 +106,10 @@ class InMemoryDiaryRepository extends DiaryRepository {
     final key = _keyOf(document.date);
     final existing = _entries[key];
     if (existing != null && existing.state != DiaryDocState.draft) {
-      throw StateError('${existing.state} 态日记不可覆盖：'
-          '${document.date.year}-${document.date.month}-${document.date.day}');
+      throw StateError(
+        '${existing.state} 态日记不可覆盖：'
+        '${document.date.year}-${document.date.month}-${document.date.day}',
+      );
     }
     if (existing != null) {
       existing.doc = document; // 保持 draft 身份与创建时间信息
@@ -116,11 +121,12 @@ class InMemoryDiaryRepository extends DiaryRepository {
 
   @override
   Future<List<DiaryDocument>> draftDocumentsOfYear(int year) async {
-    final list = _entries.values
-        .where((e) => e.state == DiaryDocState.draft && e.date.year == year)
-        .map((e) => e.doc!)
-        .toList()
-      ..sort((a, b) => a.date.compareTo(b.date));
+    final list =
+        _entries.values
+            .where((e) => e.state == DiaryDocState.draft && e.date.year == year)
+            .map((e) => e.doc!)
+            .toList()
+          ..sort((a, b) => a.date.compareTo(b.date));
     return list;
   }
 
@@ -166,10 +172,9 @@ class InMemoryDiaryRepository extends DiaryRepository {
     final cutoffDay = _dayOnly(cutoff);
     //  cutoff 之前的全部日记（含 exported/archived），按日期升序，
     //  保证删除清单与保留原因报告稳定。
-    final before = _entries.values
-        .where((e) => e.date.isBefore(cutoffDay))
-        .toList()
-      ..sort((a, b) => a.date.compareTo(b.date));
+    final before =
+        _entries.values.where((e) => e.date.isBefore(cutoffDay)).toList()
+          ..sort((a, b) => a.date.compareTo(b.date));
     final deleted = <DateTime>[];
     final kept = <(DateTime, String)>[];
     for (final entry in before) {
@@ -195,8 +200,7 @@ class InMemoryDiaryRepository extends DiaryRepository {
   @override
   Future<DiaryWipeResult> wipeAll() async {
     // archived 条目的正文已物理删除，故「文件数」只数仍持有正文者。
-    final removedFiles =
-        _entries.values.where((e) => e.doc != null).length;
+    final removedFiles = _entries.values.where((e) => e.doc != null).length;
     final removedDocs = _entries.length;
     _entries.clear();
     notifyListeners();
@@ -224,11 +228,7 @@ class InMemoryDiaryRepository extends DiaryRepository {
 /// 一条 meta 行的内存形态：archived 后 [doc] 为 null，
 /// [title]/[preview]/[blockCount]/[updatedAt] 保留归档前快照供列表渲染。
 class _Entry {
-  _Entry._({
-    required this.date,
-    required this.state,
-    this.doc,
-  });
+  _Entry._({required this.date, required this.state, this.doc});
 
   factory _Entry.fromDraft(DiaryDocument doc) =>
       _Entry._(date: doc.date, state: DiaryDocState.draft, doc: doc);

@@ -72,7 +72,10 @@ class SideDrawer extends StatelessWidget {
                           // 毛玻璃底层（裁剪在圆角内）。
                           Positioned.fill(
                             child: BackdropFilter(
-                              filter: ui.ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+                              filter: ui.ImageFilter.blur(
+                                sigmaX: 18,
+                                sigmaY: 18,
+                              ),
                               child: const SizedBox.expand(),
                             ),
                           ),

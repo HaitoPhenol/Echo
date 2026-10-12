@@ -103,12 +103,12 @@ class ParamSpec {
   final String summary;
 
   Map<String, Object?> toHelp() => {
-        'name': name,
-        'type': type.wire,
-        'required': required,
-        if (defaults != null) 'default': defaults,
-        'summary': summary,
-      };
+    'name': name,
+    'type': type.wire,
+    'required': required,
+    if (defaults != null) 'default': defaults,
+    'summary': summary,
+  };
 }
 
 // --------------------------------------------------------------------
@@ -147,9 +147,10 @@ class CommandSpec {
     // 测试缝：仅单测用来缩短 10s/60s 超时，生产命令一律不传
     //（生产超时只由 slow 决定，避免命令私自放宽预算）。
     Duration? timeoutOverride,
-  })  : requiresConfirm = confirmRequired ?? level == ControlLevel.admin,
-        timeout = timeoutOverride ??
-            (slow ? const Duration(seconds: 60) : const Duration(seconds: 10)) {
+  }) : requiresConfirm = confirmRequired ?? level == ControlLevel.admin,
+       timeout =
+           timeoutOverride ??
+           (slow ? const Duration(seconds: 60) : const Duration(seconds: 10)) {
     if (!controlledVerbs.contains(verb)) {
       throw ArgumentError.value(
         verb,
@@ -198,18 +199,18 @@ class CommandSpec {
   String get name => '$namespace.$verb';
 
   Map<String, Object?> toHelp({bool detailed = false}) => {
-        'name': name,
-        'summary': summary,
-        'kind': kind.wire,
-        'level': level.value,
-        'idempotent': idempotent,
-        'debugOnly': debugOnly,
-        'params': params.map((p) => p.toHelp()).toList(),
-        if (detailed) ...{
-          'requiresConfirm': requiresConfirm,
-          'timeoutMs': timeout.inMilliseconds,
-        },
-      };
+    'name': name,
+    'summary': summary,
+    'kind': kind.wire,
+    'level': level.value,
+    'idempotent': idempotent,
+    'debugOnly': debugOnly,
+    'params': params.map((p) => p.toHelp()).toList(),
+    if (detailed) ...{
+      'requiresConfirm': requiresConfirm,
+      'timeoutMs': timeout.inMilliseconds,
+    },
+  };
 
   /// 受控动词表（设计 §4）；扩充 = 协议变更，先改手册。
   static const Set<String> controlledVerbs = {

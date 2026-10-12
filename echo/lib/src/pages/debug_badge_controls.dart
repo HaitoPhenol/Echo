@@ -17,10 +17,7 @@ import '../theme/app_colors.dart';
 /// 配置中的下标，由接线处（nav_destination.dart）按稳定 id 解析后
 /// 传入，组件内不写死页序号（页面调序后不会作用到错误的页）。
 class ConsoleBadgeControls extends StatelessWidget {
-  const ConsoleBadgeControls({
-    super.key,
-    required this.consolePageIndex,
-  });
+  const ConsoleBadgeControls({super.key, required this.consolePageIndex});
 
   /// 终端页下标（异常模拟/处理的作用页）。
   final int consolePageIndex;

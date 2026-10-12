@@ -68,7 +68,8 @@ class DiaryTemplateSpec {
         'paragraph' => DiaryTemplateBlockType.paragraph,
         'data' => DiaryTemplateBlockType.data,
         _ => throw FormatException(
-            '第 $i 个块 type 非法：$typeStr（仅 heading/paragraph/data）'),
+          '第 $i 个块 type 非法：$typeStr（仅 heading/paragraph/data）',
+        ),
       };
 
       int? readOptInt(String key) {
@@ -105,13 +106,15 @@ class DiaryTemplateSpec {
         throw FormatException('第 $i 个块 placeholder 必须是字符串');
       }
 
-      blocks.add(DiaryTemplateBlockSpec(
-        type: type,
-        level: level,
-        text: text,
-        role: role,
-        placeholder: placeholder,
-      ));
+      blocks.add(
+        DiaryTemplateBlockSpec(
+          type: type,
+          level: level,
+          text: text,
+          role: role,
+          placeholder: placeholder,
+        ),
+      );
     }
 
     return DiaryTemplateSpec(id: id.trim(), blocks: List.unmodifiable(blocks));

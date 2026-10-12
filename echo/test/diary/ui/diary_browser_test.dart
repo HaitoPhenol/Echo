@@ -36,8 +36,7 @@ class _SwitchWeatherProvider implements DiaryDataProvider {
   Future<int?> fetchScheduleCount(DateTime d) async => 3;
 
   @override
-  Future<String?> fetchWeather(DateTime d) async =>
-      calls++ == 0 ? '多云' : '晴';
+  Future<String?> fetchWeather(DateTime d) async => calls++ == 0 ? '多云' : '晴';
 }
 
 void main() {
@@ -47,10 +46,8 @@ void main() {
   final fixedNow = DateTime(2026, 6, 15, 12);
   DiaryClock fixedClock() => DiaryClock(now: () => fixedNow);
 
-  InMemoryDiaryRepository emptyRepo() => InMemoryDiaryRepository(
-        clock: fixedClock(),
-        seedDebugData: false,
-      );
+  InMemoryDiaryRepository emptyRepo() =>
+      InMemoryDiaryRepository(clock: fixedClock(), seedDebugData: false);
 
   Widget app({
     DiaryClock? clock,
@@ -82,8 +79,7 @@ void main() {
   }
 
   group('M4 自动成稿', () {
-    testWidgets('进模块即成稿：列表自然出现今天，编辑器为六块模板快照',
-        (tester) async {
+    testWidgets('进模块即成稿：列表自然出现今天，编辑器为六块模板快照', (tester) async {
       await drillToToday(tester);
 
       // 三个骨架标题 + data 快照行 + 示例标注 + 3 号底色 data 块。
@@ -100,8 +96,7 @@ void main() {
       expect(find.byType(TextField), findsNWidgets(6));
     });
 
-    testWidgets('写作后重进：用户文字保留，模板与快照不被二次成稿覆盖',
-        (tester) async {
+    testWidgets('写作后重进：用户文字保留，模板与快照不被二次成稿覆盖', (tester) async {
       await drillToToday(tester);
 
       await tester.enterText(find.byType(TextField).at(3), '今天写的内容');
@@ -125,11 +120,8 @@ void main() {
   });
 
   group('M4 ↻ 刷新', () {
-    testWidgets('点 ↻ 重新取数：文本更新且落盘到 custom 与 data 块',
-        (tester) async {
-      await tester.pumpWidget(
-        app(provider: _SwitchWeatherProvider()),
-      );
+    testWidgets('点 ↻ 重新取数：文本更新且落盘到 custom 与 data 块', (tester) async {
+      await tester.pumpWidget(app(provider: _SwitchWeatherProvider()));
       await tester.pumpAndSettle();
       await tester.tap(find.text('2026'));
       await tester.pumpAndSettle();
@@ -153,8 +145,7 @@ void main() {
   });
 
   group('M4 列表反转', () {
-    testWidgets('日列表只显真实日记：无空日弱化行、无置顶特例',
-        (tester) async {
+    testWidgets('日列表只显真实日记：无空日弱化行、无置顶特例', (tester) async {
       await tester.pumpWidget(app());
       await tester.pumpAndSettle();
       await tester.tap(find.text('2026'));
@@ -171,8 +162,7 @@ void main() {
       expect(find.text('30日'), findsNothing);
     });
 
-    testWidgets('月列表只有含日记的月份，标篇数，无「本月」弱化文案',
-        (tester) async {
+    testWidgets('月列表只有含日记的月份，标篇数，无「本月」弱化文案', (tester) async {
       await tester.pumpWidget(app());
       await tester.pumpAndSettle();
       await tester.tap(find.text('2026'));
@@ -206,8 +196,7 @@ void main() {
   });
 
   group('M4 补记', () {
-    testWidgets('未来日期禁选（点 16 无效，OK 仍为初始 15）；选 10 成稿',
-        (tester) async {
+    testWidgets('未来日期禁选（点 16 无效，OK 仍为初始 15）；选 10 成稿', (tester) async {
       await tester.pumpWidget(app());
       await tester.pumpAndSettle();
       await tester.tap(find.text('2026'));
@@ -271,9 +260,7 @@ void main() {
       await repo.upsertDraft(written);
 
       // 进模块（时钟已是 6/15）：自动成稿今天 + 清理早于今天的空稿。
-      await tester.pumpWidget(
-        app(clock: clock, repository: repo),
-      );
+      await tester.pumpWidget(app(clock: clock, repository: repo));
       await tester.pumpAndSettle();
 
       await tester.tap(find.text('2026'));
@@ -304,9 +291,7 @@ void main() {
       doc.locked = true;
       await repo.upsertDraft(doc);
 
-      await tester.pumpWidget(
-        app(clock: clock, repository: repo),
-      );
+      await tester.pumpWidget(app(clock: clock, repository: repo));
       await tester.pumpAndSettle();
       await tester.tap(find.text('2026'));
       await tester.pumpAndSettle();
@@ -338,10 +323,8 @@ void main() {
             ),
         ],
       );
-      final editor = BlockEditorController(
-        idGenerator: ids,
-        now: () => fixed,
-      )..attach(document);
+      final editor = BlockEditorController(idGenerator: ids, now: () => fixed)
+        ..attach(document);
       addTearDown(editor.dispose);
 
       await tester.pumpWidget(

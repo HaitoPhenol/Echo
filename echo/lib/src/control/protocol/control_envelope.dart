@@ -46,11 +46,11 @@ class ControlEnvelope {
   int get exitCode => ok ? 0 : error!.code.exitCode;
 
   Map<String, Object?> toJson() => {
-        'ok': ok,
-        'cmd': cmd,
-        'ms': ms,
-        if (ok) 'result': result,
-        if (!ok) 'error': error!.toJson(),
-        if (nonce != null) 'nonce': nonce,
-      };
+    'ok': ok,
+    'cmd': cmd,
+    'ms': ms,
+    if (ok) 'result': result,
+    if (!ok) 'error': error!.toJson(),
+    if (nonce != null) 'nonce': nonce,
+  };
 }

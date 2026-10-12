@@ -56,9 +56,9 @@ class DiaryDocument {
     List<DiaryBlock>? blocks,
     DateTime? updatedAt,
     this.locked = false,
-  })  : custom = custom ?? {},
-        blocks = blocks ?? [],
-        updatedAt = updatedAt ?? DateTime.now() {
+  }) : custom = custom ?? {},
+       blocks = blocks ?? [],
+       updatedAt = updatedAt ?? DateTime.now() {
     if (!SyIdGenerator.isValid(id)) {
       throw ArgumentError.value(id, 'id', '不符合思源 22 位块 ID 规范');
     }

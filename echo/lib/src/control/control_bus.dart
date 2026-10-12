@@ -93,10 +93,9 @@ class ControlBus implements ControlBusHandle {
 
     final spec = _specs[cmd];
     if (spec == null) {
-      return fail(ControlException(
-        ControlErrorCode.unknownCommand,
-        '未知命令：$cmd',
-      ));
+      return fail(
+        ControlException(ControlErrorCode.unknownCommand, '未知命令：$cmd'),
+      );
     }
 
     // 1) 参数校验与缺省填充。
@@ -144,11 +143,15 @@ class ControlBus implements ControlBusHandle {
       args: args,
     );
     try {
-      final result = await spec
-          .handler(context)
-          .timeout(spec.timeout);
+      final result = await spec.handler(context).timeout(spec.timeout);
       stopwatch.stop();
-      _auditIfNeeded(spec, channel, args, ok: true, ms: stopwatch.elapsedMilliseconds);
+      _auditIfNeeded(
+        spec,
+        channel,
+        args,
+        ok: true,
+        ms: stopwatch.elapsedMilliseconds,
+      );
       return ControlEnvelope(
         ok: true,
         cmd: cmd,
@@ -159,25 +162,27 @@ class ControlBus implements ControlBusHandle {
     } on ControlException catch (e) {
       return failAudited(e);
     } on TimeoutException {
-      return failAudited(ControlException(
-        ControlErrorCode.timeout,
-        '执行超时（${spec.timeout.inSeconds}s）：$cmd',
-      ));
+      return failAudited(
+        ControlException(
+          ControlErrorCode.timeout,
+          '执行超时（${spec.timeout.inSeconds}s）：$cmd',
+        ),
+      );
     } on ArgumentError catch (e) {
-      return failAudited(ControlException(
-        ControlErrorCode.usage,
-        e.message?.toString() ?? '参数错误',
-      ));
+      return failAudited(
+        ControlException(
+          ControlErrorCode.usage,
+          e.message?.toString() ?? '参数错误',
+        ),
+      );
     } on StateError catch (e) {
-      return failAudited(ControlException(
-        ControlErrorCode.conflict,
-        e.message.toString(),
-      ));
+      return failAudited(
+        ControlException(ControlErrorCode.conflict, e.message.toString()),
+      );
     } catch (e) {
-      return failAudited(ControlException(
-        ControlErrorCode.business,
-        e.toString(),
-      ));
+      return failAudited(
+        ControlException(ControlErrorCode.business, e.toString()),
+      );
     }
   }
 
@@ -191,15 +196,17 @@ class ControlBus implements ControlBusHandle {
   }) {
     // 设计 §6：所有 ≥2 级命令调用入审计（读命令 0/1 不记）。
     if (spec.level.value < ControlLevel.user.value) return;
-    auditLog.record(AuditEntry(
-      time: DateTime.now(),
-      channel: channel.wire,
-      cmd: spec.name,
-      paramSummary: _sanitizeForAudit(args),
-      ok: ok,
-      errorCode: error?.code.wire,
-      ms: ms,
-    ));
+    auditLog.record(
+      AuditEntry(
+        time: DateTime.now(),
+        channel: channel.wire,
+        cmd: spec.name,
+        paramSummary: _sanitizeForAudit(args),
+        ok: ok,
+        errorCode: error?.code.wire,
+        ms: ms,
+      ),
+    );
   }
 
   /// 参数摘要：PIN 类键整体抹除，长字符串截断（设计 §6：绝不记录

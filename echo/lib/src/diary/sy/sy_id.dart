@@ -10,8 +10,8 @@ import 'dart:math';
 /// 重复导入覆盖行为不确定的风险。
 class SyIdGenerator {
   SyIdGenerator({Random? random, DateTime Function()? now})
-      : _random = random ?? Random.secure(),
-        _now = now ?? DateTime.now;
+    : _random = random ?? Random.secure(),
+      _now = now ?? DateTime.now;
 
   /// 22 位块 ID 校验正则。
   static final RegExp pattern = RegExp(r'^\d{14}-[a-z0-9]{7}$');

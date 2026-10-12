@@ -28,8 +28,8 @@ class DiaryComposerScope extends InheritedWidget {
 
   /// 取装配（日记子树内必定可用，缺失即装配错误）。
   static DiaryComposerScope of(BuildContext context) {
-    final scope =
-        context.dependOnInheritedWidgetOfExactType<DiaryComposerScope>();
+    final scope = context
+        .dependOnInheritedWidgetOfExactType<DiaryComposerScope>();
     assert(scope != null, '子树中缺少 DiaryComposerScope');
     return scope!;
   }

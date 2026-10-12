@@ -46,8 +46,7 @@ class _MechanicalCoordsBarState extends State<MechanicalCoordsBar> {
 
   Future<void> _refresh() async {
     try {
-      final data =
-          await _channel.invokeMapMethod<String, dynamic>('snapshot');
+      final data = await _channel.invokeMapMethod<String, dynamic>('snapshot');
       if (!mounted || data == null) return;
       setState(() {
         _model = (data['model'] as String?) ?? '—';
@@ -74,9 +73,7 @@ class _MechanicalCoordsBarState extends State<MechanicalCoordsBar> {
     style: TextStyle(
       fontSize: MechanicalStyle.coordsFontSize,
       letterSpacing: MechanicalStyle.coordsLetterSpacing,
-      color: highlighted
-          ? AppColors.mechCoordsHi
-          : AppColors.mechCoordsDim,
+      color: highlighted ? AppColors.mechCoordsHi : AppColors.mechCoordsDim,
       height: 1.2,
     ),
   );

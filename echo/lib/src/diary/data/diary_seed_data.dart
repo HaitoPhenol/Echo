@@ -17,15 +17,10 @@ class DiarySeedData {
   }) {
     final yesterday = today.subtract(const Duration(days: 1));
     // 日取 28 号：任意月份回退一个月都不会越界（DateTime 会归一 12→1 月）。
-    final lastMonth =
-        DateTime(today.year, today.month - 1, min(today.day, 28));
+    final lastMonth = DateTime(today.year, today.month - 1, min(today.day, 28));
     return [
       _seedDoc(idGenerator, lastMonth, ['补一条上月的备忘。']),
-      _seedDoc(
-        idGenerator,
-        yesterday,
-        ['昨天随手记的一行。', '第二段，测试分块之间的留白。'],
-      ),
+      _seedDoc(idGenerator, yesterday, ['昨天随手记的一行。', '第二段，测试分块之间的留白。']),
     ];
   }
 
@@ -40,8 +35,7 @@ class DiarySeedData {
       date: day,
       title: '${day.month}月${day.day}日 ${weekdays[day.weekday - 1]}',
       blocks: [
-        for (final text in paragraphs)
-          DiaryBlock(id: ids.next(), text: text),
+        for (final text in paragraphs) DiaryBlock(id: ids.next(), text: text),
       ],
     );
   }

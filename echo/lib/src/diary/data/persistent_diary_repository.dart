@@ -95,14 +95,13 @@ CREATE TABLE $_table(
   Future<void> close() => _db.close();
 
   Future<void> _installDebugSeeds() async {
-    final count = Sqflite.firstIntValue(
-            await _db.rawQuery('SELECT COUNT(*) FROM $_table')) ??
+    final count =
+        Sqflite.firstIntValue(
+          await _db.rawQuery('SELECT COUNT(*) FROM $_table'),
+        ) ??
         0;
     if (count > 0) return;
-    final docs = DiarySeedData.build(
-      idGenerator: _ids,
-      today: _clock.today(),
-    );
+    final docs = DiarySeedData.build(idGenerator: _ids, today: _clock.today());
     await _db.transaction((txn) async {
       for (final doc in docs) {
         await _writeFile(doc);
@@ -134,12 +133,14 @@ CREATE TABLE $_table(
   Future<void> _healOrphanFiles() async {
     final diaryDir = Directory('${root.path}/diary');
     if (!await diaryDir.exists()) return;
-    final known = (await _db
-            .query(_table, columns: ['file_path']))
-        .map((row) => row['file_path'] as String?)
-        .whereType<String>()
-        .toSet();
-    await for (final entity in diaryDir.list(recursive: true, followLinks: false)) {
+    final known = (await _db.query(
+      _table,
+      columns: ['file_path'],
+    )).map((row) => row['file_path'] as String?).whereType<String>().toSet();
+    await for (final entity in diaryDir.list(
+      recursive: true,
+      followLinks: false,
+    )) {
       if (entity is! File) continue;
       final isSy = entity.path.endsWith('.sy');
       final isTmp = entity.path.endsWith('.sy.tmp');
@@ -189,10 +190,12 @@ CREATE TABLE $_table(
 
   @override
   Future<int> draftCountOfMonth(int year, int month) async {
-    return Sqflite.firstIntValue(await _db.rawQuery(
-          'SELECT COUNT(*) FROM $_table WHERE (date / 100) = ?',
-          [year * 100 + month],
-        )) ??
+    return Sqflite.firstIntValue(
+          await _db.rawQuery(
+            'SELECT COUNT(*) FROM $_table WHERE (date / 100) = ?',
+            [year * 100 + month],
+          ),
+        ) ??
         0;
   }
 
@@ -269,10 +272,11 @@ CREATE TABLE $_table(
         limit: 1,
       );
       if (existing.isNotEmpty &&
-          _stateOf(existing.first['state']! as String) !=
-              DiaryDocState.draft) {
-        throw StateError('${existing.first['state']} 态日记不可覆盖：'
-            '${document.date.year}-${document.date.month}-${document.date.day}');
+          _stateOf(existing.first['state']! as String) != DiaryDocState.draft) {
+        throw StateError(
+          '${existing.first['state']} 态日记不可覆盖：'
+          '${document.date.year}-${document.date.month}-${document.date.day}',
+        );
       }
       await _writeFile(document);
       if (existing.isEmpty) {
@@ -394,8 +398,7 @@ CREATE TABLE $_table(
         if (relative == null) continue;
         final file = File('${root.path}/$relative');
         if (!await file.exists()) continue;
-        final doc =
-            _serializer.decodeBytes(await file.readAsBytes()).document;
+        final doc = _serializer.decodeBytes(await file.readAsBytes()).document;
         if (!isEmpty(doc)) {
           kept.add((day, 'non-empty'));
           continue;
@@ -403,11 +406,7 @@ CREATE TABLE $_table(
         deleted.add(day);
         if (!dryRun) {
           await file.delete();
-          await txn.delete(
-            _table,
-            where: 'date = ?',
-            whereArgs: [rawDate],
-          );
+          await txn.delete(_table, where: 'date = ?', whereArgs: [rawDate]);
         }
       }
     });
@@ -417,7 +416,8 @@ CREATE TABLE $_table(
 
   @override
   Future<DiaryWipeResult> wipeAll() async {
-    final removedDocs = Sqflite.firstIntValue(
+    final removedDocs =
+        Sqflite.firstIntValue(
           await _db.rawQuery('SELECT COUNT(*) FROM $_table'),
         ) ??
         0;
@@ -482,9 +482,7 @@ CREATE TABLE $_table(
       preview: row['preview']! as String,
       blockCount: row['block_count']! as int,
       state: _stateOf(row['state']! as String),
-      updatedAt: DateTime.fromMillisecondsSinceEpoch(
-        row['updated_at']! as int,
-      ),
+      updatedAt: DateTime.fromMillisecondsSinceEpoch(row['updated_at']! as int),
     );
   }
 

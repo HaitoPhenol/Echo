@@ -14,52 +14,55 @@ import '../protocol/control_error.dart';
 /// - 改 PIN 必须处于当次前台 3 级会话（总线保证解锁与确认语义，
 ///   本命令额外要求旧 PIN）；二次输入 PIN 充当该命令的显式确认。
 List<CommandSpec> buildAuthCommands() => [
-      CommandSpec(
-        namespace: 'auth',
-        verb: 'status',
-        summary: '查询 PIN 是否已设、当前通道级别与会话有效性',
-        kind: CommandKind.read,
-        level: ControlLevel.guest,
-        handler: (ctx) async {
-          final manager = ctx.requireService<AuthManager>('鉴权会话');
-          return manager.status(ctx.channel);
-        },
+  CommandSpec(
+    namespace: 'auth',
+    verb: 'status',
+    summary: '查询 PIN 是否已设、当前通道级别与会话有效性',
+    kind: CommandKind.read,
+    level: ControlLevel.guest,
+    handler: (ctx) async {
+      final manager = ctx.requireService<AuthManager>('鉴权会话');
+      return manager.status(ctx.channel);
+    },
+  ),
+  CommandSpec(
+    namespace: 'auth',
+    verb: 'unlock',
+    summary: '用 PIN 解锁当前通道至 3 级（会话仅当次前台有效）',
+    kind: CommandKind.write,
+    level: ControlLevel.guest,
+    params: [
+      ParamSpec(
+        'pin',
+        type: ArgType.string,
+        required: true,
+        summary: 'PIN（stdin）',
       ),
-      CommandSpec(
-        namespace: 'auth',
-        verb: 'unlock',
-        summary: '用 PIN 解锁当前通道至 3 级（会话仅当次前台有效）',
-        kind: CommandKind.write,
-        level: ControlLevel.guest,
-        params: [
-          ParamSpec('pin',
-              type: ArgType.string, required: true, summary: 'PIN（stdin）'),
-        ],
-        handler: (ctx) async {
-          final manager = ctx.requireService<AuthManager>('鉴权会话');
-          final error =
-              await manager.requestUnlock(ctx.channel, ctx.arg<String>('pin'));
-          if (error != null) throw error;
-          return {'unlocked': true, 'level': ControlLevel.admin.value};
-        },
-      ),
-      CommandSpec(
-        namespace: 'auth',
-        verb: 'lock',
-        summary: '立即销毁当前通道会话，级别回到通道起始值',
-        kind: CommandKind.write,
-        level: ControlLevel.guest,
-        handler: (ctx) async {
-          final manager = ctx.requireService<AuthManager>('鉴权会话');
-          manager.lock(ctx.channel);
-          return {
-            'unlocked': false,
-            'level': ctx.channel.startLevel.value,
-          };
-        },
-      ),
-      authSetPin,
-    ];
+    ],
+    handler: (ctx) async {
+      final manager = ctx.requireService<AuthManager>('鉴权会话');
+      final error = await manager.requestUnlock(
+        ctx.channel,
+        ctx.arg<String>('pin'),
+      );
+      if (error != null) throw error;
+      return {'unlocked': true, 'level': ControlLevel.admin.value};
+    },
+  ),
+  CommandSpec(
+    namespace: 'auth',
+    verb: 'lock',
+    summary: '立即销毁当前通道会话，级别回到通道起始值',
+    kind: CommandKind.write,
+    level: ControlLevel.guest,
+    handler: (ctx) async {
+      final manager = ctx.requireService<AuthManager>('鉴权会话');
+      manager.lock(ctx.channel);
+      return {'unlocked': false, 'level': ctx.channel.startLevel.value};
+    },
+  ),
+  authSetPin,
+];
 
 /// `auth.set-pin`：首次初始化（debug + adb）或改 PIN（已解锁 + 旧 PIN）。
 ///
@@ -74,12 +77,19 @@ final CommandSpec authSetPin = CommandSpec(
   idempotent: true,
   confirmRequired: false,
   params: [
-    ParamSpec('newPin',
-        type: ArgType.string, required: true, summary: '新 PIN，4..32 位'),
-    ParamSpec('newPinConfirm',
-        type: ArgType.string, required: true, summary: '新 PIN 再输一遍'),
-    ParamSpec('oldPin',
-        type: ArgType.string, summary: '改 PIN 时必填（首次初始化免）'),
+    ParamSpec(
+      'newPin',
+      type: ArgType.string,
+      required: true,
+      summary: '新 PIN，4..32 位',
+    ),
+    ParamSpec(
+      'newPinConfirm',
+      type: ArgType.string,
+      required: true,
+      summary: '新 PIN 再输一遍',
+    ),
+    ParamSpec('oldPin', type: ArgType.string, summary: '改 PIN 时必填（首次初始化免）'),
   ],
   handler: (ctx) async {
     final pins = ctx.requireService<PinStore>('PIN 存储');
@@ -102,14 +112,16 @@ final CommandSpec authSetPin = CommandSpec(
         );
       }
       await pins.initialize(newPin: newPin, confirmPin: newPinConfirm);
-      audit.record(AuditEntry(
-        time: DateTime.now(),
-        channel: ctx.channel.wire,
-        cmd: 'auth.pin-init',
-        // 审计只记动作不记内容：PIN 规则校验信息已在错误返回里。
-        paramSummary: const {'mode': 'init'},
-        ok: true,
-      ));
+      audit.record(
+        AuditEntry(
+          time: DateTime.now(),
+          channel: ctx.channel.wire,
+          cmd: 'auth.pin-init',
+          // 审计只记动作不记内容：PIN 规则校验信息已在错误返回里。
+          paramSummary: const {'mode': 'init'},
+          ok: true,
+        ),
+      );
       return {'pinSet': true, 'changed': false};
     }
 
@@ -133,13 +145,15 @@ final CommandSpec authSetPin = CommandSpec(
       newPin: newPin,
       confirmPin: newPinConfirm,
     );
-    audit.record(AuditEntry(
-      time: DateTime.now(),
-      channel: ctx.channel.wire,
-      cmd: 'auth.pin-change',
-      paramSummary: const {'mode': 'change'},
-      ok: true,
-    ));
+    audit.record(
+      AuditEntry(
+        time: DateTime.now(),
+        channel: ctx.channel.wire,
+        cmd: 'auth.pin-change',
+        paramSummary: const {'mode': 'change'},
+        ok: true,
+      ),
+    );
     return {'pinSet': true, 'changed': true};
   },
 );

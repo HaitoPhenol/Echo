@@ -25,14 +25,14 @@ String isoMonth(int year, int month) =>
 
 /// 日记块的线格式（手册 §5 diary.get：类型/级别/底色/readonly）。
 Map<String, Object?> diaryBlockJson(DiaryBlock b) => {
-      'id': b.id,
-      'kind': b.kind.name,
-      if (b.level != null) 'level': b.level,
-      'text': b.text,
-      if (b.background != null) 'background': b.background,
-      'readonly': b.readonly,
-      'updatedAt': isoDateTime(b.updatedAt),
-    };
+  'id': b.id,
+  'kind': b.kind.name,
+  if (b.level != null) 'level': b.level,
+  'text': b.text,
+  if (b.background != null) 'background': b.background,
+  'readonly': b.readonly,
+  'updatedAt': isoDateTime(b.updatedAt),
+};
 
 /// 完整日记文档（diary.get / diary.ensure 的 document 字段）。
 ///
@@ -42,24 +42,23 @@ Map<String, Object?> diaryDocumentJson(
   DiaryDocument doc,
   DiaryDocState state, {
   String? filePath,
-}) =>
-    {
-      'id': doc.id,
-      'title': doc.title,
-      'date': isoDate(doc.date),
-      'state': state.name,
-      'custom': doc.custom,
-      'blocks': doc.blocks.map(diaryBlockJson).toList(),
-      'filePath': filePath,
-      'updatedAt': isoDateTime(doc.updatedAt),
-    };
+}) => {
+  'id': doc.id,
+  'title': doc.title,
+  'date': isoDate(doc.date),
+  'state': state.name,
+  'custom': doc.custom,
+  'blocks': doc.blocks.map(diaryBlockJson).toList(),
+  'filePath': filePath,
+  'updatedAt': isoDateTime(doc.updatedAt),
+};
 
 /// 列表行摘要（diary.list）；archived 的 title/updatedAt 为归档前快照。
 Map<String, Object?> diarySummaryJson(DiaryDaySummary s) => {
-      'date': isoDate(s.date),
-      'title': s.title,
-      'state': s.state.name,
-      'preview': s.preview,
-      'blockCount': s.blockCount,
-      'updatedAt': isoDateTime(s.updatedAt),
-    };
+  'date': isoDate(s.date),
+  'title': s.title,
+  'state': s.state.name,
+  'preview': s.preview,
+  'blockCount': s.blockCount,
+  'updatedAt': isoDateTime(s.updatedAt),
+};

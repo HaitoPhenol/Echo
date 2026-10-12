@@ -71,12 +71,12 @@ class ControlException implements Exception {
 
   /// 序列化为信封 `error` 对象。
   Map<String, Object?> toJson() => {
-        'code': code.wire,
-        'message': message,
-        if (need != null) 'need': need,
-        if (elevate != null) 'elevate': elevate,
-        if (retryAfterMs != null) 'retryAfterMs': retryAfterMs,
-      };
+    'code': code.wire,
+    'message': message,
+    if (need != null) 'need': need,
+    if (elevate != null) 'elevate': elevate,
+    if (retryAfterMs != null) 'retryAfterMs': retryAfterMs,
+  };
 
   @override
   String toString() => '${code.wire}: $message';

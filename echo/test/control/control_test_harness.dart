@@ -86,10 +86,7 @@ class ControlHarness {
 
     late final ControlHarness h;
     final clock = DiaryClock(now: () => h.wallTime);
-    final repo = InMemoryDiaryRepository(
-      clock: clock,
-      seedDebugData: false,
-    );
+    final repo = InMemoryDiaryRepository(clock: clock, seedDebugData: false);
     final template = await DailyDefaultTemplate.loadAsset();
     final composer = DiaryComposer(
       template: template,
@@ -117,27 +114,36 @@ class ControlHarness {
       ..set<DiaryRepository>(repo)
       ..set(composer)
       ..set(exporter)
-      ..set(ControlDeviceInfo(() async => <String, Object?>{
+      ..set(
+        ControlDeviceInfo(
+          () async => <String, Object?>{
             'model': 'test-phone',
             'osVersion': 'T1',
             'version': '0.9.0',
             'buildNumber': 34,
-          }));
+          },
+        ),
+      );
 
-    final auth = AuthManager(pins: pins, auditLog: audit, now: () => h.wallTime);
+    final auth = AuthManager(
+      pins: pins,
+      auditLog: audit,
+      now: () => h.wallTime,
+    );
     auth.attach();
     registry.set(auth);
 
-    final bus = ControlBus(
-      buildMode: buildMode,
-      services: registry,
-      authorizer: auth,
-      auditLog: audit,
-    )
-      ..registerAll(buildSysCommands())
-      ..registerAll(buildAuthCommands())
-      ..registerAll(buildNavCommands())
-      ..registerAll(buildDiaryCommands());
+    final bus =
+        ControlBus(
+            buildMode: buildMode,
+            services: registry,
+            authorizer: auth,
+            auditLog: audit,
+          )
+          ..registerAll(buildSysCommands())
+          ..registerAll(buildAuthCommands())
+          ..registerAll(buildNavCommands())
+          ..registerAll(buildDiaryCommands());
 
     h = ControlHarness._(
       tempDir: tempDir,
@@ -162,14 +168,13 @@ class ControlHarness {
     ControlChannel channel = ControlChannel.adb,
     Map<String, Object?>? args,
     bool confirmed = false,
-  }) =>
-      bus.execute(
-        channel: channel,
-        cmd: cmd,
-        rawArgs: args,
-        confirmed: confirmed,
-        nonce: 'n',
-      );
+  }) => bus.execute(
+    channel: channel,
+    cmd: cmd,
+    rawArgs: args,
+    confirmed: confirmed,
+    nonce: 'n',
+  );
 
   /// 成功结果断言便捷器。
   Future<Map<String, Object?>> execResult(
@@ -178,8 +183,12 @@ class ControlHarness {
     Map<String, Object?>? args,
     bool confirmed = false,
   }) async {
-    final env = await exec(cmd,
-        channel: channel, args: args, confirmed: confirmed);
+    final env = await exec(
+      cmd,
+      channel: channel,
+      args: args,
+      confirmed: confirmed,
+    );
     expect(env.ok, isTrue, reason: env.error?.toString());
     return env.result!;
   }

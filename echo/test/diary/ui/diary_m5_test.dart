@@ -44,10 +44,9 @@ class _FakeExportService extends DiaryExportService {
     if (!confirmed) {
       return DiaryExportOutcome(year: year, exportedCount: 0, userDenied: true);
     }
-    await repository.markExported(
-      [DateTime(2026, 6, 15)],
-      exportedAt: DateTime(2026, 6, 15, 12),
-    );
+    await repository.markExported([
+      DateTime(2026, 6, 15),
+    ], exportedAt: DateTime(2026, 6, 15, 12));
     return DiaryExportOutcome(year: year, exportedCount: 1);
   }
 }
@@ -143,8 +142,7 @@ void main() {
       expect(find.text('2026 年没有待导出的草稿'), findsOneWidget);
     });
 
-    testWidgets('分享后确认对话框：否认保留 draft，确认才置 exported',
-        (tester) async {
+    testWidgets('分享后确认对话框：否认保留 draft，确认才置 exported', (tester) async {
       final repo = emptyRepo();
       addTearDown(repo.dispose);
       // 无自定义 handler：默认假服务模拟真实确认编排（不碰文件 IO）。
@@ -158,14 +156,8 @@ void main() {
       expect(find.text('确认已发送？'), findsOneWidget);
       await tester.tap(find.text('尚未发送'));
       await tester.pump();
-      expect(
-        find.text('未标记为已导出，草稿仍保留，可再次导出'),
-        findsOneWidget,
-      );
-      expect(
-        await repo.stateOfDay(DateTime(2026, 6, 15)),
-        DiaryDocState.draft,
-      );
+      expect(find.text('未标记为已导出，草稿仍保留，可再次导出'), findsOneWidget);
+      expect(await repo.stateOfDay(DateTime(2026, 6, 15)), DiaryDocState.draft);
       expect(export.calls, 1);
 
       // SnackBar 让其自行消失，再次导出 → 对话框 → 确认。

@@ -23,16 +23,17 @@ void main() {
   final fixedNow = DateTime(2026, 10, 11, 12);
   final ids = SyIdGenerator(random: Random(7), now: () => fixedNow);
 
-  DiaryDocument doc(DateTime date, List<String> paragraphs,
-      {Map<String, String>? custom}) {
+  DiaryDocument doc(
+    DateTime date,
+    List<String> paragraphs, {
+    Map<String, String>? custom,
+  }) {
     return DiaryDocument(
       id: SyIdGenerator.dayContainer(date),
       date: date,
       title: '${date.month}月${date.day}日',
       custom: custom ?? {},
-      blocks: [
-        for (final t in paragraphs) DiaryBlock(id: ids.next(), text: t),
-      ],
+      blocks: [for (final t in paragraphs) DiaryBlock(id: ids.next(), text: t)],
     );
   }
 
@@ -43,13 +44,12 @@ void main() {
     Directory root, {
     DateTime? now,
     bool seed = false,
-  }) =>
-      PersistentDiaryRepository.open(
-        root: root,
-        clock: DiaryClock(now: () => now ?? fixedNow),
-        seedDebugData: seed,
-        dbFactory: databaseFactoryFfi,
-      );
+  }) => PersistentDiaryRepository.open(
+    root: root,
+    clock: DiaryClock(now: () => now ?? fixedNow),
+    seedDebugData: seed,
+    dbFactory: databaseFactoryFfi,
+  );
 
   group('PersistentDiaryRepository 跨进程持久化', () {
     test('upsert → 关闭 → 重开：正文/custom/底色逐字段往返', () async {
@@ -60,10 +60,7 @@ void main() {
         id: SyIdGenerator.dayContainer(date),
         date: date,
         title: '10月10日',
-        custom: const {
-          'custom-mood': '🙂',
-          'custom-weather': '多云',
-        },
+        custom: const {'custom-mood': '🙂', 'custom-weather': '多云'},
         blocks: [
           DiaryBlock(
             id: SyIdGenerator.dataBlock(date, 1),
@@ -91,10 +88,7 @@ void main() {
       expect(found, isNotNull);
       expect(found!.id, original.id);
       expect(found.title, '10月10日');
-      expect(found.custom, {
-        'custom-mood': '🙂',
-        'custom-weather': '多云',
-      });
+      expect(found.custom, {'custom-mood': '🙂', 'custom-weather': '多云'});
       expect(found.blocks, hasLength(4));
       expect(found.blocks[0].text, '🌡️ 21°C');
       expect(found.blocks[0].background, 3);
@@ -119,15 +113,9 @@ void main() {
       await repo1.upsertDraft(doc(DateTime(2026, 9, 30), ['九月']));
       await repo1.upsertDraft(doc(DateTime(2026, 10, 1), ['十月一']));
       await repo1.upsertDraft(doc(DateTime(2026, 10, 2), ['十月二']));
-      await repo1.markExported(
-        [DateTime(2026, 10, 2)],
-        exportedAt: fixedNow,
-      );
+      await repo1.markExported([DateTime(2026, 10, 2)], exportedAt: fixedNow);
       await repo1.upsertDraft(doc(DateTime(2026, 10, 3), ['十月三']));
-      await repo1.markExported(
-        [DateTime(2026, 10, 3)],
-        exportedAt: fixedNow,
-      );
+      await repo1.markExported([DateTime(2026, 10, 3)], exportedAt: fixedNow);
       await repo1.archiveDay(DateTime(2026, 10, 3));
       await repo1.close();
 
@@ -175,11 +163,14 @@ void main() {
 
       final repo2 = await open(root);
       addTearDown(repo2.close);
-      expect(File('${strayDir.path}/20250101080000-echo000.sy').existsSync(),
-          isFalse);
       expect(
-          File('${strayDir.path}/20250102080000-echo000.sy.tmp').existsSync(),
-          isFalse);
+        File('${strayDir.path}/20250101080000-echo000.sy').existsSync(),
+        isFalse,
+      );
+      expect(
+        File('${strayDir.path}/20250102080000-echo000.sy.tmp').existsSync(),
+        isFalse,
+      );
       // 在册文件安然无恙。
       expect(await repo2.findDay(DateTime(2026, 10, 8)), isNotNull);
     });
@@ -197,10 +188,11 @@ void main() {
       final drafts = await repo.draftDocumentsOfYear(2026);
       expect(drafts.map((d) => d.date.day), [1, 2]);
 
-      await repo.markExported([DateTime(2026, 10, 1)],
-          exportedAt: fixedNow);
-      expect(await repo.stateOfDay(DateTime(2026, 10, 1)),
-          DiaryDocState.exported);
+      await repo.markExported([DateTime(2026, 10, 1)], exportedAt: fixedNow);
+      expect(
+        await repo.stateOfDay(DateTime(2026, 10, 1)),
+        DiaryDocState.exported,
+      );
       final exported = await repo.findDay(DateTime(2026, 10, 1));
       expect(exported!.locked, isTrue);
       final stillDraft = await repo.draftDocumentsOfYear(2026);
@@ -212,8 +204,7 @@ void main() {
       );
     });
 
-    test('exported→archived：删正文文件、留 meta 索引、终态不可写',
-        () async {
+    test('exported→archived：删正文文件、留 meta 索引、终态不可写', () async {
       final root = await tempRoot();
       addTearDown(() => root.delete(recursive: true));
       final repo = await open(root);
@@ -221,8 +212,7 @@ void main() {
       final date = DateTime(2026, 10, 1);
       await repo.upsertDraft(doc(date, ['归档前正文']));
       await repo.markExported([date], exportedAt: fixedNow);
-      final relative =
-          'diary/2026/10/${SyIdGenerator.dayContainer(date)}.sy';
+      final relative = 'diary/2026/10/${SyIdGenerator.dayContainer(date)}.sy';
       expect(File('${root.path}/$relative').existsSync(), isTrue);
 
       await repo.archiveDay(date);
@@ -249,15 +239,14 @@ void main() {
       await repo.upsertDraft(doc(DateTime(2026, 10, 1), ['一']));
 
       await expectLater(
-        repo.markExported(
-          [DateTime(2026, 10, 1), DateTime(2026, 10, 2)],
-          exportedAt: fixedNow,
-        ),
+        repo.markExported([
+          DateTime(2026, 10, 1),
+          DateTime(2026, 10, 2),
+        ], exportedAt: fixedNow),
         throwsA(isA<StateError>()),
       );
       // 整批不迁移。
-      expect(await repo.stateOfDay(DateTime(2026, 10, 1)),
-          DiaryDocState.draft);
+      expect(await repo.stateOfDay(DateTime(2026, 10, 1)), DiaryDocState.draft);
 
       expect(
         () => repo.archiveDay(DateTime(2026, 10, 1)),
@@ -267,8 +256,7 @@ void main() {
   });
 
   group('PersistentDiaryRepository.pruneEmptyBefore 跨进程', () {
-    test('重开后按新今天清理：空 draft 连文件删除，有字稿/导出稿保留',
-        () async {
+    test('重开后按新今天清理：空 draft 连文件删除，有字稿/导出稿保留', () async {
       final root = await tempRoot();
       addTearDown(() => root.delete(recursive: true));
       // 第一次启动（10-11）：前天空稿 + 前天有字稿 + 昨天导出稿。
@@ -289,8 +277,10 @@ void main() {
         (d) => d.blocks.every((b) => b.text.trim().isEmpty),
       );
       expect(result.deletedCount, 1);
-      expect(result.kept.map((e) => (e.$1.day, e.$2)),
-          [(8, 'non-empty'), (10, 'exported')]);
+      expect(result.kept.map((e) => (e.$1.day, e.$2)), [
+        (8, 'non-empty'),
+        (10, 'exported'),
+      ]);
       expect(await repo2.dayExists(empty), isFalse);
       expect(await repo2.findDay(written), isNotNull);
       expect(await repo2.stateOfDay(exported), DiaryDocState.exported);
@@ -333,10 +323,7 @@ void main() {
       expect(result.deletedCount, 1);
       expect(await repo2.dayExists(empty), isFalse);
       expect(await repo2.dayExists(written), isTrue);
-      expect(
-        (await repo2.findDay(written))!.blocks[3].text,
-        '写了内容',
-      );
+      expect((await repo2.findDay(written))!.blocks[3].text, '写了内容');
     });
   });
 
@@ -370,8 +357,10 @@ void main() {
       addTearDown(() => root.delete(recursive: true));
       final repo1 = await open(root, now: fixedNow, seed: true);
       expect(await repo1.findDay(DateTime(2026, 10, 10)), isNotNull);
-      expect(await repo1.findDay(DateTime(2026, 9, min(fixedNow.day, 28))),
-          isNotNull);
+      expect(
+        await repo1.findDay(DateTime(2026, 9, min(fixedNow.day, 28))),
+        isNotNull,
+      );
       await repo1.close();
 
       final repo2 = await open(root, now: fixedNow, seed: true);

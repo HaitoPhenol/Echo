@@ -23,12 +23,12 @@ class PinRecord {
   final Uint8List hash;
 
   Map<String, Object?> toJson() => {
-        'v': 1,
-        'algo': algo,
-        'iterations': iterations,
-        'salt': base64.encode(salt),
-        'hash': base64.encode(hash),
-      };
+    'v': 1,
+    'algo': algo,
+    'iterations': iterations,
+    'salt': base64.encode(salt),
+    'hash': base64.encode(hash),
+  };
 
   factory PinRecord.fromJson(Map<String, Object?> json) {
     if (json['v'] != 1 || json['algo'] != pinStoreAlgo) {
@@ -97,9 +97,7 @@ class PinStore implements PinVerifier {
     _loaded = true;
     if (!await _file.exists()) return;
     final raw = await _file.readAsString();
-    _record = PinRecord.fromJson(
-      jsonDecode(raw) as Map<String, Object?>,
-    );
+    _record = PinRecord.fromJson(jsonDecode(raw) as Map<String, Object?>);
   }
 
   @override
@@ -190,8 +188,12 @@ class PinStore implements PinVerifier {
     for (var block = 1; block <= blockCount; block++) {
       final u1Input = BytesBuilder()
         ..add(salt)
-        ..add([(block >> 24) & 0xff, (block >> 16) & 0xff,
-               (block >> 8) & 0xff, block & 0xff]);
+        ..add([
+          (block >> 24) & 0xff,
+          (block >> 16) & 0xff,
+          (block >> 8) & 0xff,
+          block & 0xff,
+        ]);
       var u = mac.convert(u1Input.toBytes()).bytes as Uint8List;
       // T_1 = U_1；随后与 U_2..U_c 逐字节异或。
       final t = Uint8List.fromList(u);

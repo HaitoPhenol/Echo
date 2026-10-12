@@ -76,9 +76,7 @@ class ControlBootstrap with WidgetsBindingObserver {
     registry.set(auth);
 
     final bus = ControlBus(
-      buildMode: kDebugMode
-          ? ControlBuildMode.debug
-          : ControlBuildMode.release,
+      buildMode: kDebugMode ? ControlBuildMode.debug : ControlBuildMode.release,
       services: registry,
       authorizer: auth,
       auditLog: audit,

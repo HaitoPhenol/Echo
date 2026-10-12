@@ -45,8 +45,7 @@ void main() {
   }
 
   group('块标排版浮层（M3）', () {
-    testWidgets('点块标浮出工具条：转标题/上色/清除，状态即时生效',
-        (tester) async {
+    testWidgets('点块标浮出工具条：转标题/上色/清除，状态即时生效', (tester) async {
       final editor = mount(DateTime(2026, 5, 15, 9));
       addTearDown(editor.dispose);
       await tester.pumpWidget(harness(editor));
@@ -111,8 +110,7 @@ void main() {
       (w) =>
           w is Container &&
           w.decoration is BoxDecoration &&
-          (w.decoration as BoxDecoration).color ==
-              const Color(0xFF151920),
+          (w.decoration as BoxDecoration).color == const Color(0xFF151920),
     );
 
     testWidgets('浮层宽度不超出屏幕（色块在屏宽约束内折行）', (tester) async {
@@ -133,8 +131,7 @@ void main() {
       expect(card.right, lessThanOrEqualTo(blockRect.right + 1));
     });
 
-    testWidgets('靠近屏幕底部的块：浮层自动翻到块标上方且不出屏',
-        (tester) async {
+    testWidgets('靠近屏幕底部的块：浮层自动翻到块标上方且不出屏', (tester) async {
       final now = DateTime(2026, 5, 15, 9);
       final ids = SyIdGenerator(random: Random(7), now: () => now);
       final date = DateTime(now.year, now.month, now.day);
@@ -143,13 +140,11 @@ void main() {
         date: date,
         title: '测试日',
         blocks: [
-          for (var i = 1; i <= 12; i++)
-            DiaryBlock(id: ids.next(), text: '块$i'),
+          for (var i = 1; i <= 12; i++) DiaryBlock(id: ids.next(), text: '块$i'),
         ],
       );
-      final editor =
-          BlockEditorController(idGenerator: ids, now: () => now)
-            ..attach(document);
+      final editor = BlockEditorController(idGenerator: ids, now: () => now)
+        ..attach(document);
       addTearDown(editor.dispose);
       await tester.pumpWidget(harness(editor));
       await tester.pump();
@@ -160,10 +155,7 @@ void main() {
       final lastBlock = find.text('块12');
       expect(lastBlock, findsOneWidget);
       final lastHandle = find.descendant(
-        of: find.ancestor(
-          of: lastBlock,
-          matching: find.byType(BlockWidget),
-        ),
+        of: find.ancestor(of: lastBlock, matching: find.byType(BlockWidget)),
         matching: find.byIcon(Icons.drag_indicator),
       );
       final handleRect = tester.getRect(lastHandle);
@@ -192,10 +184,12 @@ void main() {
       );
       await tester.pump();
 
-      IconButton undo() =>
-          tester.widget<IconButton>(find.widgetWithIcon(IconButton, Icons.undo));
-      IconButton redo() =>
-          tester.widget<IconButton>(find.widgetWithIcon(IconButton, Icons.redo));
+      IconButton undo() => tester.widget<IconButton>(
+        find.widgetWithIcon(IconButton, Icons.undo),
+      );
+      IconButton redo() => tester.widget<IconButton>(
+        find.widgetWithIcon(IconButton, Icons.redo),
+      );
 
       expect(editor.canUndo, isFalse);
       expect(undo().onPressed, isNull);

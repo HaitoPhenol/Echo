@@ -194,8 +194,9 @@ class _SmartNavScreenState extends State<SmartNavScreen>
     );
 
     // ---- 组装配置与服务（依赖关系：providers → searchService）----
-    _destinations =
-        buildDefaultDestinations(diaryRepository: widget.diaryRepository);
+    _destinations = buildDefaultDestinations(
+      diaryRepository: widget.diaryRepository,
+    );
     _quickActions = buildDefaultQuickActions();
     _pageActions = buildDefaultPageActions();
     _searchHistory = InMemorySearchHistoryStore();
@@ -1109,7 +1110,8 @@ class _SmartNavScreenState extends State<SmartNavScreen>
                 // -------- 机能风设备状态读数条（固定顶部）--------
                 Positioned(
                   key: const ValueKey<String>('mech-coords'),
-                  top: MediaQuery.paddingOf(context).top +
+                  top:
+                      MediaQuery.paddingOf(context).top +
                       MechanicalStyle.coordsTop,
                   left: 0,
                   right: 0,
@@ -1137,16 +1139,18 @@ class _SmartNavScreenState extends State<SmartNavScreen>
                                   // 机能风大页码：每页一格、页面之下，随轨道横滑。
                                   Row(
                                     children: [
-                                      for (var i = 0;
-                                          i < _destinations.length;
-                                          i++)
-                                    Expanded(
-                                      child: Stack(
-                                        children: [
-                                          MechanicalPageNumber(index: i),
-                                        ],
-                                      ),
-                                    ),
+                                      for (
+                                        var i = 0;
+                                        i < _destinations.length;
+                                        i++
+                                      )
+                                        Expanded(
+                                          child: Stack(
+                                            children: [
+                                              MechanicalPageNumber(index: i),
+                                            ],
+                                          ),
+                                        ),
                                     ],
                                   ),
                                   Row(
@@ -1218,9 +1222,7 @@ class _SmartNavScreenState extends State<SmartNavScreen>
                   bottom: 52 + safeBottom,
                   child: MechanicalPageNamePlate(
                     controller: _nav,
-                    labels: [
-                      for (final d in _destinations) d.label,
-                    ],
+                    labels: [for (final d in _destinations) d.label],
                   ),
                 ),
                 Positioned(

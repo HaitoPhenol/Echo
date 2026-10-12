@@ -68,11 +68,9 @@ class _BlockWidgetState extends State<BlockWidget> {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (!mounted || editor.selectedBlockId != block.id) return;
           final cardBox =
-              _popoverCardKey.currentContext?.findRenderObject()
-                  as RenderBox?;
+              _popoverCardKey.currentContext?.findRenderObject() as RenderBox?;
           final blockBox =
-              _blockCardKey.currentContext?.findRenderObject()
-                  as RenderBox?;
+              _blockCardKey.currentContext?.findRenderObject() as RenderBox?;
           if (cardBox == null || blockBox == null) return;
           final screenHeight = MediaQuery.sizeOf(context).height;
           final blockTop = blockBox.localToGlobal(Offset.zero).dy;
@@ -82,8 +80,7 @@ class _BlockWidgetState extends State<BlockWidget> {
           final spaceAbove = blockTop;
           // 下方放得下就朝下；下方放不下但上方放得下就朝上；
           // 两侧都不够时优先朝下（贴底后屏幕内至少保留完整宽度）。
-          final wantBelow =
-              spaceBelow >= needed || spaceAbove < needed;
+          final wantBelow = spaceBelow >= needed || spaceAbove < needed;
           if (wantBelow != _placeBelow ||
               _popoverMaxWidth != blockBox.size.width) {
             setState(() {
@@ -133,11 +130,8 @@ class _BlockWidgetState extends State<BlockWidget> {
 
     return OverlayPortal(
       controller: _popover,
-      overlayChildBuilder: (context) => _buildPopover(
-        context,
-        editor: editor,
-        readOnly: readOnly,
-      ),
+      overlayChildBuilder: (context) =>
+          _buildPopover(context, editor: editor, readOnly: readOnly),
       child: Container(
         margin: const EdgeInsets.symmetric(vertical: 1),
         child: CompositedTransformTarget(
@@ -149,7 +143,8 @@ class _BlockWidgetState extends State<BlockWidget> {
               borderRadius: BorderRadius.circular(8),
               border: selected
                   ? Border.all(
-                      color: AppColors.accentBlue.withValues(alpha: 0.55))
+                      color: AppColors.accentBlue.withValues(alpha: 0.55),
+                    )
                   : null,
             ),
             child: Row(
@@ -194,17 +189,14 @@ class _BlockWidgetState extends State<BlockWidget> {
         ),
         CompositedTransformFollower(
           link: _blockLink,
-          targetAnchor: _placeBelow
-              ? Alignment.bottomLeft
-              : Alignment.topLeft,
+          targetAnchor: _placeBelow ? Alignment.bottomLeft : Alignment.topLeft,
           followerAnchor: _placeBelow
               ? Alignment.topLeft
               : Alignment.bottomLeft,
           offset: Offset(0, _placeBelow ? 6 : -6),
           child: _BlockFormatPopover(
             key: _popoverCardKey,
-            maxWidth:
-                _popoverMaxWidth ?? MediaQuery.sizeOf(context).width - 28,
+            maxWidth: _popoverMaxWidth ?? MediaQuery.sizeOf(context).width - 28,
             state: state,
             editor: editor,
             readOnly: readOnly,
@@ -299,7 +291,7 @@ class _BlockFormatPopover extends StatelessWidget {
                     onTap: readOnly
                         ? null
                         : () =>
-                            editor.turnInto(state, DiaryBlockKind.paragraph),
+                              editor.turnInto(state, DiaryBlockKind.paragraph),
                   ),
                   for (final level in [1, 2, 3])
                     _ToolButton(
@@ -309,8 +301,10 @@ class _BlockFormatPopover extends StatelessWidget {
                       onTap: readOnly
                           ? null
                           : () => editor.turnInto(
-                              state, DiaryBlockKind.heading,
-                              level: level),
+                              state,
+                              DiaryBlockKind.heading,
+                              level: level,
+                            ),
                     ),
                 ],
               ),
@@ -321,9 +315,11 @@ class _BlockFormatPopover extends StatelessWidget {
                 spacing: 6,
                 runSpacing: 6,
                 children: [
-                  for (var n = BlockBackgroundPalette.min;
-                      n <= BlockBackgroundPalette.max;
-                      n++)
+                  for (
+                    var n = BlockBackgroundPalette.min;
+                    n <= BlockBackgroundPalette.max;
+                    n++
+                  )
                     _Swatch(
                       key: ValueKey('diary-bg-$n'),
                       color: BlockBackgroundPalette.colors[n]!,
@@ -379,9 +375,7 @@ class _ToolButton extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
           decoration: BoxDecoration(
-            color: active
-                ? AppColors.accentBlue.withValues(alpha: 0.16)
-                : null,
+            color: active ? AppColors.accentBlue.withValues(alpha: 0.16) : null,
             borderRadius: BorderRadius.circular(6),
             border: Border.all(
               color: active ? AppColors.accentBlue : AppColors.tone2,

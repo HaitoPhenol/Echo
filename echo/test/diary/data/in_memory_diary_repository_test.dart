@@ -17,16 +17,15 @@ void main() {
         seedDebugData: seed,
       );
 
-  DiaryDocument doc(DateTime date, List<String> paragraphs) =>
-      DiaryDocument(
-        id: SyIdGenerator.dayContainer(date),
-        date: date,
-        title: '${date.month}月${date.day}日',
-        blocks: [
-          for (final t in paragraphs)
-            DiaryBlock(id: '20260101000000-aaaaaaa', text: t),
-        ],
-      );
+  DiaryDocument doc(DateTime date, List<String> paragraphs) => DiaryDocument(
+    id: SyIdGenerator.dayContainer(date),
+    date: date,
+    title: '${date.month}月${date.day}日',
+    blocks: [
+      for (final t in paragraphs)
+        DiaryBlock(id: '20260101000000-aaaaaaa', text: t),
+    ],
+  );
   // 注意：测试里每篇文档块 ID 相同没有关系（仓储不校验块 ID 冲突），
   // 仅当同一文档内需要多块时才单独构造。
 
@@ -75,10 +74,9 @@ void main() {
 
     test('预览跳过空块、压平换行并截断到 40 字', () async {
       final repo = repoAt(fixedNow);
-      await repo.upsertDraft(doc(DateTime(2026, 3, 10), [
-        '',
-        '行1\n行2${'x' * 40}',
-      ]));
+      await repo.upsertDraft(
+        doc(DateTime(2026, 3, 10), ['', '行1\n行2${'x' * 40}']),
+      );
       final s = (await repo.daysOfMonth(2026, 3)).single;
       expect(s.preview.startsWith('行1 行2'), isTrue);
       expect(s.preview.length, 40);
@@ -170,9 +168,7 @@ void main() {
 
       expect(result.deletedCount, 2);
       expect(result.deleted.map((d) => d.day), [13, 14]);
-      expect(result.kept.map((e) => (e.$1.day, e.$2)), [
-        (12, 'non-empty'),
-      ]);
+      expect(result.kept.map((e) => (e.$1.day, e.$2)), [(12, 'non-empty')]);
       expect(notified, 1);
       expect(await repo.findDay(DateTime(2026, 12, 13)), isNull);
       expect(await repo.findDay(DateTime(2026, 12, 14)), isNull);
@@ -230,10 +226,10 @@ void main() {
       await repo.upsertDraft(doc(DateTime(2026, 12, 10), ['']));
       await repo.upsertDraft(doc(DateTime(2026, 12, 11), ['']));
       // 状态机：draft → exported → archived。
-      await repo.markExported(
-        [DateTime(2026, 12, 10), DateTime(2026, 12, 11)],
-        exportedAt: DateTime(2026, 12, 15),
-      );
+      await repo.markExported([
+        DateTime(2026, 12, 10),
+        DateTime(2026, 12, 11),
+      ], exportedAt: DateTime(2026, 12, 15));
       await repo.archiveDay(DateTime(2026, 12, 11));
 
       final result = await repo.pruneEmptyBefore(
@@ -253,10 +249,9 @@ void main() {
       final repo = repoAt(DateTime(2026, 12, 15));
       await repo.upsertDraft(doc(DateTime(2026, 12, 14), ['a']));
       await repo.upsertDraft(doc(DateTime(2026, 12, 13), ['b']));
-      await repo.markExported(
-        [DateTime(2026, 12, 13)],
-        exportedAt: DateTime(2026, 12, 14),
-      );
+      await repo.markExported([
+        DateTime(2026, 12, 13),
+      ], exportedAt: DateTime(2026, 12, 14));
       await repo.archiveDay(DateTime(2026, 12, 13));
 
       final result = await repo.wipeAll();

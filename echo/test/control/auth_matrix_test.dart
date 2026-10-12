@@ -38,12 +38,13 @@ void main() {
 
     tearDown(() => h.dispose());
 
-    ControlBus busWith() => ControlBus(
-          buildMode: ControlBuildMode.debug,
-          services: h.registry,
-          authorizer: h.auth,
-          auditLog: h.audit,
-        )
+    ControlBus busWith() =>
+        ControlBus(
+            buildMode: ControlBuildMode.debug,
+            services: h.registry,
+            authorizer: h.auth,
+            auditLog: h.audit,
+          )
           ..register(_levelSpec(ControlLevel.guest))
           ..register(_levelSpec(ControlLevel.owner))
           ..register(_levelSpec(ControlLevel.user))
@@ -53,15 +54,21 @@ void main() {
       // mcp 起始 0：guest 放行、owner 拒绝；adb 起始 2。
       expect(
         h.auth
-            .check(_levelSpec(ControlLevel.guest), ControlChannel.mcp,
-                confirmed: true)
+            .check(
+              _levelSpec(ControlLevel.guest),
+              ControlChannel.mcp,
+              confirmed: true,
+            )
             ?.code,
         isNull,
       );
       expect(
         h.auth
-            .check(_levelSpec(ControlLevel.owner), ControlChannel.mcp,
-                confirmed: true)
+            .check(
+              _levelSpec(ControlLevel.owner),
+              ControlChannel.mcp,
+              confirmed: true,
+            )
             ?.code,
         ControlErrorCode.authRequired,
       );
@@ -69,8 +76,11 @@ void main() {
       // 已解锁但缺 --confirm 的分支由下面的用例覆盖。
       expect(
         h.auth
-            .check(_levelSpec(ControlLevel.admin), ControlChannel.adb,
-                confirmed: false)
+            .check(
+              _levelSpec(ControlLevel.admin),
+              ControlChannel.adb,
+              confirmed: false,
+            )
             ?.code,
         ControlErrorCode.authRequired,
       );
@@ -91,16 +101,14 @@ void main() {
       );
       expect(locked.error?.code, ControlErrorCode.authRequired);
 
-      expect(await h.auth.requestUnlock(ControlChannel.adb, 'bad'),
-          isNotNull);
+      expect(await h.auth.requestUnlock(ControlChannel.adb, 'bad'), isNotNull);
       expect(await h.auth.requestUnlock(ControlChannel.adb, '1234'), isNull);
       expect(
         (await bus.execute(
           channel: ControlChannel.adb,
           cmd: 'x.reset',
           confirmed: true,
-        ))
-            .ok,
+        )).ok,
         isTrue,
       );
 
@@ -128,7 +136,10 @@ void main() {
       expect(h.auth.isUnlocked(ControlChannel.adb), isTrue);
       h.auth.didChangeAppLifecycleState(AppLifecycleState.paused);
       expect(h.auth.isUnlocked(ControlChannel.adb), isFalse);
-      expect(h.audit.list().map((e) => e.cmd), contains('auth.session-expired'));
+      expect(
+        h.audit.list().map((e) => e.cmd),
+        contains('auth.session-expired'),
+      );
 
       // inactive 瞬态不销毁，resumed 不重新发会话。
       await h.auth.requestUnlock(ControlChannel.adb, '1234');
@@ -199,8 +210,7 @@ void main() {
         throwsStateError,
       );
       expect(
-        () =>
-            h.pins.change(oldPin: 'nope', newPin: 'wxyz', confirmPin: 'wxyz'),
+        () => h.pins.change(oldPin: 'nope', newPin: 'wxyz', confirmPin: 'wxyz'),
         throwsArgumentError,
       );
       await h.pins.change(oldPin: 'abcd', newPin: 'wxyz', confirmPin: 'wxyz');

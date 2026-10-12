@@ -16,8 +16,7 @@ class _AllowAll implements ControlAuthorizer {
     CommandSpec spec,
     ControlChannel channel, {
     required bool confirmed,
-  }) =>
-      null;
+  }) => null;
 }
 
 class _DenyAll implements ControlAuthorizer {
@@ -29,8 +28,7 @@ class _DenyAll implements ControlAuthorizer {
     CommandSpec spec,
     ControlChannel channel, {
     required bool confirmed,
-  }) =>
-      error;
+  }) => error;
 }
 
 CommandSpec _spec(
@@ -39,30 +37,28 @@ CommandSpec _spec(
   ControlLevel level, {
   bool debugOnly = false,
   List<ParamSpec> params = const [],
-}) =>
-    CommandSpec(
-      namespace: namespace,
-      verb: verb,
-      summary: 't',
-      kind: CommandKind.read,
-      level: level,
-      debugOnly: debugOnly,
-      params: params,
-      handler: (_) async => {'ok': true},
-    );
+}) => CommandSpec(
+  namespace: namespace,
+  verb: verb,
+  summary: 't',
+  kind: CommandKind.read,
+  level: level,
+  debugOnly: debugOnly,
+  params: params,
+  handler: (_) async => {'ok': true},
+);
 
 Future<ControlEnvelope> _run(
   ControlBus bus,
   String cmd, {
   Map<String, Object?>? args,
   bool confirmed = false,
-}) =>
-    bus.execute(
-      channel: ControlChannel.adb,
-      cmd: cmd,
-      rawArgs: args,
-      confirmed: confirmed,
-    );
+}) => bus.execute(
+  channel: ControlChannel.adb,
+  cmd: cmd,
+  rawArgs: args,
+  confirmed: confirmed,
+);
 
 void main() {
   ControlBus busWith(
@@ -82,20 +78,27 @@ void main() {
 
   group('ControlBus 注册/发现', () {
     test('重名注册抛 StateError', () {
-      final bus = busWith(_AllowAll(), specs: [
-        _spec('ns', 'get', ControlLevel.guest),
-      ]);
-      expect(() => bus.register(_spec('ns', 'get', ControlLevel.guest)),
-          throwsStateError);
+      final bus = busWith(
+        _AllowAll(),
+        specs: [_spec('ns', 'get', ControlLevel.guest)],
+      );
+      expect(
+        () => bus.register(_spec('ns', 'get', ControlLevel.guest)),
+        throwsStateError,
+      );
     });
 
     test('debug-only 命令在 release 不注册（物理不存在）', () {
-      final debug = busWith(_AllowAll(),
-          mode: ControlBuildMode.debug,
-          specs: [_spec('ns', 'reset', ControlLevel.admin, debugOnly: true)]);
-      final release = busWith(_AllowAll(),
-          mode: ControlBuildMode.release,
-          specs: [_spec('ns', 'reset', ControlLevel.admin, debugOnly: true)]);
+      final debug = busWith(
+        _AllowAll(),
+        mode: ControlBuildMode.debug,
+        specs: [_spec('ns', 'reset', ControlLevel.admin, debugOnly: true)],
+      );
+      final release = busWith(
+        _AllowAll(),
+        mode: ControlBuildMode.release,
+        specs: [_spec('ns', 'reset', ControlLevel.admin, debugOnly: true)],
+      );
       expect(debug.specOf('ns.reset'), isNotNull);
       expect(release.specOf('ns.reset'), isNull);
     });
@@ -136,10 +139,7 @@ void main() {
 
     test('裁决拒绝 → 原样返回错误码', () async {
       final bus = busWith(
-        _DenyAll(const ControlException(
-          ControlErrorCode.authRequired,
-          'x',
-        )),
+        _DenyAll(const ControlException(ControlErrorCode.authRequired, 'x')),
         specs: [_spec('ns', 'get', ControlLevel.owner)],
       );
       final env = await _run(bus, 'ns.get');
@@ -148,76 +148,89 @@ void main() {
     });
 
     test('必填缺失/类型不符/未知参数 → USAGE', () async {
-      final bus = busWith(_AllowAll(), specs: [
-        _spec('ns', 'get', ControlLevel.guest, params: [
-          ParamSpec('date', type: ArgType.date, required: true),
-          ParamSpec('limit', type: ArgType.integer),
-        ]),
-      ]);
+      final bus = busWith(
+        _AllowAll(),
+        specs: [
+          _spec(
+            'ns',
+            'get',
+            ControlLevel.guest,
+            params: [
+              ParamSpec('date', type: ArgType.date, required: true),
+              ParamSpec('limit', type: ArgType.integer),
+            ],
+          ),
+        ],
+      );
       expect((await _run(bus, 'ns.get')).error!.code, ControlErrorCode.usage);
       expect(
-        (await _run(bus, 'ns.get', args: {'date': '2026-13-40'}))
-            .error!
-            .code,
+        (await _run(bus, 'ns.get', args: {'date': '2026-13-40'})).error!.code,
         ControlErrorCode.usage,
       );
       expect(
-        (await _run(bus, 'ns.get', args: {'date': '2026-10-12', 'limit': 'x'}))
-            .error!
-            .code,
+        (await _run(
+          bus,
+          'ns.get',
+          args: {'date': '2026-10-12', 'limit': 'x'},
+        )).error!.code,
         ControlErrorCode.usage,
       );
       expect(
-        (await _run(bus, 'ns.get',
-                args: {'date': '2026-10-12', 'bogus': 1}))
-            .error!
-            .code,
+        (await _run(
+          bus,
+          'ns.get',
+          args: {'date': '2026-10-12', 'bogus': 1},
+        )).error!.code,
         ControlErrorCode.usage,
       );
     });
 
     test('缺省值填充 + 日期严格解析', () async {
       Object? seen;
-      final bus = busWith(_AllowAll(), specs: [
-        CommandSpec(
-          namespace: 'ns',
-          verb: 'get',
-          summary: 't',
-          kind: CommandKind.read,
-          level: ControlLevel.guest,
-          params: [
-            ParamSpec('limit',
-                type: ArgType.integer, defaults: 50),
-            ParamSpec('date', type: ArgType.date),
-          ],
-          handler: (ctx) async {
-            seen = {
-              'limit': ctx.arg<int>('limit'),
-              'date': ctx.arg<DateTime>('date').toIso8601String(),
-            };
-            return {};
-          },
-        ),
-      ]);
+      final bus = busWith(
+        _AllowAll(),
+        specs: [
+          CommandSpec(
+            namespace: 'ns',
+            verb: 'get',
+            summary: 't',
+            kind: CommandKind.read,
+            level: ControlLevel.guest,
+            params: [
+              ParamSpec('limit', type: ArgType.integer, defaults: 50),
+              ParamSpec('date', type: ArgType.date),
+            ],
+            handler: (ctx) async {
+              seen = {
+                'limit': ctx.arg<int>('limit'),
+                'date': ctx.arg<DateTime>('date').toIso8601String(),
+              };
+              return {};
+            },
+          ),
+        ],
+      );
 
-      final env =
-          await _run(bus, 'ns.get', args: {'date': '2026-10-12'});
+      final env = await _run(bus, 'ns.get', args: {'date': '2026-10-12'});
       expect(env.ok, isTrue, reason: env.error?.toString());
       expect(seen, {'limit': 50, 'date': '2026-10-12T00:00:00.000'});
     });
 
     test('slow 规格超时为 60s（普通 10s）', () {
-      final bus = busWith(_AllowAll(), specs: [
-        CommandSpec(
-          namespace: 'ns',
-          verb: 'get',
-          summary: 't',
-          kind: CommandKind.read,
-          level: ControlLevel.guest,
-          slow: true,
-          handler: (_) async => {},
-        ),
-      ]);
+      final bus = busWith(
+        _AllowAll(),
+        specs: [
+          CommandSpec(
+            namespace: 'ns',
+            verb: 'get',
+            summary: 't',
+            kind: CommandKind.read,
+            level: ControlLevel.guest,
+            slow: true,
+            handler: (_) async => {},
+          ),
+        ],
+      );
       expect(bus.specOf('ns.get')!.timeout, const Duration(seconds: 60));
     });
   });
@@ -225,16 +238,16 @@ void main() {
   group('ControlBus 审计', () {
     test('≥2 级命令成功入审计，1 级不入', () async {
       late AuditLog audit;
-      final bus = ControlBus(
-        buildMode: ControlBuildMode.debug,
-        services: ControlRegistry(),
-        authorizer: _AllowAll(),
-        auditLog: audit = AuditLog(),
-      )
-        ..registerAll([
-          _spec('r', 'get', ControlLevel.owner),
-          _spec('w', 'set', ControlLevel.user),
-        ]);
+      final bus =
+          ControlBus(
+            buildMode: ControlBuildMode.debug,
+            services: ControlRegistry(),
+            authorizer: _AllowAll(),
+            auditLog: audit = AuditLog(),
+          )..registerAll([
+            _spec('r', 'get', ControlLevel.owner),
+            _spec('w', 'set', ControlLevel.user),
+          ]);
       await _run(bus, 'r.get');
       await _run(bus, 'w.set');
       final cmds = audit.list().map((e) => e.cmd).toSet();
@@ -244,15 +257,20 @@ void main() {
 
     test('PIN 参数脱敏', () async {
       late AuditLog audit;
-      final bus = ControlBus(
-        buildMode: ControlBuildMode.debug,
-        services: ControlRegistry(),
-        authorizer: _AllowAll(),
-        auditLog: audit = AuditLog(),
-      )
-        ..register(_spec('w', 'set', ControlLevel.user, params: [
-          ParamSpec('pin', type: ArgType.string),
-        ]));
+      final bus =
+          ControlBus(
+            buildMode: ControlBuildMode.debug,
+            services: ControlRegistry(),
+            authorizer: _AllowAll(),
+            auditLog: audit = AuditLog(),
+          )..register(
+            _spec(
+              'w',
+              'set',
+              ControlLevel.user,
+              params: [ParamSpec('pin', type: ArgType.string)],
+            ),
+          );
       await _run(bus, 'w.set', args: {'pin': '123456'});
       final params = audit.list().single.paramSummary;
       expect(params['pin'], isNot(contains('123456')));
@@ -261,25 +279,27 @@ void main() {
 
     test('E3：过鉴权后业务失败仍入审计（ok=false + 错误码）', () async {
       late AuditLog audit;
-      final bus = ControlBus(
-        buildMode: ControlBuildMode.debug,
-        services: ControlRegistry(),
-        authorizer: _AllowAll(),
-        auditLog: audit = AuditLog(),
-      )
-        ..register(CommandSpec(
-          namespace: 'w',
-          verb: 'ensure',
-          summary: 't',
-          kind: CommandKind.write,
-          level: ControlLevel.user,
-          // 已通过裁决（_AllowAll），handler 抛业务异常：
-          // 修复前此类失败完全不入审计。
-          handler: (_) async => throw const ControlException(
-            ControlErrorCode.conflict,
-            '该日已归档',
-          ),
-        ));
+      final bus =
+          ControlBus(
+            buildMode: ControlBuildMode.debug,
+            services: ControlRegistry(),
+            authorizer: _AllowAll(),
+            auditLog: audit = AuditLog(),
+          )..register(
+            CommandSpec(
+              namespace: 'w',
+              verb: 'ensure',
+              summary: 't',
+              kind: CommandKind.write,
+              level: ControlLevel.user,
+              // 已通过裁决（_AllowAll），handler 抛业务异常：
+              // 修复前此类失败完全不入审计。
+              handler: (_) async => throw const ControlException(
+                ControlErrorCode.conflict,
+                '该日已归档',
+              ),
+            ),
+          );
 
       final env = await _run(bus, 'w.ensure');
       expect(env.ok, isFalse);
@@ -293,23 +313,26 @@ void main() {
 
     test('E3：3 级命令执行超时入审计（ok=false + TIMEOUT）', () async {
       late AuditLog audit;
-      final bus = ControlBus(
-        buildMode: ControlBuildMode.debug,
-        services: ControlRegistry(),
-        authorizer: _AllowAll(),
-        auditLog: audit = AuditLog(),
-      )
-        ..register(CommandSpec(
-          namespace: 'w',
-          verb: 'reset',
-          summary: 't',
-          kind: CommandKind.lifecycle,
-          level: ControlLevel.admin,
-          slow: true,
-          // 测试缝把 60s 预算压到 50ms，handler 永不完成。
-          timeoutOverride: const Duration(milliseconds: 50),
-          handler: (_) => Completer<void>().future.then((_) => <String, Object?>{}),
-        ));
+      final bus =
+          ControlBus(
+            buildMode: ControlBuildMode.debug,
+            services: ControlRegistry(),
+            authorizer: _AllowAll(),
+            auditLog: audit = AuditLog(),
+          )..register(
+            CommandSpec(
+              namespace: 'w',
+              verb: 'reset',
+              summary: 't',
+              kind: CommandKind.lifecycle,
+              level: ControlLevel.admin,
+              slow: true,
+              // 测试缝把 60s 预算压到 50ms，handler 永不完成。
+              timeoutOverride: const Duration(milliseconds: 50),
+              handler: (_) =>
+                  Completer<void>().future.then((_) => <String, Object?>{}),
+            ),
+          );
 
       final env = await _run(bus, 'w.reset', confirmed: true);
       expect(env.ok, isFalse);

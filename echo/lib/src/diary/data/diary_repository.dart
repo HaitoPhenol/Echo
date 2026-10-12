@@ -24,13 +24,10 @@ enum DiaryDocState {
 
 /// 状态机守卫：只允许 draft→exported 与 exported→archived，
 /// 其余迁移（含 archived 的一切出路）抛 [StateError]。
-DiaryDocState requireStateTransition(
-  DiaryDocState from,
-  DiaryDocState to,
-) {
+DiaryDocState requireStateTransition(DiaryDocState from, DiaryDocState to) {
   final allowed =
       (from == DiaryDocState.draft && to == DiaryDocState.exported) ||
-          (from == DiaryDocState.exported && to == DiaryDocState.archived);
+      (from == DiaryDocState.exported && to == DiaryDocState.archived);
   if (!allowed) {
     throw StateError('非法日记状态迁移：$from → $to');
   }
@@ -71,8 +68,7 @@ class DiaryDaySummary {
   /// 内存与持久两个仓储共用，保证列表口径一致。
   static String previewOf(DiaryDocument doc) {
     final preview = doc.blocks
-        .where(
-            (b) => !b.readonly && b.kind == DiaryBlockKind.paragraph)
+        .where((b) => !b.readonly && b.kind == DiaryBlockKind.paragraph)
         .map((b) => b.text.replaceAll('\n', ' ').trim())
         .firstWhere((t) => t.isNotEmpty, orElse: () => '');
     return preview.length > 40 ? preview.substring(0, 40) : preview;
@@ -99,10 +95,7 @@ class DiaryDaySummary {
 /// ECP `diary.prune` 需要在真机上即时核查「会删什么」，故清理不再只
 /// 返回计数：实际执行与 `dryRun` 预演共用同一结果形状。
 class DiaryPruneResult {
-  const DiaryPruneResult({
-    required this.deleted,
-    required this.kept,
-  });
+  const DiaryPruneResult({required this.deleted, required this.kept});
 
   /// 被删除（dry-run 时为「若执行将删除」）的日记日。
   final List<DateTime> deleted;

@@ -40,8 +40,11 @@ void main() {
 
     test('仅 13 号近白需要深色正文', () {
       for (var n = 1; n <= 12; n++) {
-        expect(BlockBackgroundPalette.needsDarkInk(n), isFalse,
-            reason: '$n 号为暗色底');
+        expect(
+          BlockBackgroundPalette.needsDarkInk(n),
+          isFalse,
+          reason: '$n 号为暗色底',
+        );
       }
       expect(BlockBackgroundPalette.needsDarkInk(13), isTrue);
       expect(BlockBackgroundPalette.needsDarkInk(null), isFalse);

@@ -34,11 +34,10 @@ class MechanicalPageNumber extends StatelessWidget {
             letterSpacing: 0,
             // 只描边不填充（稿 -webkit-text-stroke；不能再给 color，
             // TextStyle 不允许 color 与 foreground 并存）。
-            foreground:
-                Paint()
-                  ..style = PaintingStyle.stroke
-                  ..strokeWidth = MechanicalStyle.pageNumberStrokeWidth
-                  ..color = AppColors.mechPageNumberStroke,
+            foreground: Paint()
+              ..style = PaintingStyle.stroke
+              ..strokeWidth = MechanicalStyle.pageNumberStrokeWidth
+              ..color = AppColors.mechPageNumberStroke,
           ),
         ),
       ),

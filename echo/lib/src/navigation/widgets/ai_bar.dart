@@ -102,7 +102,12 @@ class _AiFlowPainter extends CustomPainter {
       const Radius.circular(barHeight / 2),
     );
     // 光晕只在竖直方向外扩 4px，横向与条等宽（对齐原型 ::before）。
-    final haloRect = Rect.fromLTRB(0, barTop - 4, size.width, barTop + barHeight + 4);
+    final haloRect = Rect.fromLTRB(
+      0,
+      barTop - 4,
+      size.width,
+      barTop + barHeight + 4,
+    );
     final haloRRect = RRect.fromRectAndRadius(
       haloRect,
       Radius.circular(haloRect.height / 2),
@@ -124,18 +129,50 @@ class _AiFlowPainter extends CustomPainter {
           ..imageFilter = ui.ImageFilter.blur(sigmaX: 7, sigmaY: 7)
           // 不透明渐变叠 alpha 滤镜得到半透明光晕。
           ..colorFilter = ColorFilter.matrix(<double>[
-            1, 0, 0, 0, 0,
-            0, 1, 0, 0, 0,
-            0, 0, 1, 0, 0,
-            0, 0, 0, pressed ? 0.95 : 0.55, 0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            pressed ? 0.95 : 0.55,
+            0,
           ]);
       } else if (pressed) {
         // brightness(1.3)：RGB 通道整体放大（超 1 的部分由渲染器夹取）。
         paint.colorFilter = const ColorFilter.matrix(<double>[
-          1.3, 0, 0, 0, 0,
-          0, 1.3, 0, 0, 0,
-          0, 0, 1.3, 0, 0,
-          0, 0, 0, 1, 0,
+          1.3,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1.3,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1.3,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1,
+          0,
         ]);
       }
       return paint;

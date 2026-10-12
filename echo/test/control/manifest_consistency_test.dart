@@ -22,8 +22,10 @@ void main() {
     expect(manual.existsSync(), isTrue, reason: '从 echo/ 包目录运行测试');
     final text = manual.readAsStringSync();
 
-    final headingMatches =
-        RegExp(r'^###\s+`([a-z][\w.-]*)`', multiLine: true).allMatches(text);
+    final headingMatches = RegExp(
+      r'^###\s+`([a-z][\w.-]*)`',
+      multiLine: true,
+    ).allMatches(text);
 
     // 小节文本表（标题 → 正文），debug 标注与「起始」分期都在正文里。
     final sections = <String, String>{};
@@ -40,20 +42,13 @@ void main() {
     final headings = names.toSet();
 
     for (final spec in specs) {
-      expect(
-        headings,
-        contains(spec.name),
-        reason: '${spec.name} 已注册但手册缺小节',
-      );
+      expect(headings, contains(spec.name), reason: '${spec.name} 已注册但手册缺小节');
 
       if (spec.debugOnly) {
         // 标题行或其注解行必须出现 debug 标注（手册用「仅 debug」）。
-        final block = text.substring(
-          text.indexOf('### `${spec.name}`'),
-        );
+        final block = text.substring(text.indexOf('### `${spec.name}`'));
         final untilNext = block.indexOf('\n### ', 4);
-        final section =
-            untilNext == -1 ? block : block.substring(0, untilNext);
+        final section = untilNext == -1 ? block : block.substring(0, untilNext);
         expect(
           section.contains('仅 debug') || section.contains('debug-only'),
           isTrue,
@@ -72,9 +67,13 @@ void main() {
       // 清单内部一致性：受控动词表/命名空间由构造器保证，这里再钉
       // 一条：3 级命令若要确认，错误语义必须走 confirmRequired。
       if (spec.level == ControlLevel.admin && spec.requiresConfirm) {
-        expect(spec.destructive, isTrue,
-            reason: '${spec.name}：需确认的 3 级命令必须显式标 destructive'
-                '（set-pin 的二次输入 PIN 除外）');
+        expect(
+          spec.destructive,
+          isTrue,
+          reason:
+              '${spec.name}：需确认的 3 级命令必须显式标 destructive'
+              '（set-pin 的二次输入 PIN 除外）',
+        );
       }
     }
 
