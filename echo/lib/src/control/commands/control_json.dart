@@ -1,5 +1,7 @@
 import '../../diary/data/diary_repository.dart';
 import '../../diary/sy/diary_model.dart';
+import '../../services/chat_store.dart';
+import '../../services/console_stats_service.dart';
 
 /// ECP 命令结果的统一 JSON 序列化小工具。
 ///
@@ -62,3 +64,31 @@ Map<String, Object?> diarySummaryJson(DiaryDaySummary s) => {
   'blockCount': s.blockCount,
   'updatedAt': isoDateTime(s.updatedAt),
 };
+
+// ---- chat（手册 §6）---------------------------------------------------
+
+/// 会话列表行（chat.list / chat.open 回包）。
+///
+/// 线格式字段名冻结为 title/lastPreview（UI 内部称 nickname/preview，
+/// 适配层负责改名，协议不跟随 UI 措辞变化）。
+Map<String, Object?> chatConversationJson(ChatConversation c) => {
+  'id': c.id,
+  'title': c.nickname,
+  'unread': c.unread,
+  'lastPreview': c.preview,
+  'updatedAt': isoDateTime(c.updatedAt),
+};
+
+/// 单条消息（chat.get 消息页 / chat.send 回包）；direction 走 in/out。
+Map<String, Object?> chatMessageJson(ChatMessage m) => {
+  'id': m.id,
+  'conversationId': m.conversationId,
+  'text': m.text,
+  'direction': m.direction.wire,
+  'createdAt': isoDateTime(m.createdAt),
+};
+
+// ---- console（手册 §7）------------------------------------------------
+
+/// 读数条快照（console.snapshot / console.refresh 回包）。
+Map<String, Object?> consoleSnapshotJson(ConsoleStatsSnapshot s) => s.toJson();

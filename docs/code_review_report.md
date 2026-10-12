@@ -167,6 +167,178 @@ E4–E5 可挂账**（建议同批顺手）。修复在本分支续做，门禁�
 - release 隔离复验：release dex 无 CTRL 字符串，清单仅 androidx
   自带 receiver（同 P1 初审）。
 
+## F. ECP P2 施工挂账（2026-10-12，分支 feat/ecp-p2-controllers）
+
+### F1（已裁定：A，已落地）Dart SDK 3.13 formatter 与 main 基线风格不兼容，main 基线 61/103 文件存在格式 churn
+
+**现象与复现**（任一工作树均可复现，与 P2 改动无关）：
+
+```
+$ cd echo && dart --version
+Dart SDK version: 3.13.5 (stable) (Tue Sep 29 ... 2026) on "linux_x64"
+$ dart format --output=none --set-exit-if-changed lib test
+Formatted 114 files (48 changed)
+```
+
+main 基线（0df9120，v0.10.0+35）上**从未被 P2 触碰的文件**也被判为
+需重排（如 test/diary/ui/diary_m5_test.dart）。即当前 SDK 自带
+formatter 的输出风格（参数拆行、三元/短构造函数合并、集合字面量
+展开等）与入库时代码所用风格整体不兼容；项目无 CI 格式门禁（见
+G7），差异此前未暴露。
+
+**发现经过**：P2 步骤 1–10 完成后做提交前 diff 审查，发现 11 个 P1
+文件出现大量增删行。逐文件做「`dart format`(main 版) 与工作区」
+对比，确认这 11 个文件与 formatter 处理后的 main 版**逐字节相同，
+零逻辑变化**（control_bus 的 ArgumentError→USAGE / StateError→
+CONFLICT 映射经核 main 已有，非 P2 新增）：
+
+```
+echo/lib/src/control/auth/audit_log.dart
+echo/lib/src/control/auth/auth_session.dart
+echo/lib/src/control/auth/pin_store.dart
+echo/lib/src/control/channels/adb_control_channel.dart
+echo/lib/src/control/commands/auth_commands.dart
+echo/lib/src/control/commands/diary_commands.dart
+echo/lib/src/control/commands/sys_commands.dart
+echo/lib/src/control/control_app_state.dart
+echo/lib/src/control/control_bus.dart
+echo/lib/src/control/protocol/control_envelope.dart
+echo/lib/src/control/protocol/control_error.dart
+```
+
+另 10 个文件为「P2 语义改动 + 同批 formatter churn」混合
+（括号内为剔除格式后的语义差异行数）：bootstrap.dart(37)、
+commands/control_json.dart(30)、commands/nav_commands.dart(23)、
+protocol/command_spec.dart(4)、navigation/nav_destination_specs.dart(20)、
+navigation/smart_nav_screen.dart(53)、
+navigation/widgets/mechanical_coords_bar.dart(90)、
+pages/chat_page.dart(27)、services/chat_store.dart(186)、
+test/control/control_test_harness.dart(63)。P2 新增的 6 个 lib 文件
+与 4 个测试文件自然也是 3.13 风格。
+
+**影响**：
+
+1. 若直接提交，P2 评审 diff 会混入约 600 行与 P2 无关的换行噪声，
+   且跨越 auth/审计等安全敏感文件，增加评审负担与误读风险；
+2. 此后任何开发者/agent 运行 `dart format .` 都会产生跨全库的
+   大面积噪声 diff，且新代码与旧代码风格持续混杂。
+
+**待维护者选择的处置方案**：
+
+- **A（建议）**：P2 分支只保留语义改动——11 个纯 churn 文件还原
+  main；10 个混合文件在 main 旧格式上重施语义（重跑 analyze +
+  270 测试）；全库升格式另开独立 `chore: dart format (SDK 3.13)`
+  提交，一次性吃掉 48 文件 churn，评审与回滚边界清晰。
+- **B**：全项目固定 formatter 版本/风格（如统一到旧版 SDK 输出，
+  或 FVM 钉版本），P2 新文件回改旧风格；长期维持单一风格但需
+  维护工具链约定。
+- **C**：接受 3.13 风格为新基线，P2 连同 churn 一起提交，后续不做
+  独立格式提交（P2 diff 噪声不可避免）。
+
+**当前处置（已暂停）**：工作区保持发现时原样，**未做任何还原/
+重格式化，未提交**；P2 语义工作（步骤 1–10）已全部完成，门禁
+`flutter analyze` 0 issue、`flutter test` 270 全绿（232 基线 + P2
+新增 38）。维护者裁定后再完成格式收敛、gradle 门禁与提交；
+真机实测（MIX 2S）在提交后另行安排。
+
+**维护者裁定（2026-10-12）：采 A，且 chore 先行，省去"旧格式上
+重施语义"的返工。** 独立复核（main 0df9120 临时 worktree，不碰
+P2 工作区）：
+
+- 干净 main 上 `dart format lib test` 实测 **103 文件中 61 个需
+  重排**（P2 树里的 114/48 是同一事实的剩余视角：多出的 11 个
+  是 P2 新增文件，已排好的 21 个触碰文件不在 48 之列）；未触碰
+  文件（diary_m5_test 等）同样中招，与 P2 无关，属基线漂移；
+- 11 个"纯 churn"文件逐一比对 `dart format(main 版)` 与 P2
+  工作区版，**11/11 sha256 相同**，零逻辑变化属实；
+- 混合文件剔除格式后语义行数抽查与报告一致（chat_store 186、
+  command_spec 4、chat_page 27）；
+- 全库 Dart 源码仅在 echo/lib、echo/test（无 integration_test/
+  顶层脚本），chore 范围就这两个目录，不扫 build/.dart_tool。
+
+**为什么不是 B/C**：B 钉旧版 formatter 是逆工具链而行（tall 风格
+是 3.7+ 事实标准），单人项目无收益；C 让安全敏感文件（auth/审计）
+的评审 diff 永久混入换行噪声，不可接受。A 的格式提交零逻辑、
+可独立 review/回滚，是标准做法。
+
+**执行顺序（关键：chore 落在 P2 提交之前）**：
+
+1. 从 main 切 `chore/dart-format-313`，在 echo/ 执行
+   `dart format lib test`（61 文件），单提交
+   `chore: dart format 全库至 SDK 3.13 风格`，提交信息注明：
+   formatter 机械输出、零逻辑变化、动机（P2 首提新风格暴露基线
+   漂移）；快进合 main。
+2. P2 分支整体平移到新 main。由于 P2 触碰文件在工作区里**已是
+   3.13 风格**，平移后：11 个纯 churn 文件自动无 diff（已逐字节
+   证明）；10 个混合文件自动只剩语义 diff；新文件照旧。无需手工
+   在旧格式上重施语义。操作路径：P2 工作先整体落一个 WIP 提交
+   保全 → `git rebase --onto <新main> 0df9120`，冲突文件一律取
+   P2 侧内容（P2 版即规范终态）→ rebase 后跑 `dart format
+   --set-exit-if-changed lib test`（必须 exit 0）。
+3. 重开门禁：flutter analyze 0、flutter test 270 全绿、
+   testDebugUnitTest 通过；再交维护者做提交前 diff 审查
+   （语义 diff 预期：10 混合文件 + 新增 11 文件 + pubspec.yaml
+   的 fake_async + pubspec.lock 对应 1 行（见勘误①）+ docs/scripts，
+   无 auth 格式噪声），过审后真机 MIX 2S 实测。
+
+**附带裁定（随 P2 处理，不单开）**：
+
+- ~~`echo/pubspec.lock` 当前 diff 是本机 pub 镜像（pub.flutter-io.cn）
+  重写 URL 的环境噪声、无版本变化，**不得进 P2 提交**，平移后还原~~
+  ——**执行前勘误①（2026-10-12，已核查工作区）：本条与事实不符，
+  按下述修正执行。** 实际 `git diff --numstat` 为 1 增 1 删，唯一
+  差异是 `fake_async: dependency: transitive → "direct dev"`，无任何
+  URL 行变化；这是 P2 把 fake_async 提为显式 dev_dependency 后锁文件
+  的**合法同步，应随 P2 提交**。若还原它，锁文件与 pubspec.yaml 矛盾，
+  下次 `flutter pub get` 必自动改回。镜像 URL 重写当前不存在；执行中
+  若 pub get 触发 `pub.dev → pub.flutter-io.cn` 重写，仅还原 URL 行。
+- ~~`.trae/`（agent 工作目录，含本次 plan 文档）加入仓库根
+  .gitignore，不入库~~ ——**执行前勘误②（2026-10-12）：`.trae/`
+  并非未跟踪目录，直接 ignore 会造成半进半出，需维护者二选一后
+  再执行。** 现状：该目录已有 10+ 个跟踪文件（历史 plan：
+  diary_m2_editor_plan / m4_templates_plan / m5_persistence_export_plan；
+  `.trae/skills/*/SKILL.md`），既有约定是「plan/skill 入库」；
+  .gitignore 对已跟踪文件不生效。选项：**a)** 确要改约定——加 ignore
+  并 `git rm -r --cached .trae`（工作区文件保留、历史可溯），作为
+  独立小提交，不混进 P2；**b)（建议）** 维持约定——本次
+  `.trae/documents/ecp-p2-controllers_plan.md` 照常随 P2 入库，
+  不做 ignore（与三个历史 plan 一致，零额外动作）。
+- G7（无格式 CI 门禁）维持挂账：本次先靠"提交前 format-exit-0"
+  人工纪律，是否把 format 检查接进 scripts/nightly 随 P3 决定，
+  不在 P2 扩面。
+
+**执行结果（2026-10-12，维护者按本裁定操作）**：
+
+- 两条勘误经核查均属实并采纳：lock 仅 fake_async 一行合法同步；
+  `.trae/` 按选项 b 维持入库约定，P2 plan 照常随 P2。
+- `chore/dart-format-313`（main 上 **9c452a1**）：61 文件
+  dart format 机械重排，二次 format 幂等；该提交上 analyze 0、
+  **flutter test 232 全绿**，零行为变化。已快进合本地 main
+  （**未 push**，与 origin/main 领先 1 个提交，待用户发话）。
+- P2 整体 rebase 平移到 9c452a1：4 个文件冲突
+  （control_json/nav_commands/mechanical_coords_bar/
+  control_test_harness，均在预期 10 个混合文件内），全部取 P2 侧；
+  11 个纯 churn 文件平移后自动归零、不出现在 diff 中。
+- **exit-0 闸门抓出 5 个漏网文件**：mechanical_coords_bar.dart
+  与 4 个 P2 新文件（console_stats_service + 3 个 commands 测试）
+  在原工作区里并未达到 3.13 规范（"新文件自然合规"的判断不成立），
+  已统一 format，全树 `dart format --set-exit-if-changed` exit 0。
+- 平移后 P2 最终 diff：28 文件 = 10 混合文件（只剩语义）+
+  11 新增代码文件 + pubspec.yaml + pubspec.lock（各 1 行合法同步）
+  + 3 个 docs + scripts/echo-cmd + P2 plan，无 auth/审计格式噪声。
+- 重开门禁：flutter analyze **0 issue**、flutter test **270 全绿**。
+- **JVM 单测已闭环（2026-10-12 22:57）**：用户在系统终端
+  `./gradlew testDebugUnitTest` → BUILD SUCCESSFUL（测试任务当时
+  内容指纹 up-to-date，git 证据：android/ 自 27c0c30 零改动）。
+  维护者随后借助该外部 daemon 执行
+  `cleanTestDebugUnitTest testDebugUnitTest --no-build-cache`
+  强制真实重跑（非 UP-TO-DATE / 非 FROM-CACHE）：**3 tests，
+  0 skipped / 0 failures / 0 errors**，报告时间戳 2026-10-12
+  13:57:23Z（即当时）。沙箱内自启 daemon 仍不可用（snap flutter
+  路径不可写），但连接沙箱外 daemon 可正常工作。
+- 工作区已 mixed reset 为「相对 9c452a1 的纯语义改动」交回 P2
+  agent 组织正式提交（16 改 + 12 新增未跟踪），WIP 保全提交已消解。
+
 ## 维护规则
 
 - 修复即更新本文件（快通道，governance §4.2）；

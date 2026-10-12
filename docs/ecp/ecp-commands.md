@@ -222,58 +222,87 @@
 ## 6. `chat` —— 聊天模块（P2）
 
 ### `chat.list`
-- 类 读 · 级 1 · 幂等
-- 返回：`[{id,title,unread,lastPreview,updatedAt}]`（不给正文）。
+- 类 读 · 级 1 · 幂等 · 起始 P2
+- 返回：`items:[{id,title,unread,lastPreview,updatedAt}]`
+  （信封 result 必须是对象，统一 items 包裹，同 diary.list；不给正文）。
 
 ### `chat.get`
-- 类 读 · 级 1 · 幂等
-- 参数：`--id`（必填）、`--limit`、`--cursor`
-- 返回：单会话元数据 + 消息页。
+- 类 读 · 级 1 · 幂等 · 起始 P2
+- 参数：`--id`（必填）、`--limit`（缺省 20，1..100）、`--cursor`
+- 返回：会话元数据（同 list 行字段）+ `messages:[{id,conversationId,
+  text,direction(in|out),createdAt}]`（新→旧）、`cursor`、`hasMore`。
+- 错误：`NOT_FOUND`（5）；坏游标/非法 limit → `USAGE`（2）。
 
 ### `chat.open`
-- 类 写 · 级 2 · 幂等
-- 参数：`--id`（必填）、`--stay`
+- 类 写 · 级 2 · 幂等 · 起始 P2
+- 参数：`--id`（必填）、`--stay`（全局 slash 标志，adb 接受忽略）
 - 作用：经 ChatSessionController 进入指定会话（与点按同路径，
   触发已读逻辑）。
+- 返回：操作后的会话行（同 list 字段，`unread:false`）。
+- 错误：`NOT_FOUND`（5）。
 
 ### `chat.send`
-- 类 写 · 级 2 · **非幂等**
-- 参数：`--id`（必填）、`--text`（必填，长文本支持 `--text-stdin`）
-- 返回：发送后的消息对象（id/时间戳）。
+- 类 写 · 级 2 · **非幂等** · 起始 P2
+- 参数：`--id`（必填）、`--text`（必填，长文本/多行用
+  `--text-stdin` 从标准输入读全文，二者互斥）
+- 返回：发送后的消息对象 `{id,conversationId,text,direction:"out",
+  createdAt}`；会话 lastPreview 随之更新。
+- 错误：空文本 `USAGE`（2）；未知会话 `NOT_FOUND`（5）。
 
 ### `chat.mark-read`
-- 类 写 · 级 2 · 幂等
+- 类 写 · 级 2 · 幂等 · 起始 P2
 - 参数：`--id`（必填）
-- 直接调 ChatStore.markRead。
+- 直接调 ChatStore.markRead，返回操作后的会话行。
+- 错误：`NOT_FOUND`（5）。
 
 ---
 
 ## 7. `console` —— 机能风读数条（P2）
 
 ### `console.snapshot`
-- 类 读 · 级 1 · 幂等
+- 类 读 · 级 1 · 幂等 · 起始 P2
 - 返回：`{model,tempC,powerW}`（与 `echo/device_stats` 通道同源自同一
-  函数，不另造读数）。
+  函数，不另造读数；尚未刷新过时 model 为「—」、数值为 null）。
 
 ### `console.refresh`
-- 类 写 · 级 2 · 幂等
-- 触发读数条立即刷新（走 ConsoleRefreshTrigger，UI 数字同步变化），
-  返回刷新后的快照，便于验证链路而非等定时周期。
+- 类 写 · 级 2 · 幂等 · 起始 P2
+- 触发读数条立即刷新（走 ConsoleStatsService.refresh，与 5 秒定时器、
+  UI 读数条同源，数字同步变化），返回刷新后的快照，便于验证链路
+  而非等定时周期。
 
 ---
 
 ## 8. `badge` —— 导航锚点状态（P2）
 
-对应 `NavBadgeService` 既有接口，全部作用于指定页
-（`--page console|chat|notes|me`，稳定 id 同 nav 域）。
+对应 `NavBadgeService` 既有接口，写命令全部作用于指定页
+（`--page console|chat|notes|me`，稳定 id 同 nav 域），页名解析
+与 nav 域同源。级别线格式：`normal` / `notification` / `exception`。
 
-| 命令 | 类/级 | 幂等 | 对应接口 |
-|---|---|---|---|
-| `badge.status` | 读/1 | 是 | 各页级别一览 |
-| `badge.notify --page` | 写/2 | 是 | `postNotification`（绿） |
-| `badge.exception --page` | 写/2 | 是 | `reportException`（红） |
-| `badge.view --page` | 写/2 | 是 | `markViewed`（通知已读） |
-| `badge.resolve --page` | 写/2 | 是 | `resolveException`（异常解除） |
+### `badge.status`
+- 类 读 · 级 1 · 幂等 · 起始 P2
+- 返回：`items:[{index,name,level}]`，四页一览。
+
+### `badge.notify`
+- 类 写 · 级 2 · 幂等 · 起始 P2
+- 参数：`--page`（必填）
+- 对应 `postNotification`（锚点绿呼吸）；返回操作后该页状态
+  `{page:{index,name}, level}`。
+
+### `badge.exception`
+- 类 写 · 级 2 · 幂等 · 起始 P2
+- 参数：`--page`（必填）
+- 对应 `reportException`（锚点红闪烁）；返回形状同 notify。
+
+### `badge.view`
+- 类 写 · 级 2 · 幂等 · 起始 P2
+- 参数：`--page`（必填）
+- 对应 `markViewed`：通知态恢复 normal，异常态不受影响；
+  返回操作后实际级别（用于断言状态为何未变）。
+
+### `badge.resolve`
+- 类 写 · 级 2 · 幂等 · 起始 P2
+- 参数：`--page`（必填）
+- 对应 `resolveException`：异常态恢复 normal；返回形状同 view。
 
 ---
 
@@ -302,6 +331,27 @@ scripts/echo-cmd diary.prune --confirm --dry-run=false # 真实删除
 # 导出后直接取路径，绕过整个分享 UI
 scripts/echo-cmd diary.export --notebook Echo日记 --confirm
 adb pull /data/local/tmp/…  # 实际路径以返回 path 为准（debug 可拉取）
+
+# 机能风读数条：立即刷新（不等 5s 周期）与最近快照
+scripts/echo-cmd console.refresh
+scripts/echo-cmd console.snapshot
+
+# 导航锚点：状态一览 → 造通知/异常 → 查看/解除 → 状态复原
+scripts/echo-cmd badge.status
+scripts/echo-cmd badge.notify --page chat
+scripts/echo-cmd badge.exception --page me
+scripts/echo-cmd badge.view --page chat      # 通知态恢复，异常态不动
+scripts/echo-cmd badge.resolve --page me
+
+# 聊天：真机先用调试面板「模拟：聊天新消息」造会话
+scripts/echo-cmd chat.list
+scripts/echo-cmd chat.get --id incoming-1 --limit 20
+scripts/echo-cmd chat.get --id incoming-1 --cursor <上页 cursor>
+scripts/echo-cmd chat.mark-read --id incoming-1
+scripts/echo-cmd chat.open --id incoming-1
+# 外发：短文本直接 --text；多行/长文本走 stdin（不进进程参数）
+scripts/echo-cmd chat.send --id incoming-1 --text "收到"
+printf '多行正文\n第二行' | scripts/echo-cmd chat.send --id incoming-1 --text-stdin
 ```
 
 ### 9.2 slash 指令台（用户）

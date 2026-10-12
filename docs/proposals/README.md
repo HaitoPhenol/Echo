@@ -31,6 +31,7 @@
 > 不走提案、直接执行的规则文档小改，在此追加一行（最新在上）。
 > 格式：日期 · 文件 · 一句话原因 · 提交。
 
+- 2026-10-12 · docs/ecp/ecp-commands.md · ECP P2 施工裁定快通道：chat.list 回包由裸数组细化为 `items:[...]` 包裹（信封 result 类型为对象，同 diary.list）；§6 chat/§7 console/§8 badge 全小节统一补「起始 P2」标注与错误码/回包形状；§9.1 补 console.refresh/badge.*/chat.* 与 --text-stdin 示例 · 随本提交入库
 - 2026-10-13 · docs/ecp/ecp-commands.md · ECP P1 施工裁定快通道：nav 页名由显示文案 terminal/chat/template/diary 改为与 UI 解耦的稳定 id console/chat/notes/me（nav.page/nav.goto、§8 badge、§9 示例同步）；diary.export 的 --notebook 由必填改可选、缺省「日记」；manifest 一致性测试（test/control/manifest_consistency_test.dart）把手册小节作为冻结契约双向校验 · 随本提交入库
 - 2026-10-12 · §E E1–E5 修复回执（code_review_report/ecp-design） · E1 接收器门禁实测改道：onReceive 内 Binder.getCallingUid() 恒本 App uid（消息派发已离 binder 事务），改用清单 android:permission=DUMP 在 AMS 层按真实发送 uid 拦截 + isCallerTrusted 纯函数 0/2000（API34+ 进程内二次门禁，3 条 JVM 单测）；E3 失败审计 2 测试；E4 9s/60s 文档化随 P3；E5 allowBackup=false 双构建实证；测试 230→232 · 随本提交入库
 - 2026-10-12 · code_review_report 新增 §E · ECP P1（27ab796）验收交接单 E1–E5：接收器调用方 uid 校验、echo-cmd 布尔 false、失败审计三条必修；9s/60s 超时差、allowBackup 两条可挂账；含位置/修法/验收标准，ECP agent 分支续做 · 随本提交入库

@@ -215,11 +215,11 @@ class CommandSpec {
   /// 受控动词表（设计 §4）；扩充 = 协议变更，先改手册。
   static const Set<String> controlledVerbs = {
     // 读
-    'list', 'get', 'status', 'page',
+    'list', 'get', 'status', 'page', 'snapshot',
     // 写
     'goto', 'open', 'create', 'set', 'send', 'refresh', 'ensure',
     // 带点/连字符的复合动词（与手册冻结名一致）
-    'clock.set', 'set-pin',
+    'clock.set', 'set-pin', 'mark-read',
     // 信号
     'notify', 'exception', 'view', 'resolve',
     // 生命周期

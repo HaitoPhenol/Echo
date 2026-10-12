@@ -7,6 +7,9 @@ import 'package:echo/src/control/auth/audit_log.dart';
 import 'package:echo/src/control/auth/auth_session.dart';
 import 'package:echo/src/control/auth/pin_store.dart';
 import 'package:echo/src/control/commands/auth_commands.dart';
+import 'package:echo/src/control/commands/badge_commands.dart';
+import 'package:echo/src/control/commands/chat_commands.dart';
+import 'package:echo/src/control/commands/console_commands.dart';
 import 'package:echo/src/control/commands/diary_commands.dart';
 import 'package:echo/src/control/commands/nav_commands.dart';
 import 'package:echo/src/control/commands/sys_commands.dart';
@@ -15,6 +18,10 @@ import 'package:echo/src/control/control_bus.dart';
 import 'package:echo/src/control/control_registry.dart';
 import 'package:echo/src/control/protocol/command_spec.dart';
 import 'package:echo/src/control/protocol/control_envelope.dart';
+import 'package:echo/src/services/chat_session_controller.dart';
+import 'package:echo/src/services/chat_store.dart';
+import 'package:echo/src/services/console_stats_service.dart';
+import 'package:echo/src/services/nav_badge_service.dart';
 import 'package:echo/src/diary/data/diary_clock.dart';
 import 'package:echo/src/diary/data/diary_data_provider.dart';
 import 'package:echo/src/diary/data/diary_repository.dart';
@@ -43,6 +50,10 @@ class ControlHarness {
     required this.composer,
     required this.exporter,
     required this.appState,
+    required this.chatStore,
+    required this.chatSession,
+    required this.badges,
+    required this.consoleStats,
   });
 
   final Directory tempDir;
@@ -57,6 +68,12 @@ class ControlHarness {
   final DiaryComposer composer;
   final DiaryExportService exporter;
   final ControlAppState appState;
+
+  /// P2 UI 同源服务（chat.* / badge.* / console.* 命令操作的实例）。
+  final ChatStore chatStore;
+  final ChatSessionController chatSession;
+  final NavBadgeService badges;
+  final ConsoleStatsService consoleStats;
 
   /// 可变墙钟（拨钟测试直接改）；未 override 时 [DiaryClock.now] 读它。
   late DateTime wallTime;
@@ -103,6 +120,24 @@ class ControlHarness {
       now: clock.now,
     );
 
+    // P2 服务（与生产 SmartNavScreen/bootstrap 同源的实例类型）：
+    // 读数服务关闭自动轮询（假环境无 Timer 泄漏），reader 同时充当
+    // sys.info 的设备信息来源；聊天/锚点服务页规模与四目的地一致。
+    final consoleStats = ConsoleStatsService(
+      autoStart: false,
+      reader: () async => <String, Object?>{
+        'model': 'test-phone',
+        'osVersion': 'T1',
+        'version': '0.9.0',
+        'buildNumber': 34,
+        'tempC': 31.0,
+        'powerW': 2.5,
+      },
+    );
+    final chatStore = ChatStore(now: () => h.wallTime);
+    final chatSession = ChatSessionController(chatStore);
+    final badges = InMemoryNavBadgeService(pageCount: 4);
+
     registry
       ..set(paths)
       ..set(audit)
@@ -114,16 +149,11 @@ class ControlHarness {
       ..set<DiaryRepository>(repo)
       ..set(composer)
       ..set(exporter)
-      ..set(
-        ControlDeviceInfo(
-          () async => <String, Object?>{
-            'model': 'test-phone',
-            'osVersion': 'T1',
-            'version': '0.9.0',
-            'buildNumber': 34,
-          },
-        ),
-      );
+      ..set(consoleStats)
+      ..set(ControlDeviceInfo(consoleStats.readRaw))
+      ..set(chatStore)
+      ..set(chatSession)
+      ..set<NavBadgeService>(badges);
 
     final auth = AuthManager(
       pins: pins,
@@ -143,7 +173,10 @@ class ControlHarness {
           ..registerAll(buildSysCommands())
           ..registerAll(buildAuthCommands())
           ..registerAll(buildNavCommands())
-          ..registerAll(buildDiaryCommands());
+          ..registerAll(buildDiaryCommands())
+          ..registerAll(buildChatCommands())
+          ..registerAll(buildConsoleCommands())
+          ..registerAll(buildBadgeCommands());
 
     h = ControlHarness._(
       tempDir: tempDir,
@@ -158,6 +191,10 @@ class ControlHarness {
       composer: composer,
       exporter: exporter,
       appState: appState,
+      chatStore: chatStore,
+      chatSession: chatSession,
+      badges: badges,
+      consoleStats: consoleStats,
     )..wallTime = wall;
     return h;
   }
@@ -195,6 +232,10 @@ class ControlHarness {
 
   Future<void> dispose() async {
     auth.detach();
+    chatSession.dispose();
+    chatStore.dispose();
+    badges.dispose();
+    consoleStats.dispose();
     if (await tempDir.exists()) {
       await tempDir.delete(recursive: true);
     }

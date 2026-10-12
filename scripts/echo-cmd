@@ -17,6 +17,7 @@
 #   scripts/echo-cmd diary.list --month 2026-10 --limit 10
 #   scripts/echo-cmd diary.prune --confirm --dry-run
 #   scripts/echo-cmd auth.unlock            # stdin 提示输 PIN，不回显
+#   cat msg.txt | scripts/echo-cmd chat.send --id incoming-1 --text-stdin
 set -euo pipefail
 
 # ---- 常量（与 debug 源集/AdbControlWire 逐字一致）---------------------
@@ -184,6 +185,8 @@ CMD="$1"
 shift
 
 CONFIRM="false"
+# --text-stdin：聊天长文本走 stdin 全文（多行不能进 PAIRS 行协议）。
+TEXT_STDIN="false"
 declare -a PAIRS=()
 
 is_bool_flag() {
@@ -205,6 +208,15 @@ while [[ $# -gt 0 ]]; do
     continue
   fi
   [[ "$name" != confirm=* ]] || die "--confirm 是纯开关，不接受取值（需要确认直接加 --confirm）"
+
+  # --text-stdin 也是纯开关：正文在解析后从 stdin 读全文，不进
+  # PAIRS（多行文本会破坏按行喂给 Python 的协议）。
+  if [[ "$name" == "text-stdin" ]]; then
+    TEXT_STDIN="true"
+    shift
+    continue
+  fi
+  [[ "$name" != text-stdin=* ]] || die "--text-stdin 是纯开关（用法：--text-stdin < 文件）"
 
   # 形态一：--name=value（显式赋值，布尔只认真/假字面量）。
   if [[ "$name" == *=* ]]; then
@@ -277,11 +289,31 @@ case "$CMD" in
     ;;
 esac
 
+# --text-stdin 互斥校验并读全文：正文经独立环境变量注入 Python，
+# 与 PIN 同思路（不进进程参数），但不脱敏——审计截断由总线负责。
+TEXT_DATA=""
+if [[ "$TEXT_STDIN" == "true" ]]; then
+  for p in "${PAIRS[@]:-}"; do
+    [[ "$p" != "text="* ]] || die "--text 与 --text-stdin 互斥，二选一"
+  done
+  if [[ -t 0 ]]; then
+    echo "echo-cmd: 请输入消息全文，结束后按 Ctrl-D：" >&2
+  fi
+  # 命令替换天然剥掉尾部换行；store.send 本就 trim，多行内部换行保留。
+  TEXT_DATA="$(cat)"
+fi
+
 # 键值对 → JSON 对象（python 转义，杜绝手工拼引号注入）。
 ARGS_JSON=""
-if [[ ${#PAIRS[@]} -gt 0 ]]; then
-  PAIR_DATA=$(printf '%s\n' "${PAIRS[@]}")
-  ARGS_JSON=$(PAIR_DATA="$PAIR_DATA" python3 - <<'PY'
+if [[ ${#PAIRS[@]} -gt 0 || "$TEXT_STDIN" == "true" ]]; then
+  PAIR_DATA=$(printf '%s\n' "${PAIRS[@]:-}")
+  # SET 标记区分「未用 --text-stdin」与「用了但内容为空」：
+  # 后者也要把空串传给 App（由总线按空文本 USAGE 驳回）。
+  if [[ "$TEXT_STDIN" == "true" ]]; then
+    export ECP_TEXT_STDIN="$TEXT_DATA" ECP_TEXT_STDIN_SET=1
+  fi
+  ARGS_JSON=$(
+    PAIR_DATA="$PAIR_DATA" python3 - <<'PY'
 import json, os
 
 def camelize(key):
@@ -294,6 +326,8 @@ def camelize(key):
 
 obj = {}
 for line in os.environ["PAIR_DATA"].splitlines():
+    if not line:
+        continue  # 无 PAIRS（仅 --text-stdin）时 PAIR_DATA 为空串。
     k, _, v = line.partition("=")
     k = camelize(k)
     if v == "true":
@@ -307,9 +341,14 @@ for line in os.environ["PAIR_DATA"].splitlines():
             obj[k] = int(v)
         except ValueError:
             obj[k] = v
+# stdin 全文最后合并为 text：必须原样字符串，绕过上面的布尔/数字
+# 猜测（"true"/"123" 这类正文不能被转型）。
+if os.environ.get("ECP_TEXT_STDIN_SET") == "1":
+    obj["text"] = os.environ["ECP_TEXT_STDIN"]
 print(json.dumps(obj, ensure_ascii=False))
 PY
 )
+  unset ECP_TEXT_STDIN ECP_TEXT_STDIN_SET
 fi
 
 # ---- 执行 -------------------------------------------------------------

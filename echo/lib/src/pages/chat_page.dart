@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../services/chat_session_controller.dart';
 import '../services/chat_store.dart';
 import '../services/haptics.dart';
 import '../theme/app_colors.dart';
@@ -15,7 +16,9 @@ import '../theme/app_colors.dart';
 /// 收到第一条消息后切换为列表。每行含圆形头像框（空白占位）、
 /// 昵称、消息预览，行间为屏宽 80%、水平居中的 1px 分隔线；
 /// 未读会话右上角有与导航消息锚点同色同节奏的呼吸绿点。交互：
-/// - 点按未读行：标记已读（绿点消失，全部已读后导航锚点恢复）；
+/// - 点按任意行：经 ChatSessionController.open 进入会话（与 adb
+///   `chat.open` 同路径，未读→标记已读，绿点消失，全部已读后
+///   导航锚点恢复；已读行幂等无可见变化）；
 /// - 左滑行：恒露出等宽两个操作按钮——左为读状态切换（已读行
 ///   显示「未读」、未读行显示「已读」），右为红色「删除」。
 class ChatPage extends StatefulWidget {
@@ -139,7 +142,7 @@ const TextStyle _emptyHintStyle = TextStyle(
 /// 上层前景（不透明页面底色）跟手平移；分隔线画在前景底部、
 /// 随前景一起滑动。操作区恒为两个按钮——左为读状态切换
 /// （已读行显示「未读」，未读行显示「已读」）、右为「删除」，
-/// 宽度不随已读状态变化；未读行点按前景同样是标记已读。
+/// 宽度不随已读状态变化；点按前景统一走 ChatSessionController.open。
 class ChatListRow extends StatelessWidget {
   const ChatListRow({
     super.key,
@@ -192,13 +195,19 @@ class ChatListRow extends StatelessWidget {
           },
         ),
       ],
-      // 已读行无点按行为；未读行点按即已读。
-      onTap: conversation.unread
-          ? () {
-              Haptics.tick();
-              store.markRead(conversation.id);
-            }
-          : null,
+      // 点按（无论已读/未读）统一走 ChatSessionController.open：
+      // 与 adb chat.open 命令同路径，内部仍只调 store.markRead。
+      // 独立组件测试只包 ChatStoreScope 时回退直调 markRead，
+      // 外部可观察行为（绿点/锚点）完全等价。
+      onTap: () {
+        Haptics.tick();
+        final controller = ChatSessionScope.maybeOf(context);
+        if (controller != null) {
+          controller.open(conversation.id);
+        } else {
+          store.markRead(conversation.id);
+        }
+      },
       child: _RowForeground(conversation: conversation),
     );
   }

@@ -6,7 +6,9 @@ import 'package:flutter/services.dart';
 
 import '../control/bootstrap.dart';
 import '../diary/data/diary_repository.dart';
+import '../services/chat_session_controller.dart';
 import '../services/chat_store.dart';
+import '../services/console_stats_service.dart';
 import '../services/haptics.dart';
 import '../services/nav_badge_service.dart';
 import '../services/search_service.dart';
@@ -88,8 +90,11 @@ class _SmartNavScreenState extends State<SmartNavScreen>
   /// 导航锚点状态服务（通知/异常上报接口）。
   late final NavBadgeService _badges;
 
-  /// 聊天会话数据服务（会话增删 / 已读未读）。
+  /// 聊天会话数据服务（会话增删 / 已读未读 / 消息）。
   late final ChatStore _chatStore;
+
+  /// 当前打开会话控制器（点按行与 chat.open 命令同源）。
+  late final ChatSessionController _chatSession;
 
   /// 聊天目的地在页面轨道中的下标（驱动锚点联动；-1 表示未配置）。
   int _chatPageIndex = -1;
@@ -213,6 +218,7 @@ class _SmartNavScreenState extends State<SmartNavScreen>
     _badges = InMemoryNavBadgeService(pageCount: _destinations.length);
 
     _chatStore = ChatStore();
+    _chatSession = ChatSessionController(_chatStore);
     _chatPageIndex = _destinations.indexWhere((d) => d.id == 'chat');
     // 锚点联动：聊天页锚点不再由「停留 700ms」清除，而完全由
     // 会话未读数据驱动——存在未读即通知（绿呼吸），全部已读才
@@ -258,9 +264,17 @@ class _SmartNavScreenState extends State<SmartNavScreen>
 
     _searchFocusNode.addListener(_handleFocusChange);
 
-    // ECP 接线：nav.goto 与横滑手势共用这同一个控制器
+    // ECP 接线：nav.goto 与横滑手势共用这同一个控制器；chat.*/badge.*
+    // 命令同样取这里注册的 UI 同源实例。
     //（widget 测试未走 ControlBootstrap.init 时为 null，跳过）。
-    ControlBootstrap.instance?.registry.set(_nav);
+    final control = ControlBootstrap.instance;
+    if (control != null) {
+      control.registry
+        ..set(_nav)
+        ..set(_chatStore)
+        ..set(_chatSession)
+        ..set<NavBadgeService>(_badges);
+    }
   }
 
   @override
@@ -270,6 +284,7 @@ class _SmartNavScreenState extends State<SmartNavScreen>
     _aiHoldTimer?.cancel();
     _drawerAnim.dispose();
     _nav.dispose();
+    _chatSession.dispose();
     _chatStore.dispose();
     _badges.dispose();
     _searchFocusNode.dispose();
@@ -1115,7 +1130,12 @@ class _SmartNavScreenState extends State<SmartNavScreen>
                       MechanicalStyle.coordsTop,
                   left: 0,
                   right: 0,
-                  child: const Center(child: MechanicalCoordsBar()),
+                  child: Center(
+                    child: MechanicalCoordsBar(
+                      stats: ControlBootstrap.instance?.registry
+                          .get<ConsoleStatsService>(),
+                    ),
+                  ),
                 ),
 
                 // -------- 横向页面轨道 --------
@@ -1368,17 +1388,20 @@ class _SmartNavScreenState extends State<SmartNavScreen>
     // 见 _handleNavSearchToggled 与抽屉帧回调）。
     return ChatStoreScope(
       store: _chatStore,
-      child: NavBadgeScope(
-        service: _badges,
-        child: PopScope(
-          canPop:
-              !_nav.isSearching &&
-              !_quickArcShown &&
-              !_menuShown &&
-              !_aiShown &&
-              _drawerAnim.value == 0,
-          onPopInvokedWithResult: _handlePopInvoked,
-          child: scaffold,
+      child: ChatSessionScope(
+        controller: _chatSession,
+        child: NavBadgeScope(
+          service: _badges,
+          child: PopScope(
+            canPop:
+                !_nav.isSearching &&
+                !_quickArcShown &&
+                !_menuShown &&
+                !_aiShown &&
+                _drawerAnim.value == 0,
+            onPopInvokedWithResult: _handlePopInvoked,
+            child: scaffold,
+          ),
         ),
       ),
     );

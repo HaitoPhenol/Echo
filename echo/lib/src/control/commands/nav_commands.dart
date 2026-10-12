@@ -17,7 +17,7 @@ List<CommandSpec> buildNavCommands() => [
     handler: (ctx) async {
       final nav = ctx.requireService<NavPhysicsController>('导航控制器');
       final index = nav.activePage;
-      return {'index': index, 'name': _pageName(index)};
+      return {'index': index, 'name': navPageName(index)};
     },
   ),
   CommandSpec(
@@ -38,7 +38,7 @@ List<CommandSpec> buildNavCommands() => [
       final nav = ctx.requireService<NavPhysicsController>('导航控制器');
       final from = nav.activePage;
       final raw = ctx.arg<String>('page');
-      final target = _resolvePage(raw, nav.pageCount);
+      final target = resolveNavPageIndex(raw, nav.pageCount);
       if (target == null) {
         throw ControlException(
           ControlErrorCode.usage,
@@ -50,8 +50,8 @@ List<CommandSpec> buildNavCommands() => [
         nav.snapTo(target);
       }
       return {
-        'from': {'index': from, 'name': _pageName(from)},
-        'to': {'index': target, 'name': _pageName(target)},
+        'from': {'index': from, 'name': navPageName(from)},
+        'to': {'index': target, 'name': navPageName(target)},
         // 防抖未落盘的提示由日记 bootstrap 接线后填充；
         // P1 恒为空数组，保留键位以冻结契约。
         'warnings': <String>[],
@@ -59,18 +59,3 @@ List<CommandSpec> buildNavCommands() => [
     },
   ),
 ];
-
-/// 解析 `--page`：先匹配稳定 id，再尝试 0..pageCount-1 下标。
-int? _resolvePage(String raw, int pageCount) {
-  final byId = kNavDestinationSpecs
-      .indexWhere((s) => s.id == raw)
-      .clamp(-1, pageCount - 1);
-  if (byId >= 0) return byId;
-  final asIndex = int.tryParse(raw);
-  if (asIndex != null && asIndex >= 0 && asIndex < pageCount) return asIndex;
-  return null;
-}
-
-String _pageName(int index) => index >= 0 && index < kNavDestinationSpecs.length
-    ? kNavDestinationSpecs[index].id
-    : 'unknown';

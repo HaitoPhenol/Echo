@@ -3,7 +3,6 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
-import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 
 import 'auth/audit_log.dart';
@@ -11,6 +10,9 @@ import 'auth/auth_session.dart';
 import 'auth/pin_store.dart';
 import 'channels/adb_control_channel.dart';
 import 'commands/auth_commands.dart';
+import 'commands/badge_commands.dart';
+import 'commands/chat_commands.dart';
+import 'commands/console_commands.dart';
 import 'commands/diary_commands.dart';
 import 'commands/nav_commands.dart';
 import 'commands/sys_commands.dart';
@@ -18,6 +20,7 @@ import 'control_app_state.dart';
 import 'control_bus.dart';
 import 'control_registry.dart';
 import 'protocol/command_spec.dart';
+import '../services/console_stats_service.dart';
 
 /// ECP 控制面装配根（设计 §3.3）。
 ///
@@ -35,6 +38,7 @@ class ControlBootstrap with WidgetsBindingObserver {
     required this.paths,
     required this.appState,
     required this.audit,
+    required this.consoleStats,
     // 字段私有而命名参数不允许下划线开头，这里保留显式赋值。
     AdbControlChannel? adb,
     // ignore: prefer_initializing_formals
@@ -49,6 +53,7 @@ class ControlBootstrap with WidgetsBindingObserver {
   final ControlPaths paths;
   final ControlAppState appState;
   final AuditLog audit;
+  final ConsoleStatsService consoleStats;
   final AdbControlChannel? _adb;
 
   /// 装配总线并挂载通道；必须在 [runApp] 前 await（确保首条
@@ -64,12 +69,17 @@ class ControlBootstrap with WidgetsBindingObserver {
     final audit = AuditLog();
     final pinStore = PinStore(directory: paths.controlRoot!);
     final appState = ControlAppState();
+    // 读数服务在 runApp 前创建：冷启动 sys.info/console 命令与 UI
+    // 读数条同源（设计 §9.3）；sys.info 经 readRaw 取含版本号的
+    // 原始字段，console.refresh/UI 走解析后的快照。
+    final consoleStats = ConsoleStatsService();
     registry
       ..set(paths)
       ..set(audit)
       ..set(pinStore)
       ..set(appState)
-      ..set(ControlDeviceInfo(_readDeviceSnapshot));
+      ..set(consoleStats)
+      ..set(ControlDeviceInfo(consoleStats.readRaw));
 
     final auth = AuthManager(pins: pinStore, auditLog: audit);
     auth.attach(); // 息屏/切后台立即销毁会话
@@ -86,6 +96,12 @@ class ControlBootstrap with WidgetsBindingObserver {
       ...buildAuthCommands(),
       ...buildNavCommands(),
       ...buildDiaryCommands(),
+      // P2：chat/console/badge 三域。其 UI 同源服务（ChatStore/
+      // ChatSessionController/NavBadgeService）由 SmartNavScreen
+      // 装配后注册；ConsoleStatsService 已在上方 runApp 前注册。
+      ...buildChatCommands(),
+      ...buildConsoleCommands(),
+      ...buildBadgeCommands(),
     ]);
 
     // adb 物理入口仅 debug 包挂载；release 的 MethodChannel 上
@@ -102,6 +118,7 @@ class ControlBootstrap with WidgetsBindingObserver {
       paths: paths,
       appState: appState,
       audit: audit,
+      consoleStats: consoleStats,
       adb: adb,
     );
     WidgetsBinding.instance.addObserver(bootstrap);
@@ -117,26 +134,12 @@ class ControlBootstrap with WidgetsBindingObserver {
     };
   }
 
-  /// 复用既有 `echo/device_stats` 通道（MainActivity.readDeviceStats），
-  /// sys.info 不另造读数；通道异常时退回空快照，命令仍返回版本字段
-  /// 以外的最小现场（设备信息缺失不影响链路自检）。
-  static Future<Map<String, Object?>> _readDeviceSnapshot() async {
-    try {
-      final raw = await const MethodChannel('echo/device_stats')
-          .invokeMethod<Map>('snapshot');
-      return raw?.cast<String, Object?>() ?? const {};
-    } on PlatformException {
-      return const {};
-    } on MissingPluginException {
-      return const {};
-    }
-  }
-
   /// 测试/热卸载用：摘除监听与通道（生产进程内不调用）。
   Future<void> dispose() async {
     WidgetsBinding.instance.removeObserver(this);
     auth.detach();
     _adb?.detach();
+    consoleStats.dispose();
     instance = null;
   }
 }

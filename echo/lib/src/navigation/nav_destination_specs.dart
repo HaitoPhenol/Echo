@@ -10,3 +10,23 @@ const List<({String id, String label})> kNavDestinationSpecs = [
   (id: 'notes', label: '笔记'),
   (id: 'me', label: '主页'),
 ];
+
+/// 解析 `--page` 入参为页下标：先匹配稳定 id，再尝试 0..pageCount-1
+/// 下标；都不匹配返回 null（调用方据此抛 USAGE）。
+///
+/// nav 与 badge 两个命名空间共用同一解析，杜绝两份页名漂移。
+int? resolveNavPageIndex(String raw, int pageCount) {
+  final byId = kNavDestinationSpecs
+      .indexWhere((s) => s.id == raw)
+      .clamp(-1, pageCount - 1);
+  if (byId >= 0) return byId;
+  final asIndex = int.tryParse(raw);
+  if (asIndex != null && asIndex >= 0 && asIndex < pageCount) return asIndex;
+  return null;
+}
+
+/// 页下标 → 稳定页名；越界返回 `unknown`（nav.page 容错用）。
+String navPageName(int index) =>
+    index >= 0 && index < kNavDestinationSpecs.length
+    ? kNavDestinationSpecs[index].id
+    : 'unknown';
