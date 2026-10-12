@@ -32,6 +32,7 @@
 > 格式：日期 · 文件 · 一句话原因 · 提交。
 
 - 2026-10-13 · docs/ecp/ecp-commands.md · ECP P1 施工裁定快通道：nav 页名由显示文案 terminal/chat/template/diary 改为与 UI 解耦的稳定 id console/chat/notes/me（nav.page/nav.goto、§8 badge、§9 示例同步）；diary.export 的 --notebook 由必填改可选、缺省「日记」；manifest 一致性测试（test/control/manifest_consistency_test.dart）把手册小节作为冻结契约双向校验 · 随本提交入库
+- 2026-10-12 · code_review_report 新增 §E · ECP P1（27ab796）验收交接单 E1–E5：接收器调用方 uid 校验、echo-cmd 布尔 false、失败审计三条必修；9s/60s 超时差、allowBackup 两条可挂账；含位置/修法/验收标准，ECP agent 分支续做 · 随本提交入库
 - 2026-10-11 · engineering_standards 事故 15 / usage-guide §8.6 · 思源 AV 模板列语法误判沉淀为事故（外部工具行为须真实闭环验证才能写结论；裸 `.action{}` 不包 `{{}}`、模板列不能分组、聚合须 select+kanban、导入重生成 ID 不幂等），usage-guide 补思源 MCP 测试纪律（仅用 siyuan-repo/、禁 curl 带 token、strict 两阶段写、不重启不改盘）· 随本提交入库
 - 2026-10-11 · docs 全量清点（v0.9.0+34）· 旧评审报告（v0.5.0 基线）归档到 component-reports/codebase-review-v0.5.0-2026-10-06.md（加只读头），code_review_report.md 重写为当前问题清单（D/G/Q 编号）；current_state 重写为 v0.9 快照（补日记模块/194 测试/真依赖，删 v0.6.x patch 叙述）；architecture 补目录树与 3.12 日记模块契约；usage-guide 补 4.10 日记操作；glossary 加第十节；AGENT.md 文档地图补 diary/ecp · 随本提交入库
 - 2026-10-09 · 新增 .trae/skills/echo-remote-report 技能 · 用户远程/夜间盲跑时移动端 Trae 收不到图片，固化飞书汇报流程：持设备锁截图→img_key→富文本 post 发「Echo 夜间报告」群，录屏/APK 归档云盘 Echo 文件夹附链接，含固定 chat_id/folder_token、幂等键与私聊回退 · 随本提交入库
