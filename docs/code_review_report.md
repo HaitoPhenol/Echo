@@ -436,6 +436,28 @@ P2 工作区）：
   androidx 自带 receiver，无 ECP 组件。
 - 结论：P2 + F2 真机无阻塞项，待维护者复验 F2 代码后可合 main。
 
+**维护者复验结论（2026-10-13）：F2 通过，P2 同意合 main。**
+
+- 代码复核：`ParamSpec.auditRedact` 清单驱动实现与交接要求一致；
+  脱敏集合从 spec.params 派生，PIN 四参数（pin/newPin/newPinConfirm/
+  oldPin）全部挂标，原硬编码集合删除后 PIN 脱敏零回退；N 取 trim
+  后长度、成功/失败共用 `_sanitizeForAudit`；拒绝路径（裁决前 args
+  已解析）同样脱敏。未标记参数（如 id）落字面满足「长度+目标 id」。
+- 测试复核：新增用例覆盖成功/USAGE(N=0)/NOT_FOUND 三审计路径 +
+  未标记对照；维护者独立复跑 format exit 0、analyze 0、
+  **flutter test 271 全绿**；F2 零 android/ 改动，JVM 3/3 延续。
+- 真机独立抽检（MIX 2S，非沿用盲跑自证）：发送
+  `"  MAINTAINER-PROBE-7731  "`（trim 后 21）成功、
+  `"FAIL-PROBE-9988-LITERAL"`（23）NOT_FOUND 失败；sys.audit
+  两条分别 `<redacted:21>` / `<redacted:23>`、id 可见，整份审计
+  JSON 对两特征串 grep 命中 **0**；盲跑历史条目 N=16/22/17 与回执
+  吻合。命令结果信封仍含正文属正常（设计 §6 只约束审计）。
+- 盲跑截图证据核验：f2-01~10 时间戳（23:51–00:01）与回执吻合，
+  读数条真机值（MIX 2S / 33.0°C / 0.1W）、多行首行预览
+  （「多行第一行」）属实；两条观察记录（调试面板本地待处理态、
+  无会话详情 UI）与手册契约一致，不挂账。
+- 验毕测试机已 pm clear（PIN/内存会话清空），ALLOW_BACKUP 仍为 0。
+
 ## 维护规则
 
 - 修复即更新本文件（快通道，governance §4.2）；
