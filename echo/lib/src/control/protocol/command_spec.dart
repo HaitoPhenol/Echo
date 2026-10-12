@@ -91,6 +91,7 @@ class ParamSpec {
     this.required = false,
     this.defaults,
     this.summary = '',
+    this.auditRedact = false,
   });
 
   /// 参数名（`--name` 中的 name）。
@@ -102,11 +103,18 @@ class ParamSpec {
   final Object? defaults;
   final String summary;
 
+  /// 审计脱敏标记：为 true 时总线不把该参数的字面值写入审计流水，
+  /// 只记 `<redacted:N>`（N 为 trim 后的落库长度）。PIN、聊天正文
+  /// 等敏感/隐私内容用此标记，而非在总线硬编码键名——P4 若有新的
+  /// 正文类参数（备注/回复等）直接在清单标注即可，审计层零改动。
+  final bool auditRedact;
+
   Map<String, Object?> toHelp() => {
     'name': name,
     'type': type.wire,
     'required': required,
     if (defaults != null) 'default': defaults,
+    if (auditRedact) 'auditRedact': true,
     'summary': summary,
   };
 }

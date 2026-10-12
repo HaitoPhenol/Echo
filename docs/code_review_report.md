@@ -339,6 +339,73 @@ P2 工作区）：
 - 工作区已 mixed reset 为「相对 9c452a1 的纯语义改动」交回 P2
   agent 组织正式提交（16 改 + 12 新增未跟踪），WIP 保全提交已消解。
 
+### F2（已修复，待维护者复验，2026-10-12）chat.send 正文进入审计，违反设计 §6「正文仅记长度」
+
+**提交**：8b6679f（feat/ecp-p2-controllers）。维护者逐文件语义审查 +
+两名独立子代理交叉验证（2/2 确认）。
+
+**现状证据**：
+
+- [control_bus.dart:39-43](../echo/lib/src/control/control_bus.dart#L39-L43)
+  `auditRedactedParams = {pin, oldPin, newPin}`，只脱敏 PIN 类键；
+- [control_bus.dart:214-231](../echo/lib/src/control/control_bus.dart#L214-L231)
+  `_sanitizeForAudit` 对普通 String：**≤80 字原样保留**、>80 字截
+  前 80 字 + `…(+n)`；
+- [chat_commands.dart:104-130](../echo/lib/src/control/commands/chat_commands.dart#L104-L130)
+  chat.send 为 user(2) 级（≥2 级必入审计，见
+  control_bus.dart:196-197），必填 `text` 即消息正文；
+- 后果：一条「你好」经 adb chat.send 后，`sys.audit` 回读的条目
+  paramSummary.text 为原文全文；长消息留前 80 字。
+- 设计 [ecp-design.md §6](ecp-design.md) 原文：参数摘要「长文本截断、
+  **绝不记录 PIN/正文全文，仅记长度与目标 id**」。PIN 已按长度
+  脱敏，正文没有——P2 是首个携带自由正文的命令，缺口在本批首次
+  实体化。
+
+**定级**：minor（debug-only、内存 200 条环形缓冲、adb/2000 可达），
+但属安全契约缺口，**合 main 前必修**。
+
+**修复要求**：
+
+1. 审计对正文类参数采用与 PIN 同构的「仅长度」策略：为参数增加
+   正文标记（如 `ParamSpec(auditRedact: true)`，在 chat.send 的
+   `text` 上声明；不要只在总线硬编码键名 `text`，未来 P4 播种等
+   可能有别的正文键）；`_sanitizeForAudit` 对标记参数输出
+   `<redacted:N>`（N=trim 前或 trim 后长度需在提交说明写明并与
+   测试一致——建议 trim 后实际落库长度）；
+2. 会话 id 等其他参数照常记录（满足"长度与目标 id"）；
+3. 补测试（control_bus_test 或 chat_commands_test）：chat.send
+   成功/失败两条审计中 paramSummary 不含任何正文字面、仅
+   `<redacted:N>`，N 正确；
+4. 门禁照旧：analyze 0、flutter test 全绿（应 271）、format exit 0；
+   完成后回执本条，维护者复验 → MIX 2S 真机（含多行
+   `--text-stdin`、badge 状态机、console.refresh 与读数条同步、
+   release 无 CTRL 复核）。
+
+**备案（不阻塞）**：8b6679f 提交说明「11 条全部 owner 级」措辞
+有误（实际读 owner1/写 user2，代码与手册 §6–§8 一致），无需改码。
+
+**修复回执（2026-10-12，快通道，待维护者复验）**：
+
+1. `ParamSpec` 新增 `auditRedact: bool = false`（command_spec.dart）：
+   清单驱动脱敏，总线不再硬编码任何键名——原
+   `ControlBus.auditRedactedParams` 静态集合已删除；P4 新正文键只需
+   在清单标注。toHelp 在标记时输出 `auditRedact:true`（附加字段，
+   不影响既有消费方）。
+2. `_sanitizeForAudit(spec, args)` 从 spec.params 派生脱敏集合；
+   标记参数输出 `<redacted:N>`，**N 取 trim 后落库长度**（空白文本
+   N=0，与 store.send 的 trim 语义一致）；成功/失败共用同一方法。
+   chat.send 的 `text` 与 auth 的四个 PIN 参数（pin/newPin/
+   newPinConfirm/oldPin）全部挂标记，PIN 脱敏行为零回退。
+3. 测试：chat_commands_test 新增 1 用例（+1=**271**），单测内覆盖
+   三条审计——发送成功（N=12、ok=true）、未知会话 NOT_FOUND
+   （N=12、ok=false）、空白文本 USAGE（N=0）：id 照常可见，
+   paramSummary 序列化结果不含正文字面；control_bus_test 原 PIN
+   脱敏用例改为清单驱动写法并加「未标记者落字面」对照，另证
+   trim 长度语义（`'  123456  '` → 6 而非 10）。
+4. 门禁：flutter analyze 0；flutter test **271 全绿**；
+   `dart format --set-exit-if-changed lib test` exit 0。
+5. 备案项确认：本修复提交说明按实际级别措辞（读 owner1 / 写 user2）。
+
 ## 维护规则
 
 - 修复即更新本文件（快通道，governance §4.2）；

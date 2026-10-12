@@ -255,7 +255,7 @@ void main() {
       expect(cmds, isNot(contains('r.get')));
     });
 
-    test('PIN 参数脱敏', () async {
+    test('清单标 auditRedact 的参数脱敏（N=trim 后长度）', () async {
       late AuditLog audit;
       final bus =
           ControlBus(
@@ -268,13 +268,18 @@ void main() {
               'w',
               'set',
               ControlLevel.user,
-              params: [ParamSpec('pin', type: ArgType.string)],
+              params: [
+                ParamSpec('pin', type: ArgType.string, auditRedact: true),
+                // 未标记者照常落字面，证明脱敏由清单标记驱动而非键名。
+                ParamSpec('note', type: ArgType.string),
+              ],
             ),
           );
-      await _run(bus, 'w.set', args: {'pin': '123456'});
+      await _run(bus, 'w.set', args: {'pin': '  123456  ', 'note': '明文'});
       final params = audit.list().single.paramSummary;
       expect(params['pin'], isNot(contains('123456')));
-      expect(params['pin'], '<redacted:6>');
+      expect(params['pin'], '<redacted:6>'); // trim 后长度，非原始 10
+      expect(params['note'], '明文');
     });
 
     test('E3：过鉴权后业务失败仍入审计（ok=false + 错误码）', () async {

@@ -100,7 +100,8 @@ final CommandSpec chatOpen = CommandSpec(
 /// `chat.send`：外发一条消息（非幂等；空文本 USAGE）。
 ///
 /// 长文本经脚本 `--text-stdin` 注入，总线只看到合并后的 `text` 键，
-/// 命令层不感知文本来源。
+/// 命令层不感知文本来源。正文在清单上标 auditRedact：审计流水只记
+/// `<redacted:N>`（N 为 trim 后落库长度），成功/失败均不落字面。
 final CommandSpec chatSend = CommandSpec(
   namespace: 'chat',
   verb: 'send',
@@ -115,6 +116,7 @@ final CommandSpec chatSend = CommandSpec(
       type: ArgType.string,
       required: true,
       summary: '消息正文（trim 后不能为空）',
+      auditRedact: true,
     ),
   ],
   handler: (ctx) async {

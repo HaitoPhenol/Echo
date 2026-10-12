@@ -9,7 +9,8 @@ import '../protocol/control_error.dart';
 ///
 /// 安全要点（与设计 §5、§7 一致）：
 /// - PIN 只存在 `--pin` 参数里，通道层负责 stdin 采集；
-///   审计在总线参数脱敏名单内，PIN 永不落日志；
+///   PIN 参数在清单上标 auditRedact，审计只留长度（见 ParamSpec），
+///   PIN 永不落日志；
 /// - `auth.set-pin` 的首次初始化只允许 debug 包经 adb 发起；
 /// - 改 PIN 必须处于当次前台 3 级会话（总线保证解锁与确认语义，
 ///   本命令额外要求旧 PIN）；二次输入 PIN 充当该命令的显式确认。
@@ -37,6 +38,7 @@ List<CommandSpec> buildAuthCommands() => [
         type: ArgType.string,
         required: true,
         summary: 'PIN（stdin）',
+        auditRedact: true,
       ),
     ],
     handler: (ctx) async {
@@ -82,14 +84,21 @@ final CommandSpec authSetPin = CommandSpec(
       type: ArgType.string,
       required: true,
       summary: '新 PIN，4..32 位',
+      auditRedact: true,
     ),
     ParamSpec(
       'newPinConfirm',
       type: ArgType.string,
       required: true,
       summary: '新 PIN 再输一遍',
+      auditRedact: true,
     ),
-    ParamSpec('oldPin', type: ArgType.string, summary: '改 PIN 时必填（首次初始化免）'),
+    ParamSpec(
+      'oldPin',
+      type: ArgType.string,
+      summary: '改 PIN 时必填（首次初始化免）',
+      auditRedact: true,
+    ),
   ],
   handler: (ctx) async {
     final pins = ctx.requireService<PinStore>('PIN 存储');

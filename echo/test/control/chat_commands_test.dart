@@ -174,6 +174,57 @@ void main() {
       expect(h.chatStore.messagesOf('incoming-1').items, hasLength(1));
     });
 
+    test('审计脱敏（F2）：成功与失败审计均不含正文字面，N=trim 后长度', () async {
+      h.chatStore.addIncoming();
+      h.chatStore.markRead('incoming-1');
+
+      // 1) 成功路径：正文带前后空白，N 按 trim 后落库长度（12）。
+      await h.execResult(
+        'chat.send',
+        args: {'id': 'incoming-1', 'text': '  secret-alpha  '},
+      );
+      // 2) 失败路径①：未知会话 NOT_FOUND，正文同样必须脱敏。
+      final notFound = await h.exec(
+        'chat.send',
+        args: {'id': 'ghost', 'text': '  secret-bravo  '},
+      );
+      expect(notFound.ok, isFalse);
+      // 3) 失败路径②：空白文本 USAGE，N=0。
+      final usage = await h.exec(
+        'chat.send',
+        args: {'id': 'incoming-1', 'text': '   '},
+      );
+      expect(usage.ok, isFalse);
+
+      // 三条 chat.send 审计（新→旧）逐条核对：id 可见、正文只剩占位。
+      final entries = h.audit
+          .list(limit: 50)
+          .where((e) => e.cmd == 'chat.send')
+          .toList();
+      expect(entries, hasLength(3));
+      void expectRedacted(
+        Map<String, Object?> params,
+        String n,
+        String literal,
+      ) {
+        expect(params['id'], isNotNull);
+        expect(params['text'], '<redacted:$n>');
+        // 整条 paramSummary 的序列化结果里也不能出现正文字面。
+        expect(params.toString(), isNot(contains(literal)));
+      }
+
+      // 倒序：空白 USAGE（N=0）→ NOT_FOUND（12）→ 成功（12）。
+      expect(entries[0].ok, isFalse);
+      expect(entries[0].errorCode, 'USAGE');
+      expectRedacted(entries[0].paramSummary, '0', 'secret');
+      expect(entries[1].ok, isFalse);
+      expect(entries[1].errorCode, 'NOT_FOUND');
+      expectRedacted(entries[1].paramSummary, '12', 'secret-bravo');
+      expect(entries[2].ok, isTrue);
+      expect(entries[2].errorCode, isNull);
+      expectRedacted(entries[2].paramSummary, '12', 'secret-alpha');
+    });
+
     test('清单标注：chat.send 是唯一非幂等 chat 命令', () async {
       final specs = {for (final s in h.bus.visibleSpecs) s.name: s};
       expect(specs['chat.send']!.idempotent, isFalse);

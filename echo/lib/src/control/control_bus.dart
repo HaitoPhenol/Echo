@@ -35,14 +35,6 @@ class ControlBus implements ControlBusHandle {
   /// 其余未声明参数一律 USAGE（防 typo 静默）。
   static const Set<String> globalFlags = {'format', 'stay', 'timeout'};
 
-  /// 审计时绝不落盘/入日志的参数名（PIN 明文等）。
-  static const Set<String> auditRedactedParams = {
-    'pin',
-    'oldPin',
-    'newPin',
-    'newPinConfirm',
-  };
-
   // ---- 注册 / 发现 -------------------------------------------------------
 
   /// 注册一条命令。重名、debug 风味下的 debug-only 规则在此收口；
@@ -201,7 +193,7 @@ class ControlBus implements ControlBusHandle {
         time: DateTime.now(),
         channel: channel.wire,
         cmd: spec.name,
-        paramSummary: _sanitizeForAudit(args),
+        paramSummary: _sanitizeForAudit(spec, args),
         ok: ok,
         errorCode: error?.code.wire,
         ms: ms,
@@ -209,13 +201,26 @@ class ControlBus implements ControlBusHandle {
     );
   }
 
-  /// 参数摘要：PIN 类键整体抹除，长字符串截断（设计 §6：绝不记录
-  /// PIN / 正文全文，仅记长度与目标 id）。
-  Map<String, Object?> _sanitizeForAudit(Map<String, Object?> args) {
+  /// 参数摘要：清单标注 [ParamSpec.auditRedact] 的键（PIN、聊天正文
+  /// 等）整体抹除，只留 trim 后落库长度；其余长字符串截断
+  /// （设计 §6：绝不记录 PIN / 正文全文，仅记长度与目标 id）。
+  /// 成功与失败路径共用本方法，保证失败审计同样不含字面。
+  Map<String, Object?> _sanitizeForAudit(
+    CommandSpec spec,
+    Map<String, Object?> args,
+  ) {
+    final redacted = {
+      for (final p in spec.params)
+        if (p.auditRedact) p.name,
+    };
     final out = <String, Object?>{};
     for (final entry in args.entries) {
-      if (auditRedactedParams.contains(entry.key)) {
-        out[entry.key] = '<redacted:${(entry.value as String?)?.length ?? 0}>';
+      if (redacted.contains(entry.key)) {
+        final value = entry.value;
+        // N 取 trim 后长度（与 store 落库文本一致；空白文本记 0），
+        // 非字符串（清单上不应出现）防御性记 0。
+        final n = value is String ? value.trim().length : 0;
+        out[entry.key] = '<redacted:$n>';
         continue;
       }
       final value = entry.value;
