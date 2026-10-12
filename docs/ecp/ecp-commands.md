@@ -38,7 +38,9 @@
 
 - 1 级及以下：本地通道直接执行；
 - 2 级：本地通道（slash、adb-debug）直接执行；MCP 禁止；
-- 3 级：必须 `auth.unlock` 在当次前台会话内 + `--confirm` 二次确认。
+- 3 级：必须 `auth.unlock` 在当次前台会话内；其中破坏性命令
+  （prune/reset/seed，标注 `destructive`）另需 `--confirm` 二次确认，
+  非破坏性 3 级（chat.send、auth.set-pin）只需解锁。
 
 ### 1.4 返回
 
@@ -120,10 +122,12 @@
 - 立即销毁当前通道会话，级别回到通道起始值。
 
 ### `auth.set-pin`
-- 类 写 · 级 **3** · 幂等 · 起始 P1
+- 类 写 · 级 **3** · 幂等 · 起始 P1（首装规则 2026-10-13 修订）
 - 两种形态：
-  1. **首次初始化**（设备从未设置 PIN，仅 debug 包、仅 adb 可发起）：
-     免旧 PIN，审计标记 `pin-init`；
+  1. **首次初始化**（设备从未设置 PIN）：**本地通道（adb 与 slash）
+     均可发起，release 包 slash 面板同权**（本地持机用户最高权限，
+     见设计 §5.3），免旧 PIN，审计标记 `pin-init`；MCP 等非本地
+     通道上限 1，物理不可达；
   2. **改 PIN**：须处于已解锁会话，经 stdin 交互给旧+新 PIN；
      slash 走专门设置面板。
 - 新 PIN 规则：4–32 位 `[A-Za-z0-9]`，二次确认一致；只存加盐哈希。
@@ -207,9 +211,10 @@
   压测。返回生成清单。
 
 ### `diary.export`
-- 类 写 · 级 **3**（用户裁定：导出暂定三级）· 幂等 · 起始 P1
+- 类 写 · 级 **2**（2026-10-13 修订：导出是需要工具辅助的正常操作，
+  不再定 3 级；本地通道直放，MCP 仍被通道上限 1 挡住）· 幂等 · 起始 P1
 - 参数：`--notebook <名>`（可选，思源笔记本名，缺省「日记」）、
-  `--year YYYY`（可选，缺省导出全部年份）、`--confirm`（必填）
+  `--year YYYY`（可选，缺省导出全部年份）；**不再需要 `--confirm`**
 - 作用：跳过 UI 直接走 M5 导出服务生成 `.sy.zip`，写入沙盒导出目录。
 - 返回：`{"path":"…","entries":n,"sizeBytes":n,"notebook":"…"}`；
   内容不外带，只回路径。
@@ -242,7 +247,9 @@
 - 错误：`NOT_FOUND`（5）。
 
 ### `chat.send`
-- 类 写 · 级 2 · **非幂等** · 起始 P2
+- 类 写 · 级 **3**（2026-10-13 修订：消息真实发出是外部可见副作用，
+  须当次前台解锁授权；非破坏性，会话内不逐条确认、无需 `--confirm`）
+  · **非幂等** · 起始 P2
 - 参数：`--id`（必填）、`--text`（必填，长文本/多行用
   `--text-stdin` 从标准输入读全文，二者互斥）
 - 返回：发送后的消息对象 `{id,conversationId,text,direction:"out",
@@ -320,16 +327,18 @@ scripts/echo-cmd diary.ensure
 scripts/echo-cmd diary.list --month 2026-10
 scripts/echo-cmd sys.clock.set --reset
 
-# 破坏性命令：解锁（stdin 输入 PIN）+ 二次确认
+# 3 级命令：先解锁（stdin 输入 PIN，会话当次前台有效）
 scripts/echo-cmd auth.unlock
+scripts/echo-cmd chat.send --id incoming-1 --text "会话内发送免再解锁"
+# 破坏性命令另需二次确认：
 scripts/echo-cmd diary.prune --confirm                 # 默认 dry-run 预演
 scripts/echo-cmd diary.prune --confirm --dry-run=false # 真实删除
 
 # 布尔参数三形态等价：--flag / --flag=true / --flag true
 # （confirm/reset 为纯开关，不取值）
 
-# 导出后直接取路径，绕过整个分享 UI
-scripts/echo-cmd diary.export --notebook Echo日记 --confirm
+# 导出为 2 级：无需解锁、无需 --confirm，直接取路径
+scripts/echo-cmd diary.export --notebook Echo日记
 adb pull /data/local/tmp/…  # 实际路径以返回 path 为准（debug 可拉取）
 
 # 机能风读数条：立即刷新（不等 5s 周期）与最近快照

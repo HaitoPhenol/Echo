@@ -60,7 +60,11 @@
 - **Q8 后台返回后搜索 fuse 计时语义**；是否把短延时统一到帧时钟。
 
 已决：Q1 按压色（v0.4.9/10 拍板）、Q7 快捷弧数量（v0.5.4 起数量驱动，
-不再写死 3）、Q9 发布节奏（已走功能优先路线至 v0.9）。
+不再写死 3）、Q9 发布节奏（已走功能优先路线至 v0.9）、
+**Q10 权限模型威胁对象（2026-10-13 拍板）**：不防"临时持机者"，
+防 MCP/内置 agent 自动化通道；本地用户最高权限；chat.send 升 3 级、
+diary.export 降 2 级、本地通道放开 PIN 首装；终端页为未来愿景
+（详见 ecp-design.md §5/§7，P3 交接单 §G）。
 
 ## D. 保护项（无新证据不得改动，迁移自旧报告 §6）
 
@@ -456,7 +460,105 @@ P2 工作区）：
   读数条真机值（MIX 2S / 33.0°C / 0.1W）、多行首行预览
   （「多行第一行」）属实；两条观察记录（调试面板本地待处理态、
   无会话详情 UI）与手册契约一致，不挂账。
-- 验毕测试机已 pm clear（PIN/内存会话清空），ALLOW_BACKUP 仍为 0。
+- 验毕测试机已 pm clear（PIN/文件会话/模拟会话清空），ALLOW_BACKUP 仍为 0。
+
+## G. ECP P3 施工交接单（2026-10-13，分支 feat/ecp-p3-slash-console）
+
+> 设计依据：ecp-design.md §5（2026-10-13 用户裁定修订版）、§7
+> （含终端页愿景）、§10；手册 ecp-commands.md 已同步修订并作为本单
+> 一部分提交。**先读修订后的 §5 再动手。** 本期验收主线：MIX 2S
+> debug+release 双包走查；日常用机 M6 钉 0.10.0，不装机，双真机
+> 第二台走查排 M6 收官后补，不阻塞合 main。
+
+### G0｜权限模型修订（先做，独立提交，先于 UI）
+
+级别语义重定义见设计 §5.1（威胁模型＝自动化通道，本地用户最高
+权限）。代码改动：
+
+1. **`chat.send` 2→3 级**：[chat_commands.dart](../echo/lib/src/control/commands/chat_commands.dart)
+   `level: ControlLevel.user→admin`；**保持非 destructive**（不弹
+   确认卡、不要 --confirm）；summary/手册措辞已改，代码 summary 同步。
+2. **`diary.export` 3→2 级**：[diary_commands.dart:282-289](../echo/lib/src/control/commands/diary_commands.dart#L282)
+   `level: admin→user`、**删除 `destructive: true`**（不再要求
+   --confirm；注意总线 confirm 推导与 help 输出随之变化）；`slow` 保留。
+3. **PIN 首装门禁放开到本地通道**：[auth_commands.dart:112-122](../echo/lib/src/control/commands/auth_commands.dart#L112)
+   删 `buildMode==debug && channel==adb` 条件，改为通道本地性判定——
+   在 `ControlChannel`（[command_spec.dart:42](../echo/lib/src/control/protocol/command_spec.dart#L42)）
+   加 `bool get isLocal`（adb/slash=true，mcp=false；未来新增通道默认
+   false，注释写明），首装条件改为 `ctx.channel.isLocal`；拒绝文案
+   更新（不再提 debug/adb）；`pin-init` 审计条目保留不变。
+4. **测试**（基线 271，只增不减）：
+   - slash/adb 未解锁：`chat.send` → AUTH_REQUIRED(need 3)；解锁会话内
+     连续两次成功（不要求 confirm）；MCP 假通道（start0/max1）任何级别
+     发送均 AUTH_REQUIRED；
+   - `diary.export`：slash/adb 无解锁直接成功且无需 confirm；MCP 拒绝；
+   - pin-init：slash 在 buildMode=release 且未设 PIN 时初始化成功；
+     adb/debug 原路径保持；mcp 拒绝；已设 PIN 后首装路径不可达
+     （走改 PIN 流程）；
+   - 清单一致性测试中 export/chat.send 级别断言同步；3 级命令均标
+     destructive 的既有断言若存在需改为"destructive 子集需 confirm"。
+5. G0 收口：analyze 0 / flutter test 全绿 / format exit 0，**独立
+   一个提交**（`feat(ecp): P3-G0 权限模型修订…`），便于单独复审。
+
+### G1｜slash 控制台核心（`lib/src/control/slash/`，与入口解耦）
+
+- **`ControlConsoleCore`**（ChangeNotifier 风格，与项目既有状态管理
+  一致，不引入框架——保护项 §D.5）：`submitLine(String)` → 行解析 →
+  `bus.execute(channel: ControlChannel.slash, …)` → 信封流（结果历史
+  列表、进行中态、slow 命令 60s 超时态，复用总线超时不另造）；
+  命令历史（↑↓，会话内）。
+- **行解析器**（纯 Dart，重点单测）：`ns.verb --flag --k=v --k v`、
+  引号、尾随 `?`/`--help` 出 man；未知参数 USAGE 的语义与 adb 侧
+  对齐（同一套 CommandSpec，禁止两套校验）。
+- **补全引擎**（纯 Dart）：`visibleSpecs` 驱动三段式
+  （命名空间→动词→参数），带类型提示与摘要；release 下 debugOnly
+  命令注册侧已物理跳过，补全天然不可见，**不要加二次黑白名单**。
+- **结果视图模型**：信封 → 结构化渲染模型（列表成表 / 键值 / JSON
+  文本），JSON 可长按复制；搜索卡片（G2）与未来终端页（愿景见 §7）
+  共用这一个接口。
+- 多行进文本：adb 侧靠 `--text-stdin`，slash 面板需自有方案
+  （如输入区展开/换行手势），在 plan 文档写明，不改变命令参数契约。
+- 测试：解析、补全分段、历史、视图模型、超时态的纯 Dart 单测。
+
+### G2｜搜索栏指令态 UI（最薄注入，禁止顺手重构上帝类）
+
+- 搜索栏首字符 `/` 进指令态（提示符 ⌘/变色、Esc 退回搜索语义）；
+  SmartNavScreen（G1 挂账 1525 行）/search_capsule（G2 挂账 1124 行）
+  **只做注入与浮层承载，不做结构拆分**；
+- 3 级 UX 闭环：AUTH_REQUIRED 信封 → PIN 面板；**从未设 PIN 时引导
+  首装**（两输一致 → set-pin pin-init → 自动 unlock → 原命令自动
+  重放），release 必须走通；已设 PIN → unlock → 重放；
+- destructive 命令（prune/reset/seed）执行前确认卡（回显全名+影响
+  范围）；chat.send 等非破坏性 3 级不弹卡；
+- `nav.goto` 后默认收起指令台，`--stay` 保留；
+- 回前台锁态即时刷新（会话即焚由 AuthManager.attach 兜底，UI 只
+  消费 auth.status，不另造生命周期监听）；
+- widget 测试：指令态进出、补全选择、PIN 首装→重放全链路（假
+  bus/假 AuthManager）、确认卡、↑↓ 历史；release 风味用
+  ControlBuildMode.release 构造补全/注册断言。
+
+### G3｜终端页接缝（留饼，不建页面）
+
+- 不新增页面、不占导航位（现有「终端」页 id=console 不动）；
+- 验收接缝：`ControlConsoleCore` + 渲染接口不 import 任何搜索栏
+  Widget（可写一条静态约束测试或 debug 最小挂载证明第二消费者
+  可挂即可）；正式终端页（裸命令输入/JSON 美化/滚动回溯）另立项。
+
+### G4｜真机（MIX 2S，debug+release 双包）
+
+release 全新安装走完整链路：`/` 指令态 → 3 级命令触发 PIN 引导首装
+→ chat.send 会话内连续发送不重复弹 PIN → 切后台再回来会话已焚、
+需重解 → diary.export 无 PIN 直接成功 → diary.prune 确认卡预演/
+真删 → diary.reset/clock.set 在补全中不出现（debugOnly）。
+release 包 dex/清单无 adb 入口复核（同 P1/P2 六特征串）。验毕
+pm clear。
+
+### 验收总门
+
+analyze 0 / flutter test 全绿 / format exit 0；动了 android/ 才跑
+testDebugUnitTest（本期预期零 android 改动）；语义 diff 交维护者
+终审 → G4 真机 → 合 main 排 **0.12.0+37**。D3 挂账中"Slash 命令
+面板"随本期关闭，日记编辑器 ↑↓ 逐行跳焦留独立小 patch。
 
 ## 维护规则
 
