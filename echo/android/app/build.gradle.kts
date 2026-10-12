@@ -47,3 +47,9 @@ kotlin {
 flutter {
     source = "../.."
 }
+
+dependencies {
+    // ECP 接收器调用方白名单（isCallerTrusted）纯逻辑 JVM 单测，
+    // 位于 testDebug 源集（被测函数仅 debug 源集存在）。
+    testImplementation("junit:junit:4.13.2")
+}

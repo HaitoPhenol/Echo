@@ -144,8 +144,12 @@ class CommandSpec {
     this.destructive = false,
     this.params = const [],
     bool? confirmRequired,
+    // 测试缝：仅单测用来缩短 10s/60s 超时，生产命令一律不传
+    //（生产超时只由 slow 决定，避免命令私自放宽预算）。
+    Duration? timeoutOverride,
   })  : requiresConfirm = confirmRequired ?? level == ControlLevel.admin,
-        timeout = slow ? const Duration(seconds: 60) : const Duration(seconds: 10) {
+        timeout = timeoutOverride ??
+            (slow ? const Duration(seconds: 60) : const Duration(seconds: 10)) {
     if (!controlledVerbs.contains(verb)) {
       throw ArgumentError.value(
         verb,

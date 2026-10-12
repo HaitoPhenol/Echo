@@ -89,6 +89,84 @@ E4–E5 可挂账**（建议同批顺手）。修复在本分支续做，门禁�
 修复完成后请维护者复验 E1–E3 真机项再合 main；E4/E5 若挂账，
 在本表标注「随 P3」或解决版本。
 
+### 修复回执（2026-10-12，快通道，待维护者复验）
+
+- **E1 ✅ 已修（实现方式与交接单有偏差，附实测依据，请复验确认）**：
+  交接单写的 `onReceive` 内 `Binder.getCallingUid()` 在 manifest
+  接收器上**拿不到发送方 uid**——接收器经 ActivityThread 消息派发，
+  已离开 binder 事务，实测恒为本 App uid（MIX 2S / Android 10：
+  `binder=10378 my=10378`，`getSentFromUid()` 为 API 34+，旧机
+  返回 null）。若按原写法，uid 2000 的正常 adb 链路会被全部误杀
+  （装机后实测 echo-cmd 全命令静默丢弃，已实证）。故改为等价且
+  真正生效的两层门禁：①debug 清单接收器声明
+  `android:permission="android.permission.DUMP"`，AMS 派发前用
+  发送方真实 uid 校验（普通三方 App 无法获得 DUMP，root/shell
+  天然持有，`dumpsys package com.android.shell` 实证 granted），
+  未持有者根本不进入 onReceive，等效静默丢弃；②进程内
+  `isCallerTrusted(uid)` 0/2000 白名单保留为纯函数（companion，
+  ROOT_UID=0/SHELL_UID=2000），API 34+ 经 `getSentFromUid()`
+  作二次门禁、身份缺失 fail-closed。JVM 单测
+  testDebug/DebugControlReceiverTrustTest 3 条（0/2000 放行，
+  1000/10001/99999/-1 拒绝）。真机：uid 2000 冷启动→ping/audit
+  全链路通过；release 合并清单无接收器（grep 计数 0）。
+- **E2 ✅ 已修并真机复验通过**：echo-cmd 布尔三形态 `--flag` /
+  `--flag=v` / `--flag v`（v 仅 true/false，第二形态只在**下一
+  token 恰为 true/false** 时吃值，绝不误吃后续 `--xxx`）；
+  `--confirm`/`--reset` 保持纯开关且拒绝 `--confirm=x`；Python
+  侧补 `"false"→False`；手册 §9.1 已更新。解析探针 8 case 全对。
+  MIX 2S 真机（2026-10-12）：`diary.ensure --date 2026-10-10
+  --wait-snapshot=false`（false 实达 handler，审计可查）→
+  `diary.prune --confirm`（单独仍预演 dryRun:true，deleted
+  仅 [2026-10-10]，09-12 有字稿 kept:non-empty）→
+  `--confirm --dry-run=false` **真实删除** dryRun:false/
+  deleted:[2026-10-10] → 空格形态 `--dry-run false` 幂等
+  dryRun:false/deleted:[]；list 复核 10-10 已消失、3 篇既有
+  日记完好。`--keep-seeds=false` 形态经解析探针覆盖，未真机
+  执行 diary.reset（会清空日记域，无安全实测对象）。
+- **E3 ✅ 已修**：control_bus.dart 鉴权后 5 个 catch 分支统一走
+  `failAudited`（stopwatch 停表 + `_auditIfNeeded(ok:false)` +
+  fail 信封）。新增 2 条 control_bus_test：user 级 handler 抛
+  CONFLICT → audit ok:false/errorCode=CONFLICT；admin 级 slow
+  命令超时（CommandSpec 新增仅供测试的 `timeoutOverride` 缝把
+  60s 压到 50ms）→ ok:false/TIMEOUT。
+- **E4 ✅ 文档化**：ecp-design.md §3.2 增补已知限制段（9s vs 60s、
+  TIMEOUT 不取消 Dart 执行、以落盘文件+sys.audit 为准），根治随 P3。
+- **E5 ✅ 已修**：主清单 `android:allowBackup="false"`（附注释：
+  日记导出归档模型 + pin.json 不外泄）。debug 装机 dumpsys flags
+  无 ALLOW_BACKUP；release APK aapt2 xmltree 实证 allowBackup=false。
+
+门禁：flutter analyze 0 issue；flutter test **232** 全绿（基线 230
++E3 两条）；`./gradlew testDebugUnitTest` BUILD SUCCESSFUL（3/3）。
+
+### 维护者复验结论（2026-10-12）
+
+**E1–E5 全部通过，同意合 main。** 复验方式（MIX 2S，全新 debug/release
+包，非沿用 agent 自证）：
+
+- **E1 偏差裁定：接受，且原交接单修法确属错误。** manifest 接收器
+  onReceive 离开 binder 事务、`Binder.getCallingUid()` 恒为自身 uid
+  一点属实（agent 装机实证）；DUMP 方案是对该场景的正确门禁。
+  复验：合并后 debug 清单 aapt2 确认 receiver 带
+  `android:permission="android.permission.DUMP"`；shell uid 2000
+  冷启动→ping 全链路通；JVM 3 测随 gradle BUILD SUCCESSFUL 通过；
+  API34+ 二次门禁代码 fail-closed 正确。
+  **未完成的一项实证（非阻塞）**：run-as 以 App uid 发广播模拟三方
+  App 时，被 MIUI 自家 `am` 包装的 INTERACT_ACROSS_USERS 检查提前
+  拦截，未走到 AMS 的 DUMP 校验，故"无 DUMP 三方 App 被拒"在本机
+  无法用 am 直证；该项以合并清单 + AMS 派发前 permission 强制
+  （平台保证）为据，P2 有条件时用 instrumentation 补一条真负向用例。
+- **E2 通过**：真机三形态实测——`--dry-run` 与 `--dry-run true`
+  预演不删，`--dry-run=false` 与 `--dry-run false` 真实删除
+  （meta+.sy 同删，列表即时变化），`--dry-run=maybe` 退出码 2。
+- **E3 通过**：232 测试含新增两条（CONFLICT/超时入审计）；真机补证
+  已解锁会话内 auth.set-pin 旧 PIN 错误 → 审计出现 ok=false 记录。
+- **E4 通过**：设计 §3.2 限制段准确（9s vs 60s、TIMEOUT 不取消
+  Dart 执行、以落盘+审计为准），根治挂 P3。
+- **E5 通过**：release 合并清单 allowBackup=false；装机 dumpsys
+  flags 已无 ALLOW_BACKUP。
+- release 隔离复验：release dex 无 CTRL 字符串，清单仅 androidx
+  自带 receiver（同 P1 初审）。
+
 ## 维护规则
 
 - 修复即更新本文件（快通道，governance §4.2）；

@@ -25,9 +25,10 @@ readonly RECEIVER="com.everse.echo/.DebugControlReceiver"
 readonly ACTION="com.everse.echo.CTRL"
 readonly MAIN_ACTIVITY="com.everse.echo/.MainActivity"
 
-# 布尔开关名（出现即真，不吃下一个 token）。
+# 布尔参数名（可 --flag / --flag=true|false / --flag true|false）。
+# 注意：confirm 不在此列——它是纯开关，永远不取值。
 readonly BOOL_FLAGS=(
-  confirm dry-run reset keep-seeds wait-snapshot
+  dry-run reset keep-seeds wait-snapshot
 )
 
 ADB_BIN="${ADB:-/home/phenol/Android/Sdk/platform-tools/adb}"
@@ -196,16 +197,45 @@ while [[ $# -gt 0 ]]; do
   token="$1"
   [[ "$token" == --* ]] || die "参数必须以 -- 开头：$token"
   name="${token#--}"
+
+  # --confirm 是纯开关：永远不吃下一个 token，也不接受 =value。
   if [[ "$name" == "confirm" ]]; then
     CONFIRM="true"
     shift
     continue
   fi
-  if is_bool_flag "$name" || [[ $# -eq 1 || "$2" == --* ]]; then
-    # 已知布尔，或最后一个 token，或下一个是新参数：按布尔开关。
-    PAIRS+=("$name=true")
+  [[ "$name" != confirm=* ]] || die "--confirm 是纯开关，不接受取值（需要确认直接加 --confirm）"
+
+  # 形态一：--name=value（显式赋值，布尔只认真/假字面量）。
+  if [[ "$name" == *=* ]]; then
+    bname="${name%%=*}"
+    bval="${name#*=}"
+    if is_bool_flag "$bname"; then
+      [[ "$bval" == "true" || "$bval" == "false" ]] \
+        || die "--$bname 只接受 true/false，收到：$bval"
+    else
+      [[ -n "$bval" ]] || die "--$bname 缺少值"
+    fi
+    PAIRS+=("$bname=$bval")
     shift
+    continue
+  fi
+
+  if is_bool_flag "$name"; then
+    # 形态二：布尔开关 --flag；若下一个 token 恰为 true/false
+    # 则按显式取值吃掉（--flag true|false）；下一个是别的参数
+    # （--xxx）或缺省时一律是纯开关 true（绝不误吃后续参数）。
+    if [[ $# -ge 2 && ( "$2" == "true" || "$2" == "false" ) ]]; then
+      PAIRS+=("$name=$2")
+      shift 2
+    else
+      PAIRS+=("$name=true")
+      shift
+    fi
   else
+    # 取值参数：必须有下一个 token 且不能是另一个 --flag。
+    [[ $# -ge 2 && "$2" != --* ]] \
+      || die "--$name 缺少值（用法：--$name <值>）"
     PAIRS+=("$name=$2")
     shift 2
   fi
@@ -268,6 +298,8 @@ for line in os.environ["PAIR_DATA"].splitlines():
     k = camelize(k)
     if v == "true":
         obj[k] = True
+    elif v == "false":
+        obj[k] = False
     else:
         # 数字形态直接转 int（--limit/--year 等），其余保字符串；
         # 日期/月/时间由总线按清单类型解析。

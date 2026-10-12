@@ -10,11 +10,16 @@
         android:name=".DebugEchoApp"
         tools:replace="android:name">
         <!-- ECP adb 入口：仅 debug 源集注册；release manifest 物理不存在。
-             exported 必须为 true（广播由 shell uid 经 am 发起）；
-             不挂 permission——adb shell（USB 调试）即受信边界。 -->
+             exported 必须为 true（广播由 shell uid 经 am 发起）。
+             E1 发送方门禁：要求持有 DUMP——AMS 在派发前用**发送方真实 uid**
+             校验，普通三方 App 无法获得（signature|privileged|development），
+             root(0)/shell(2000) 天然持有。不能改在 onReceive 里查
+             Binder.getCallingUid()：manifest 接收器经 ActivityThread 消息
+             派发，那时已离开 binder 事务，取到的恒为本 App uid（实测如此）。 -->
         <receiver
             android:name=".DebugControlReceiver"
-            android:exported="true">
+            android:exported="true"
+            android:permission="android.permission.DUMP">
             <intent-filter>
                 <action android:name="com.everse.echo.CTRL"/>
             </intent-filter>

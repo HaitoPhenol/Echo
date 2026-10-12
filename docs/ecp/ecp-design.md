@@ -81,11 +81,27 @@ am broadcast -a com.everse.echo.CTRL --es cmd 'diary.prune' --es args '{...}'
 ```
 
 - 广播 Action 固定 `com.everse.echo.CTRL`；
+- 接收器声明 `android:permission="android.permission.DUMP"`：AMS 在派发前
+  用**发送方真实 uid** 校验，普通三方 App 无法获得该权限，root(0)/shell(2000)
+  天然持有——信任边界是调用方 uid，不是 debuggable 标志。不能在 onReceive
+  里查 `Binder.getCallingUid()`：manifest 接收器经 ActivityThread 消息派发，
+  已离开 binder 事务，取到的恒为本 App 自身 uid（MIX 2S/Android 10 实测
+  10378）。进程内 0/2000 白名单（`isCallerTrusted`，API 34+ 的
+  `getSentFromUid()`）作为二次门禁，单测覆盖白名单判定；
 - `cmd` 为点号全名，`args` 为 JSON 字符串（也接受逐个 `--es` 标量，
   由包装脚本统一转 JSON，人类手工调试更方便）；
 - 执行超时 10s（导出等长命令单独标注 `slow`，上限 60s）；
 - 结果同时回 `resultData`（JSON 信封）与 logcat tag `EchoCtrl`，
   `am broadcast` 部分 ROM 不回显 resultData 时用 logcat 兜底。
+
+> **已知限制（E4，随 P3 事件流/结果轮询根治）**：接收器 `goAsync()`
+> 的系统广播预算约 10s，`DebugControlReceiver` 保守取 **9s**；而总线
+> 侧 slow 命令预算是 **60s**。命令执行超过 9s 时，接收器先回
+> `TIMEOUT`，但 Dart 侧调用**不会被取消**——命令继续执行，产物
+> （如导出 zip）仍可能正常落盘。因此收到 `TIMEOUT` 不代表失败，
+> 判定以**落盘文件/审计流水为准**：`sys.audit` 中该命令的最终
+> `ok/error` 与落盘结果才是结论（P1 实测导出约 80ms，不触发；
+> 日志与审计时间戳可与接收器回包的 nonce 对应）。
 
 ### 3.3 代码布局
 

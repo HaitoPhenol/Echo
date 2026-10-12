@@ -122,6 +122,21 @@ class ControlBus implements ControlBusHandle {
     }
 
     // 3) 执行（超时按清单标注：普通 10s / slow 60s）。
+    // 过鉴权后的执行失败同样入审计（设计 §6：≥2 级调用无论成败都记；
+    // 参数解析/未知命令发生在裁决前，不记）。
+    ControlEnvelope failAudited(ControlException error) {
+      stopwatch.stop();
+      _auditIfNeeded(
+        spec,
+        channel,
+        args,
+        ok: false,
+        error: error,
+        ms: stopwatch.elapsedMilliseconds,
+      );
+      return fail(error);
+    }
+
     final context = CommandContext(
       bus: this,
       channel: channel,
@@ -142,24 +157,24 @@ class ControlBus implements ControlBusHandle {
         nonce: nonce,
       );
     } on ControlException catch (e) {
-      return fail(e);
+      return failAudited(e);
     } on TimeoutException {
-      return fail(ControlException(
+      return failAudited(ControlException(
         ControlErrorCode.timeout,
         '执行超时（${spec.timeout.inSeconds}s）：$cmd',
       ));
     } on ArgumentError catch (e) {
-      return fail(ControlException(
+      return failAudited(ControlException(
         ControlErrorCode.usage,
         e.message?.toString() ?? '参数错误',
       ));
     } on StateError catch (e) {
-      return fail(ControlException(
+      return failAudited(ControlException(
         ControlErrorCode.conflict,
         e.message.toString(),
       ));
     } catch (e) {
-      return fail(ControlException(
+      return failAudited(ControlException(
         ControlErrorCode.business,
         e.toString(),
       ));

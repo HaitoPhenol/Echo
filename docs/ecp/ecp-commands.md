@@ -293,7 +293,11 @@ scripts/echo-cmd sys.clock.set --reset
 
 # 破坏性命令：解锁（stdin 输入 PIN）+ 二次确认
 scripts/echo-cmd auth.unlock
-scripts/echo-cmd diary.prune --confirm
+scripts/echo-cmd diary.prune --confirm                 # 默认 dry-run 预演
+scripts/echo-cmd diary.prune --confirm --dry-run=false # 真实删除
+
+# 布尔参数三形态等价：--flag / --flag=true / --flag true
+# （confirm/reset 为纯开关，不取值）
 
 # 导出后直接取路径，绕过整个分享 UI
 scripts/echo-cmd diary.export --notebook Echo日记 --confirm

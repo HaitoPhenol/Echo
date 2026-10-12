@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:echo/src/control/auth/audit_log.dart';
@@ -255,6 +257,68 @@ void main() {
       final params = audit.list().single.paramSummary;
       expect(params['pin'], isNot(contains('123456')));
       expect(params['pin'], '<redacted:6>');
+    });
+
+    test('E3：过鉴权后业务失败仍入审计（ok=false + 错误码）', () async {
+      late AuditLog audit;
+      final bus = ControlBus(
+        buildMode: ControlBuildMode.debug,
+        services: ControlRegistry(),
+        authorizer: _AllowAll(),
+        auditLog: audit = AuditLog(),
+      )
+        ..register(CommandSpec(
+          namespace: 'w',
+          verb: 'ensure',
+          summary: 't',
+          kind: CommandKind.write,
+          level: ControlLevel.user,
+          // 已通过裁决（_AllowAll），handler 抛业务异常：
+          // 修复前此类失败完全不入审计。
+          handler: (_) async => throw const ControlException(
+            ControlErrorCode.conflict,
+            '该日已归档',
+          ),
+        ));
+
+      final env = await _run(bus, 'w.ensure');
+      expect(env.ok, isFalse);
+      expect(env.error!.code, ControlErrorCode.conflict);
+
+      final entry = audit.list().single;
+      expect(entry.cmd, 'w.ensure');
+      expect(entry.ok, isFalse);
+      expect(entry.errorCode, ControlErrorCode.conflict.wire);
+    });
+
+    test('E3：3 级命令执行超时入审计（ok=false + TIMEOUT）', () async {
+      late AuditLog audit;
+      final bus = ControlBus(
+        buildMode: ControlBuildMode.debug,
+        services: ControlRegistry(),
+        authorizer: _AllowAll(),
+        auditLog: audit = AuditLog(),
+      )
+        ..register(CommandSpec(
+          namespace: 'w',
+          verb: 'reset',
+          summary: 't',
+          kind: CommandKind.lifecycle,
+          level: ControlLevel.admin,
+          slow: true,
+          // 测试缝把 60s 预算压到 50ms，handler 永不完成。
+          timeoutOverride: const Duration(milliseconds: 50),
+          handler: (_) => Completer<void>().future.then((_) => <String, Object?>{}),
+        ));
+
+      final env = await _run(bus, 'w.reset', confirmed: true);
+      expect(env.ok, isFalse);
+      expect(env.error!.code, ControlErrorCode.timeout);
+
+      final entry = audit.list().single;
+      expect(entry.cmd, 'w.reset');
+      expect(entry.ok, isFalse);
+      expect(entry.errorCode, ControlErrorCode.timeout.wire);
     });
   });
 }

@@ -3,6 +3,8 @@ package com.everse.echo
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.os.Binder
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
@@ -21,13 +23,29 @@ import java.util.concurrent.TimeUnit
 ///
 /// 结果经 `setResultData(JSON 信封)` 原样回传（`am broadcast`
 /// 需在 shell uid 下读取 result-data）；同时打到 logcat（tag
-/// EchoCtrl）。接收器本身不做任何鉴权/业务判断。
+/// EchoCtrl）。接收器本身不做任何业务鉴权（命令级鉴权在总线）。
 ///
-/// 不声明任何 permission：shell uid（adb）即受信边界；release 包
-/// 物理不注册本接收器（仅 debug manifest）。
+/// 发送方信任边界是**调用方 uid**（root=0 / shell=2000，即 adb），
+/// 而**不是**包的 debuggable 标志——第三方 App 同样可装在 debug
+/// 包里，debuggable 不构成任何信任。门禁分两层：
+///  1. 清单 `android:permission="android.permission.DUMP"`（主门禁）：
+///     AMS 派发前用发送方真实 uid 校验，普通三方 App 拿不到 DUMP，
+///     未持有者的广播根本不会进入这里（等效静默丢弃）；
+///  2. API 34+ 可用 [getSentFromUid] 在进程内按 0/2000 白名单二次
+///     确认（[isCallerTrusted]），取不到身份时按不信任处理。
+/// 注意：onReceive 经 ActivityThread 消息派发，已离开 binder 事务，
+/// 此时 Binder.getCallingUid() 恒为本 App uid（MIX 2S/Android10 实测
+/// 10378），不能作为发送方判据。release 包物理不注册本接收器。
 class DebugControlReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
+        // API 34+ 进程内二次门禁（主门禁 DUMP 在 AMS 层，见清单）；
+        // 身份缺失（异常）时 fail-closed。
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            val senderUid = runCatching { sentFromUid }.getOrNull()
+                ?: Binder.getCallingUid()
+            if (!isCallerTrusted(senderUid)) return
+        }
         if (intent.action != ACTION) return
 
         val cmd = intent.getStringExtra(EXTRA_CMD)
@@ -157,5 +175,14 @@ class DebugControlReceiver : BroadcastReceiver() {
 
         /// goAsync 预算取保守值：略小于系统 10s 广播窗口。
         private const val RECEIVER_BUDGET_SECONDS = 9L
+
+        // Linux uid：root=0，adb shell=2000（AID_SHELL）。
+        const val ROOT_UID = 0
+        const val SHELL_UID = 2000
+
+        /// 纯判定函数（无 Android 框架依赖，便于 JVM 单测）：
+        /// 仅 root / shell 是 ECP 受信调用方。
+        fun isCallerTrusted(uid: Int): Boolean =
+            uid == ROOT_UID || uid == SHELL_UID
     }
 }
