@@ -406,6 +406,36 @@ P2 工作区）：
    `dart format --set-exit-if-changed lib test` exit 0。
 5. 备案项确认：本修复提交说明按实际级别措辞（读 owner1 / 写 user2）。
 
+**MIX 2S 真机盲跑回执（2026-10-13 00:00–00:10，debug 包全新安装
++ pm clear 首装，echo1 PIN；证据 artifacts/device/f2-*.png，未入库）**：
+
+- 装机：`app-debug.apk`（9bc8053 代码）冷启正常；首装 auth.set-pin
+  经 stdin 文件喂入成功；auth.unlock 至 3 级。
+- console：snapshot/refresh 回真机读数（model "MIX 2S"，tempC
+  32.0→33.0 随时间变化，powerW 真实波动 0.0→0.7W）；refresh 返回
+  新快照；sys.info 同源（0.10.0+35）。refresh 后立即截图，读数条
+  T/P 与快照同帧一致（同一 ConsoleStatsService 驱动，f2-10）。
+- badge 命令矩阵全通：notify→notification；exception→exception；
+  view 清通知但不清异常；resolve 清零；非法 `--page ghost` →
+  USAGE/exit 2。导航胶囊绿/红刻度在 f2-05/f2-03 可见；面板
+  「处理异常」按钮闭环（f2-09）。观察（非缺陷）：console 调试面板
+  的第三按钮由面板本地「待处理」态驱动，命令直写 NavBadgeService
+  的异常只体现在导航刻度——调试夹具与服务的既有分工，契约未承诺同步。
+- chat：模拟 3 会话；list/get（游标=msg-3、hasMore）/mark-read/
+  open 回读全对；多行预览取首行；点按未读行走同一
+  ChatSessionController.open 路径，截图实证绿点消失（f2-05→f2-06）。
+  P2 无会话详情 UI（点按契约即触发已读，与手册 §6 一致）。
+- **F2 真机实证**：`--text` 短消息（N=16）、`--text-stdin` 三行
+  多行（N=22，内部换行完整保留）、未知会话失败（N=17，NOT_FOUND
+  exit 5）；`sys.audit` 三条 paramSummary 均为 `<redacted:N>`、
+  id 照常可见，对整份审计 JSON 扫 `F2SECRET/F2-PLAIN/FAIL-LITERAL`
+  零命中。`--text`/`--text-stdin` 同传 → exit 2 互斥。
+- release 复核（app-release.apk 52.2MB）：dex 对
+  DebugControlReceiver/echo/control/AUTH_REQUIRED/chat.send/
+  badge.notify/console.refresh 六特征串命中全 0；合并清单仅 2 个
+  androidx 自带 receiver，无 ECP 组件。
+- 结论：P2 + F2 真机无阻塞项，待维护者复验 F2 代码后可合 main。
+
 ## 维护规则
 
 - 修复即更新本文件（快通道，governance §4.2）；
