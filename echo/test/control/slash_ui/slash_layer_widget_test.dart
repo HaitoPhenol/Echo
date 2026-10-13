@@ -80,12 +80,19 @@ void main() {
     await tester.pump();
     expect(tc.text, '/diary.');
 
-    // 2) 完整命令提交 → 纯本地拦截的 destructive 确认卡。
-    await tester.enterText(find.byType(TextField), '/diary.prune');
+    // 2) 带参命令提交 → 确认卡，且卡面回显完整原行（删除范围可核对）。
+    await tester.enterText(
+      find.byType(TextField),
+      '/diary.prune --before 2026-10-01',
+    );
     await tester.pump();
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pump();
     expect(find.text('执行 3 级破坏性命令'), findsOneWidget);
+    expect(
+      find.textContaining('diary.prune --before 2026-10-01 --confirm'),
+      findsOneWidget,
+    );
 
     // 3) 确认 → AUTH_REQUIRED → 首装面板（isPinSet 走真实 IO）。
     await tester.runAsync(() async {
@@ -113,9 +120,12 @@ void main() {
 
     // 两条结果卡：原行 AUTH 失败 + 解锁后重放成功（结果流保留全部）。
     expect(find.byType(SlashResultCard), findsNWidgets(2));
-    // 最新一条为成功（成功状态勾）；回显行含重放的 --confirm。
+    // 最新一条为成功（成功状态勾）；回显行含完整参数 + --confirm。
     expect(find.byIcon(Icons.check_circle_outline), findsOneWidget);
-    expect(find.textContaining('diary.prune --confirm'), findsWidgets);
+    expect(
+      find.textContaining('diary.prune --before 2026-10-01 --confirm'),
+      findsWidgets,
+    );
   });
 
   testWidgets('Esc 硬件键退指令态并清空输入', (tester) async {

@@ -313,11 +313,16 @@ class _ConfirmSheet extends StatelessWidget {
             color: const Color(0x0DFFFFFF),
             borderRadius: BorderRadius.circular(8),
           ),
+          // 安全 UX（G2 复审须修项）：必须回显**完整原行 + --confirm**，
+          // 破坏性影响范围全在参数里（如 --before 2026-10-01），只显
+          // 命令名用户无法核对删除范围。长行在等宽块内自然换行。
           child: Text(
-            '${pending.cmd} --confirm',
+            '${pending.line} --confirm',
+            softWrap: true,
             style: const TextStyle(
               color: AppColors.textPrimary,
               fontSize: 12,
+              height: 1.4,
               fontFamily: 'monospace',
             ),
           ),

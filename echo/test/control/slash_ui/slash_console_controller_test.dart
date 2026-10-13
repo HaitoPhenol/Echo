@@ -98,7 +98,7 @@ void main() {
   group('确认卡', () {
     setUp(boot);
 
-    test('diary.prune 无 --confirm 先挂卡（不产生结果条），取消可重挂', () async {
+    test('diary.prune 无 --confirm 先挂卡（不产生结果条），取消即关闭', () async {
       c.bind('/diary.prune');
       await c.submit('/diary.prune');
       expect(c.confirmPending, isNotNull);
@@ -107,7 +107,36 @@ void main() {
 
       c.cancelConfirm();
       expect(c.confirmPending, isNull);
+    });
 
+    test('确认卡挂起的原行保留全部参数（影响范围可核对/可重投）', () async {
+      await c.submit('/diary.prune --before 2026-10-01 --dry-run');
+      final p = c.confirmPending;
+      expect(p, isNotNull);
+      expect(p!.cmd, 'diary.prune');
+      // line 是用户完整原行；确认卡回显与重投都以它为准，不能只剩命令名。
+      expect(p.line, contains('--before 2026-10-01'));
+      expect(p.line, contains('--dry-run'));
+      c.cancelConfirm();
+    });
+
+    test('确认后带参原行 + --confirm 重投（解锁后）', () async {
+      await h.pins.initialize(newPin: '1234', confirmPin: '1234');
+      await h.exec(
+        'auth.unlock',
+        channel: ControlChannel.slash,
+        args: {'pin': '1234'},
+      );
+
+      await c.submit('/diary.prune --before 2026-10-01');
+      expect(c.confirmPending, isNotNull);
+      await c.confirmRun();
+      final replay = c.core.entries.single;
+      expect(replay.ok, isTrue, reason: replay.view.toString());
+      expect(replay.line, '/diary.prune --before 2026-10-01 --confirm');
+    });
+
+    test('确认卡重挂后仍可走 PIN 首装', () async {
       await c.submit('/diary.prune');
       expect(c.confirmPending, isNotNull);
       await c.confirmRun();
