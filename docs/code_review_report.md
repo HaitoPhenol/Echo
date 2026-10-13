@@ -651,6 +651,13 @@ exit 0 / analyze 0 / flutter test 353 全绿（336+17）。**
 `'${pending.line} --confirm'`（长行允许换行/省略号均可），controller
 测试可顺手加一条带参 pending 的断言。
 
+> **已闭合（2026-10-13，提交 71445b0）**：回显改为
+> `${pending.line} --confirm` + softWrap 自然换行；新增 3 条断言
+> （模型层：带参 pending 保真、解锁后带参原行+--confirm 重投；
+> widget 层：卡面与结果回显均含 `--before 2026-10-01`），测试
+> 353→356。维护者独立复跑 format 0 / analyze 0 / flutter test 356
+> 全绿，工作区零污染。G2 复审全部事项关闭。
+
 挂账（不阻塞，终端页立项/后续硬化再议）：
 ① controller `_onCoreChanged` 只认 entries.last：多条 3 级命令快速
 连提且完成乱序时，非最新条的 AUTH/确认不弹面板（错误仍留结果流，
@@ -670,6 +677,24 @@ exit 0 / analyze 0 / flutter test 353 全绿（336+17）。**
 - 验收接缝：`ControlConsoleCore` + 渲染接口不 import 任何搜索栏
   Widget（可写一条静态约束测试或 debug 最小挂载证明第二消费者
   可挂即可）；正式终端页（裸命令输入/JSON 美化/滚动回溯）另立项。
+
+**维护者验收结论（2026-10-13，随 71445b0 复核）：G3 通过，
+P3 代码侧全部完成，进入 G4 真机。**
+
+G3 三条验收项逐条取证：
+1. **不建页面、不占导航位**：G1/G2 文件清单中 nav_destination_specs
+   零改动；现有「终端」页 id=console 未动；G2 仅在既有搜索屏内
+   叠一层 Positioned 浮层，无新路由/导航目的地；
+2. **核心不绑搜索栏**：`lib/src/control/slash/` 全目录唯一 flutter
+   import 是 console_core 的 `package:flutter/foundation.dart`
+   （ChangeNotifier），对 widgets/material/cupertino 与
+   navigation/slash_ui 零依赖；G1 的 slash_seam_test 静态约束
+   （禁 Widget import 正则）在 G2 后仍绿；
+3. **第二消费者可挂**：slash_seam_test 的假终端消费者（纯 Dart
+   类订阅 ChangeNotifier + 独立使用 parser/completion/view 三件套）
+   在 356 全套测试中通过，未来终端页换皮复用路径成立。
+
+无新增代码、无新测试，G3 为纯验收阶段。
 
 ### G4｜真机（MIX 2S，debug+release 双包）
 
