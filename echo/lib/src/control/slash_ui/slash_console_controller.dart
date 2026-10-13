@@ -135,6 +135,25 @@ class SlashConsoleController extends ChangeNotifier {
   bool _active = false;
   bool get active => _active;
 
+  /// 指令台是否应在搜索框失焦时保活。
+  ///
+  /// 触屏 IME 点「完成」提交后会主动 hide 键盘、TextField 随即失焦；
+  /// 宿主的 150ms 失焦定时器在此返回 true 时不得收起面板，否则刚挂上的
+  /// 确认卡/PIN 面板/重放/结果流会被 hostClosed 清空（G4-BUG-1）。
+  ///
+  /// 保活条件：指令态激活中，或存在挂起交互（确认卡/PIN/多行），或
+  /// 本面板会话已产出结果条目。[hostClosed]/[exitSlash] 代表显式退出，
+  /// 退出后普通搜索态失焦仍自动关闭；再输 `/` 激活时闸门重新打开。
+  bool get retainsOnUnfocus =>
+      _active ||
+      _confirm != null ||
+      _pin.visible ||
+      multiline != null ||
+      (!_sessionEnded && core.entries.isNotEmpty);
+
+  /// 本面板会话是否已被显式退出（scrim/返回/导航收起/Esc）。
+  bool _sessionEnded = false;
+
   CompletionResult _completion = CompletionResult.empty;
   CompletionResult get completion => _completion;
 
@@ -148,6 +167,11 @@ class SlashConsoleController extends ChangeNotifier {
     final wasActive = _active;
     // 单独一个 `/` 也算激活：立刻给命名空间候选，输完再退也自然。
     _active = text.startsWith('/');
+    if (_active) {
+      // 新一轮指令态：失焦保活闸门重新打开（上轮显式退出后 results
+      // 仍保留在核心，再输 `/` 时可见）。
+      _sessionEnded = false;
+    }
     if (!_active) {
       _completion = CompletionResult.empty;
       _candidateIndex = -1;
@@ -208,6 +232,9 @@ class SlashConsoleController extends ChangeNotifier {
 
   /// Esc：清空输入、退回搜索语义（结果流保留，再输 `/` 仍可见）。
   void exitSlash() {
+    // Esc 属显式退出：失焦保活闸门随之关闭，退回普通搜索语义后
+    // 失焦仍按 150ms 自动收起（结果条目本身保留在核心）。
+    _sessionEnded = true;
     _writeText('');
     bind('');
   }
@@ -227,6 +254,7 @@ class SlashConsoleController extends ChangeNotifier {
   /// 宿主主动收起搜索面板（点 scrim / 外部退出）：复位确认卡/多行/
   /// PIN 面板与指令态，避免下次打开残留挂起交互。
   void hostClosed() {
+    _sessionEnded = true;
     _confirm = null;
     multiline = null;
     _editingText = '';
@@ -546,9 +574,29 @@ class SlashConsoleController extends ChangeNotifier {
     return true;
   }
 
-  /// Enter：候选展开时应用高亮候选（不提交命令）；否则不消费，
-  /// 交 TextField 的 onSubmitted 正常提交。
-  bool handleEnter() => applySelected();
+  /// Enter：候选展开且应用高亮候选后文本确有变化时补全（不提交）；
+  /// 命令已敲全（应用候选只会补出一个尾随空格）或应用后无变化时
+  /// 不消费，放行给 TextField 的 onSubmitted 正常提交。
+  ///
+  /// 即「敲全命令回车 = 提交」（/sys.ping、/sys ping），
+  /// 「输前缀回车 = 补全」（/sys.pi → /sys.ping ）。
+  bool handleEnter() {
+    if (!_candidatesOpen ||
+        _candidateIndex < 0 ||
+        _candidateIndex >= _completion.candidates.length) {
+      return false;
+    }
+    final candidate = _completion.candidates[_candidateIndex];
+    final next =
+        _editingText.substring(0, _completion.replaceStart) + candidate.insert;
+    // 候选 insert 固定尾随一个空格：忽略该尾随空格后文本相同，说明
+    // 当前 token 已精确等于高亮命令全名，Enter 必须放行提交。
+    if (next == _editingText || next.trimRight() == _editingText.trimRight()) {
+      return false;
+    }
+    applyCandidate(candidate);
+    return true;
+  }
 
   // ---- 文本写回 ---------------------------------------------------------
 

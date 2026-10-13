@@ -1,0 +1,234 @@
+// G4-BUG-1 宿主层回归：整树挂载 SmartNavScreen（经 ControlBootstrap
+// 测试缝接入 ControlHarness 真总线），验证触屏 IME「完成」提交后
+// TextField 失焦的 150ms 定时器不会自毁 slash 指令台，同时钉死
+// 普通搜索态失焦自动关闭与 scrim/BACK/Esc 显式退出不回归。
+//
+// 真机机理（见 docs/code_review_report.md G4）：IME done 触发
+// onSubmitted 后主动 hide 键盘 → 搜索框失焦；widget 测试里以
+// focusNode.unfocus() 显式复现该失焦。
+
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+import 'package:echo/src/app/echo_app.dart';
+import 'package:echo/src/control/bootstrap.dart';
+import 'package:echo/src/control/slash_ui/slash_ui.dart';
+import 'package:echo/src/diary/data/in_memory_diary_repository.dart';
+
+import '../control/control_test_harness.dart';
+
+void main() {
+  late final InMemoryDiaryRepository diaryRepo;
+  setUpAll(() {
+    diaryRepo = InMemoryDiaryRepository(seedDebugData: true);
+    addTearDown(diaryRepo.dispose);
+  });
+
+  late ControlHarness h;
+
+  Future<void> boot(WidgetTester tester) async {
+    await tester.runAsync(() async {
+      h = await ControlHarness.create();
+    });
+    ControlBootstrap.attachTestInstance(
+      registry: h.registry,
+      bus: h.bus,
+      auth: h.auth,
+      paths: h.paths,
+      appState: h.appState,
+      audit: h.audit,
+      consoleStats: h.consoleStats,
+    );
+    addTearDown(ControlBootstrap.detachTestInstance);
+    addTearDown(() => tester.runAsync(h.dispose));
+
+    await tester.pumpWidget(EchoApp(diaryRepository: diaryRepo));
+    await tester.pump();
+  }
+
+  /// 长按胶囊展开搜索并聚焦输入框（与 widget_test.dart 同一几何）。
+  Future<void> openSearch(WidgetTester tester) async {
+    await tester.longPressAt(const Offset(600, 560));
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(find.byType(TextField), findsOneWidget, reason: '搜索已展开');
+    await tester.tapAt(const Offset(500, 560));
+    await tester.pump(const Duration(milliseconds: 100));
+  }
+
+  /// 模拟触屏 IME 提交：重组进入指令态（SlashKeyEvents 包裹输入框）
+  /// 后，widget 测试环境里新 EditableText 不会自动重连 IME 客户端
+  /// （真机软键盘持续输入时连接保持），先 showKeyboard 重挂再发
+  /// 蓝色「完成」动作；done 会同步令输入框失焦。
+  Future<void> imeDone(WidgetTester tester) async {
+    await tester.showKeyboard(find.byType(TextField));
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pump();
+  }
+
+  /// 复现 MIUI IME 点「完成」后的 hide 键盘 → TextField 失焦，
+  /// 并越过 150ms 失焦定时器（再留 50ms 余量）。
+  Future<void> imeDoneThenUnfocus(WidgetTester tester) async {
+    final focusNode = tester
+        .widget<TextField>(find.byType(TextField))
+        .focusNode;
+    expect(focusNode, isNotNull);
+    focusNode!.unfocus();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
+  }
+
+  /// 逐帧推进等待搜索胶囊卸载（最长约 1s）。
+  Future<void> pumpUntilClosed(WidgetTester tester) async {
+    var closed = false;
+    for (var i = 0; i < 64 && !closed; i++) {
+      await tester.pump(const Duration(milliseconds: 16));
+      closed = find.byType(TextField).evaluate().isEmpty;
+    }
+    expect(closed, isTrue, reason: '搜索面板应收起');
+  }
+
+  SlashConsoleController slashOf(WidgetTester tester) => tester
+      .widget<SlashCommandLayer>(find.byType(SlashCommandLayer))
+      .controller;
+
+  testWidgets('提交挂起确认卡后失焦：面板不自毁，确认卡仍在且可点', (tester) async {
+    await boot(tester);
+    await openSearch(tester);
+
+    await tester.enterText(find.byType(TextField), '/diary.prune');
+    await tester.pump();
+    // 触屏唯一提交动作：IME 蓝色「完成」。
+    await imeDone(tester);
+    expect(find.text('执行 3 级破坏性命令'), findsOneWidget);
+    final slash = slashOf(tester);
+    expect(slash.confirmPending, isNotNull);
+
+    await imeDoneThenUnfocus(tester);
+
+    // 150ms 后：面板仍开、确认卡仍挂（旧实现此处已 hostClosed 清空）。
+    expect(find.byType(TextField), findsOneWidget, reason: '失焦不得收起指令台');
+    expect(find.text('执行 3 级破坏性命令'), findsOneWidget);
+    expect(slash.confirmPending, isNotNull);
+    expect(slash.pinSheet.visible, isFalse);
+
+    // 卡片按钮不依赖搜索框焦点：点「取消」即时响应（同步路径）。
+    await tester.tap(find.text('取消'));
+    await tester.pump();
+    expect(slash.confirmPending, isNull);
+    expect(find.text('执行 3 级破坏性命令'), findsNothing);
+    // 取消后指令态仍在，输入框未被关闭。
+    expect(find.byType(TextField), findsOneWidget);
+  });
+
+  testWidgets('提交产生结果流后失焦：面板与结果卡保留', (tester) async {
+    await boot(tester);
+    await openSearch(tester);
+
+    await tester.enterText(find.byType(TextField), '/sys.ping');
+    await tester.pump();
+    await imeDone(tester);
+    // guest 级命令经若干微任务完成。
+    for (var i = 0; i < 20; i++) {
+      await tester.pump(const Duration(milliseconds: 4));
+      if (slashOf(tester).core.entries.isNotEmpty &&
+          slashOf(tester).core.entries.last.ok) {
+        break;
+      }
+    }
+    final slash = slashOf(tester);
+    expect(slash.core.entries, hasLength(1));
+    expect(slash.core.entries.single.ok, isTrue);
+    expect(find.byType(SlashResultCard), findsOneWidget);
+
+    await imeDoneThenUnfocus(tester);
+    expect(find.byType(TextField), findsOneWidget, reason: '结果流回看期失焦不得关闭');
+    expect(find.byType(SlashResultCard), findsOneWidget);
+  });
+
+  testWidgets('普通搜索态失焦：150ms 后仍自动关闭（回归保护）', (tester) async {
+    await boot(tester);
+    await openSearch(tester);
+
+    await tester.enterText(find.byType(TextField), '聊天');
+    await tester.pump();
+    expect(find.text('页面'), findsOneWidget, reason: '普通搜索结果正常');
+    expect(slashOf(tester).active, isFalse);
+
+    final focusNode = tester
+        .widget<TextField>(find.byType(TextField))
+        .focusNode!;
+    focusNode.unfocus();
+    await pumpUntilClosed(tester);
+    expect(find.byType(SlashCommandLayer), findsNothing);
+  });
+
+  testWidgets('显式退出不受保活影响：点 scrim 关闭并清空挂起确认卡', (tester) async {
+    await boot(tester);
+    await openSearch(tester);
+
+    await tester.enterText(find.byType(TextField), '/diary.prune');
+    await tester.pump();
+    await imeDone(tester);
+    final slash = slashOf(tester);
+    expect(slash.confirmPending, isNotNull);
+    await imeDoneThenUnfocus(tester);
+    expect(find.byType(TextField), findsOneWidget, reason: '前置：失焦未关闭');
+
+    // 点 scrim 空白区：显式退出必须穿透保活闸门。
+    await tester.tapAt(const Offset(400, 100));
+    await pumpUntilClosed(tester);
+    expect(slash.confirmPending, isNull, reason: 'hostClosed 清空挂起态');
+  });
+
+  testWidgets('显式退出不受保活影响：系统返回键关闭', (tester) async {
+    await boot(tester);
+    await openSearch(tester);
+
+    await tester.enterText(find.byType(TextField), '/diary.prune');
+    await tester.pump();
+    await imeDone(tester);
+    final slash = slashOf(tester);
+    expect(slash.confirmPending, isNotNull);
+    await imeDoneThenUnfocus(tester);
+    expect(find.byType(TextField), findsOneWidget, reason: '前置：失焦未关闭');
+
+    await tester.binding.handlePopRoute();
+    await pumpUntilClosed(tester);
+    expect(slash.confirmPending, isNull, reason: 'hostClosed 清空挂起态');
+  });
+
+  testWidgets('Esc 显式退出指令态后失焦：不再被结果流保活，面板关闭', (tester) async {
+    await boot(tester);
+    await openSearch(tester);
+
+    await tester.enterText(find.byType(TextField), '/sys.ping');
+    await tester.pump();
+    await imeDone(tester);
+    for (var i = 0; i < 20; i++) {
+      await tester.pump(const Duration(milliseconds: 4));
+      if (slashOf(tester).core.entries.isNotEmpty &&
+          slashOf(tester).core.entries.last.ok) {
+        break;
+      }
+    }
+    final slash = slashOf(tester);
+    expect(slash.active, isTrue);
+
+    // Esc 先显式结束指令会话（键事件需焦点在输入框）。
+    final focusNode = tester
+        .widget<TextField>(find.byType(TextField))
+        .focusNode!;
+    if (!focusNode.hasFocus) {
+      focusNode.requestFocus();
+      await tester.pump();
+    }
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pump();
+    expect(slash.active, isFalse, reason: 'Esc 退出指令态');
+
+    // 旧语义下 entries 非空会一直保活；Esc 已显式结束会话，失焦应关闭。
+    focusNode.unfocus();
+    await pumpUntilClosed(tester);
+  });
+}

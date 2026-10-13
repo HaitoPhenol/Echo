@@ -363,7 +363,13 @@ class _SmartNavScreenState extends State<SmartNavScreen>
       Timer(const Duration(milliseconds: 150), () {
         if (mounted &&
             !_searchFocusNode.hasFocus &&
-            _nav.searchState == SearchState.input) {
+            _nav.searchState == SearchState.input &&
+            // slash 指令态/挂起交互期间不得据此收起：触屏 IME 点
+            // 「完成」提交后会主动 hide 键盘使输入框失焦，此时确认卡/
+            // PIN 面板/重放/结果流刚挂上，收起即被 hostClosed 清空
+            // （G4-BUG-1）。显式退出走 _exitSearch（BACK/scrim/
+            // nav.goto），不经过本定时器；普通搜索态行为不变。
+            !(_slash?.retainsOnUnfocus ?? false)) {
           _nav.closeSearch();
           _resetSearchPanel();
         }

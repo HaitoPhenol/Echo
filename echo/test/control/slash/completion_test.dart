@@ -17,6 +17,14 @@ void main() {
   List<String> labels(String text) =>
       engine.complete(text).candidates.map((c) => c.label).toList();
 
+  /// 按控制器应用候选的同一规则算出应用后的完整文本
+  /// （text.substring(0, replaceStart) + insert）。
+  String applied(String text, String label) {
+    final r = engine.complete(text);
+    final c = r.candidates.firstWhere((c) => c.label == label);
+    return text.substring(0, r.replaceStart) + c.insert;
+  }
+
   group('段一 命名空间', () {
     test('空输入与单独 /：全部 ns，insert 带点号', () {
       for (final text in ['', '/']) {
@@ -60,6 +68,35 @@ void main() {
 
     test('动词含点：sys.clock.', () {
       expect(labels('sys.clock.'), contains('clock.set'));
+    });
+
+    test('点号形态应用候选：insert 保留 ns，完整文本正确（G4-BUG-2）', () {
+      // 不带前导 / 同样从 body 起点替换。
+      expect(applied('diary.l', 'list'), 'diary.list ');
+      expect(applied('/diary.l', 'list'), '/diary.list ');
+      // 动词自身含点：ns 与动词里的点都要保留。
+      expect(applied('/sys.clock.', 'clock.set'), '/sys.clock.set ');
+      // 前缀为空（/diary.）也要拼回 ns。
+      expect(applied('/diary.', 'prune'), '/diary.prune ');
+      expect(applied('/sys.pi', 'ping'), '/sys.ping ');
+    });
+
+    test('空格形态应用候选回归：只替换动词 token，ns 不动', () {
+      expect(applied('/sys pi', 'ping'), '/sys ping ');
+      expect(applied('/diary l', 'list'), '/diary list ');
+    });
+
+    test('精确命令：仍返回唯一候选，但应用结果仅多尾随空格（Enter 应放行）', () {
+      for (final text in ['/sys.ping', 'sys.ping', '/sys ping']) {
+        final r = engine.complete(text);
+        expect(r.segment, CompletionSegment.verb, reason: text);
+        expect(r.candidates.single.label, 'ping', reason: text);
+        // 应用候选只补出尾随空格：控制器据此判定 Enter 不消费。
+        expect(applied(text, 'ping').trimRight(), text, reason: text);
+      }
+
+      // 前缀场景应用后文本确有变化：Enter 仍应消费为补全。
+      expect(applied('/sys.pi', 'ping').trimRight(), isNot('/sys.pi'));
     });
 
     test('hint 带级别与种类', () {

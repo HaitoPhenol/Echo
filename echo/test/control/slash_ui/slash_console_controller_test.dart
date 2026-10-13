@@ -95,6 +95,110 @@ void main() {
     });
   });
 
+  group('G4-BUG-2：点号形态补全与精确命令回车', () {
+    setUp(boot);
+
+    test('点号形态 applySelected/applyCandidate 保留 namespace', () {
+      c.onInputChanged('/sys.pi');
+      expect(c.applySelected(), isTrue);
+      expect(edits.writes.last.text, '/sys.ping ');
+
+      c.onInputChanged('/diary.l');
+      edits.writes.clear();
+      expect(c.applySelected(), isTrue);
+      expect(edits.writes.last.text, '/diary.list ');
+
+      // 动词自身含点：ns 与动词的点都要保留。
+      c.onInputChanged('/sys.clock.');
+      edits.writes.clear();
+      final clockSet = c.completion.candidates.firstWhere(
+        (x) => x.label == 'clock.set',
+      );
+      c.applyCandidate(clockSet);
+      expect(edits.writes.last.text, '/sys.clock.set ');
+    });
+
+    test('空格形态 applySelected 回归：/sys pi → /sys ping ', () {
+      c.onInputChanged('/sys pi');
+      expect(c.applySelected(), isTrue);
+      expect(edits.writes.last.text, '/sys ping ');
+    });
+
+    test('敲全 /sys.ping 时 Enter 不消费、不改文本，放行后正常提交', () async {
+      c.onInputChanged('/sys.ping');
+      edits.writes.clear();
+      expect(c.handleEnter(), isFalse, reason: '精确命令回车必须放行提交');
+      expect(edits.writes, isEmpty, reason: '放行时不得改写输入框');
+      expect(c.completion.segment, CompletionSegment.verb);
+
+      // TextField.onSubmitted 同语义：真提交，结果进流且成功。
+      await c.submit('/sys.ping');
+      expect(c.core.entries, hasLength(1));
+      expect(c.core.entries.single.ok, isTrue);
+      expect(c.core.entries.single.line, '/sys.ping');
+    });
+
+    test('空格形态敲全 /sys ping 时 Enter 同样放行提交', () {
+      c.onInputChanged('/sys ping');
+      edits.writes.clear();
+      expect(c.handleEnter(), isFalse);
+      expect(edits.writes, isEmpty);
+    });
+
+    test('前缀 /sys.pi 时 Enter 仍消费为补全，不产生提交', () {
+      c.onInputChanged('/sys.pi');
+      edits.writes.clear();
+      expect(c.handleEnter(), isTrue);
+      expect(edits.writes.single.text, '/sys.ping ');
+      expect(c.core.entries, isEmpty);
+    });
+  });
+
+  group('G4-BUG-1：失焦保活闸门 retainsOnUnfocus', () {
+    setUp(boot);
+
+    test('指令态/确认卡/结果流保活；hostClosed/exitSlash 后复位', () async {
+      expect(c.retainsOnUnfocus, isFalse, reason: '初始普通态不保活');
+
+      c.bind('/diary.prune');
+      expect(c.retainsOnUnfocus, isTrue, reason: '指令态激活中保活');
+
+      await c.submit('/diary.prune');
+      expect(c.confirmPending, isNotNull);
+      expect(c.retainsOnUnfocus, isTrue, reason: '确认卡挂起保活');
+
+      c.cancelConfirm();
+      expect(c.retainsOnUnfocus, isTrue, reason: '指令态仍激活');
+
+      // 有结果条目后即使退出指令态，本面板会话仍保活（结果可回看）。
+      await c.submit('/sys.ping');
+      expect(c.core.entries, isNotEmpty);
+      c.exitSlash();
+      expect(c.active, isFalse);
+      expect(c.retainsOnUnfocus, isFalse, reason: 'Esc 显式退出后普通搜索失焦应能自动关闭');
+
+      // 再输 / 激活：闸门重新打开，结果流仍可见。
+      c.bind('/');
+      expect(c.retainsOnUnfocus, isTrue);
+
+      // 显式收起（scrim/BACK/nav.goto）：彻底复位。
+      c.hostClosed();
+      expect(c.retainsOnUnfocus, isFalse);
+      expect(c.confirmPending, isNull);
+      expect(c.pinSheet.visible, isFalse);
+      expect(c.multilineOpen, isFalse);
+    });
+
+    test('PIN 面板挂起期间保活', () async {
+      await c.submit('/diary.prune --confirm');
+      await _until(() => c.pinSheet.visible);
+      expect(c.retainsOnUnfocus, isTrue, reason: 'PIN 解锁面板保活');
+      c.cancelPin();
+      c.hostClosed();
+      expect(c.retainsOnUnfocus, isFalse);
+    });
+  });
+
   group('确认卡', () {
     setUp(boot);
 

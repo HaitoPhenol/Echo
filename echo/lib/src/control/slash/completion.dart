@@ -99,6 +99,8 @@ class CompletionEngine {
           nsPrefix: tail.substring(0, dot),
           verbPrefix: tail.substring(dot + 1),
           replaceStart: replaceStart,
+          // 点号形态从 body 起点整段替换，insert 必须自带 ns 前缀。
+          dotForm: true,
         );
       }
       return _namespaces(tail, replaceStart: replaceStart);
@@ -150,6 +152,17 @@ class CompletionEngine {
           replaceStart: replaceStart,
         );
       }
+
+      // 动词已敲全但光标仍停在动词 token 内（`/sys ping`，无尾随
+      // 空白、其后也没有其他 token）：留在动词段给唯一精确候选，
+      // 控制器据此让 Enter 放行提交；补一个空格后即进参数段。
+      if (verbToken != null && tail == verbToken) {
+        return _verbs(
+          nsPrefix: ns,
+          verbPrefix: verbToken,
+          replaceStart: replaceStart,
+        );
+      }
     }
 
     if (spec == null) return CompletionResult.empty;
@@ -190,6 +203,11 @@ class CompletionEngine {
     required String nsPrefix,
     required String verbPrefix,
     required int replaceStart,
+    // 点号形态（/sys.pi）：replaceStart 指向 body 起点，insert 须为
+    // `ns.verb `，否则会吞掉命名空间（/sys.pi 选 ping 曾变成 /ping）。
+    // 动词自身可能含点（sys 命名空间下的 clock.set）。空格形态
+    // （/sys pi）只替换动词 token，insert 仍为 `verb `。
+    bool dotForm = false,
   }) {
     // ns 必须精确：输 `diary.l` 不能把别的 ns 拉进来（调用方保证
     // nsPrefix 非空——空前缀场景在 complete() 已归到命名空间段）。
@@ -197,7 +215,9 @@ class CompletionEngine {
       for (final spec in specs)
         if (spec.namespace == nsPrefix && spec.verb.startsWith(verbPrefix))
           CompletionCandidate(
-            insert: '${spec.verb} ',
+            insert: dotForm
+                ? '${spec.namespace}.${spec.verb} '
+                : '${spec.verb} ',
             label: spec.verb,
             detail: spec.summary,
             hint: '级${spec.level.value} · ${spec.kind.wire}',

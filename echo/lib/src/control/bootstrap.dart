@@ -126,6 +126,38 @@ class ControlBootstrap with WidgetsBindingObserver {
     return bootstrap;
   }
 
+  /// 测试缝：用测试夹具已装配的总线/服务构造实例并置为 [instance]，
+  /// 供读取 `ControlBootstrap.instance` 的宿主（SmartNavScreen）在
+  /// widget 测试中整树挂载。生产路径只走 [init]。
+  @visibleForTesting
+  static ControlBootstrap attachTestInstance({
+    required ControlRegistry registry,
+    required ControlBus bus,
+    required AuthManager auth,
+    required ControlPaths paths,
+    required ControlAppState appState,
+    required AuditLog audit,
+    required ConsoleStatsService consoleStats,
+  }) {
+    final bootstrap = ControlBootstrap._(
+      registry: registry,
+      bus: bus,
+      auth: auth,
+      paths: paths,
+      appState: appState,
+      audit: audit,
+      consoleStats: consoleStats,
+    );
+    instance = bootstrap;
+    return bootstrap;
+  }
+
+  /// 测试缝：摘除测试实例（不触碰观察者/通道，夹具各自 dispose）。
+  @visibleForTesting
+  static void detachTestInstance() {
+    instance = null;
+  }
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     appState.lifecycle = switch (state) {
