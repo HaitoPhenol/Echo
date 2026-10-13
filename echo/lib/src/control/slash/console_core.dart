@@ -80,9 +80,13 @@ class ControlConsoleCore extends ChangeNotifier {
   final ControlBus bus;
   final int historyLimit;
 
+  /// 结果历史（旧→新追加，消费方自行倒序展示），不可变视图。
+  ///
+  /// nit③ 挂账（维护者 2026-10-13）：当前无上限——搜索栏指令态会话
+  /// 期量级有限不致问题；正式终端页立项时再统一制定裁剪/分页策略
+  /// （命令历史 [_history] 限 100、审计环限 200 可参考）。
   final List<ConsoleEntry> _entries = [];
 
-  /// 结果历史（旧→新追加，消费方自行倒序展示），不可变视图。
   late final List<ConsoleEntry> entries = UnmodifiableListView<ConsoleEntry>(
     _entries,
   );
@@ -124,7 +128,7 @@ class ControlConsoleCore extends ChangeNotifier {
         ),
       );
     }
-    _pushHistory(_historyLine(trimmed, inv));
+    _pushHistory(_historyLine(inv));
     return _runInvocation(trimmed, inv);
   }
 
@@ -191,8 +195,8 @@ class ControlConsoleCore extends ChangeNotifier {
     }
 
     inv.args[paramKey] = text;
-    // 历史中该参数按 auditRedact 规则处理（见 _historyLine）。
-    _pushHistory(_historyLine('$trimmed --$param <多行>', inv));
+    // 历史由调用参数重建：全文经 auditRedact 规则截断（见 _historyLine）。
+    _pushHistory(_historyLine(inv));
     return _runInvocation(trimmed, inv);
   }
 
@@ -291,7 +295,7 @@ class ControlConsoleCore extends ChangeNotifier {
   /// 关键隐私规则：清单标 auditRedact 的参数（PIN、聊天正文）不把
   /// 字面留在历史里——遇到第一个即停止重建（其后参数一并省略），
   /// 保证 ↑ 召回的行重跑时不会把正文/PIN 当值再发一次。
-  String _historyLine(String displayLine, ParsedInvocation inv) {
+  String _historyLine(ParsedInvocation inv) {
     final spec = bus.specOf(inv.cmd);
     final redacted = {
       if (spec != null)

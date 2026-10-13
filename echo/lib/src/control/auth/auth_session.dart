@@ -11,7 +11,12 @@ import 'pin_store.dart';
 /// 有效**的内存会话；App 进入后台（paused，含息屏/切应用/锁屏）立即
 /// 销毁全部会话，回前台需重新解锁。连续 5 次 PIN 错误触发冷却，
 /// 30s 起指数退避到 5min。
-class AuthManager extends ControlAuthorizer with WidgetsBindingObserver {
+///
+/// 可监听性：混 [ChangeNotifier]——会话颁发/上锁/被前后台事件焚尽时
+/// 通知。slash 面板（G2）借此即时刷新锁态；UI 不另造生命周期监听，
+/// 前后台焚会话仍只由 [attach] 这一处兜底。
+class AuthManager extends ControlAuthorizer
+    with WidgetsBindingObserver, ChangeNotifier {
   AuthManager({
     required this.pins,
     required this.auditLog,
@@ -47,7 +52,12 @@ class AuthManager extends ControlAuthorizer with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     // Android：切后台/息屏/锁屏均走 paused；inactive 的瞬态不销毁。
-    if (state == AppLifecycleState.paused) expireAllSessions();
+    if (state != AppLifecycleState.paused) return;
+    final hadSessions = _sessions.isNotEmpty;
+    expireAllSessions(); // 有会话时内部已通知并写审计。
+    // 无会话也通知：slash 面板暂存的首装第一遍 PIN 等纯 UI 敏感态
+    // 需要随切后台复位；鉴权状态本身无变化，不写审计。
+    if (!hadSessions) notifyListeners();
   }
 
   /// 通道当前有效级别：有会话取会话级（受通道上限夹取），
@@ -133,6 +143,7 @@ class AuthManager extends ControlAuthorizer with WidgetsBindingObserver {
       _cooldownUntil.remove(channel);
       _sessions[channel] = ControlLevel.admin;
       auditLog.record(_event(channel, 'auth.unlock', true));
+      notifyListeners(); // 锁态即时刷新（面板/未来读数条消费）。
       return null;
     }
 
@@ -155,6 +166,7 @@ class AuthManager extends ControlAuthorizer with WidgetsBindingObserver {
   void lock(ControlChannel channel) {
     if (_sessions.remove(channel) != null) {
       auditLog.record(_event(channel, 'auth.lock', true));
+      notifyListeners();
     }
   }
 
@@ -172,6 +184,8 @@ class AuthManager extends ControlAuthorizer with WidgetsBindingObserver {
         ok: true,
       ),
     );
+    // 回前台前 UI 即知会话没了：PIN 面板清暂存、锁态读数复位。
+    notifyListeners();
   }
 
   /// `auth.status` 的机读视图。

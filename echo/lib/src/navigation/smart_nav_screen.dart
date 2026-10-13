@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../control/bootstrap.dart';
+import '../control/slash_ui/slash_ui.dart';
 import '../diary/data/diary_repository.dart';
 import '../services/chat_session_controller.dart';
 import '../services/chat_store.dart';
@@ -107,6 +108,10 @@ class _SmartNavScreenState extends State<SmartNavScreen>
   // 搜索输入相关
   final FocusNode _searchFocusNode = FocusNode();
   final TextEditingController _searchTextController = TextEditingController();
+
+  /// ECP slash 指令态编排（P3-G2）；widget 测试未走 ControlBootstrap
+  /// 时为 null，搜索栏保持纯搜索行为。
+  SlashConsoleController? _slash;
 
   /// 快捷操作弧组件的 key：用于调用其收起方法（仅快捷弧出现时存在，
   /// 不在冷启动首帧路径上）。
@@ -274,6 +279,14 @@ class _SmartNavScreenState extends State<SmartNavScreen>
         ..set(_chatStore)
         ..set(_chatSession)
         ..set<NavBadgeService>(_badges);
+      // slash 指令态与命令执行同源总线/鉴权；写回输入框与收起面板
+      // 复用搜索栏既有控制器与退出路径，不另开输入入口。
+      _slash = SlashConsoleController(
+        bus: control.bus,
+        auth: control.auth,
+        onEditText: (v) => _searchTextController.value = v,
+        onRequestClose: _exitSearch,
+      );
     }
   }
 
@@ -287,6 +300,7 @@ class _SmartNavScreenState extends State<SmartNavScreen>
     _chatSession.dispose();
     _chatStore.dispose();
     _badges.dispose();
+    _slash?.dispose();
     _searchFocusNode.dispose();
     _searchTextController.dispose();
     super.dispose();
@@ -366,16 +380,23 @@ class _SmartNavScreenState extends State<SmartNavScreen>
     _nav.snapTo(index);
   }
 
-  /// 输入文本变化：实时查询并刷新结果。
+  /// 输入文本变化：实时查询并刷新结果（slash 指令态同步给控制台
+  /// 编排，搜索结果区在指令态不挂载，多算一次开销可忽略）。
   void _handleQueryChanged(String value) {
+    _slash?.onInputChanged(value);
     setState(() {
       _searchQuery = value;
       _searchResults = _searchService.searchAll(value);
     });
   }
 
-  /// 键盘提交搜索：记录到历史（结果已实时展示，无需额外动作）。
+  /// 键盘提交：slash 指令态走控制台（不入搜索历史）；其余记录到
+  /// 搜索历史。
   void _handleSubmitted(String value) {
+    if (_slash?.active ?? false) {
+      _slash!.submit(value);
+      return;
+    }
     if (value.trim().isNotEmpty) {
       _searchHistory.add(value);
     }
@@ -407,6 +428,8 @@ class _SmartNavScreenState extends State<SmartNavScreen>
 
   /// 清空输入框与结果，为下次打开做准备。
   void _resetSearchPanel() {
+    // 同步复位指令态（确认卡/PIN/多行/历史指针），避免残留挂起。
+    _slash?.hostClosed();
     _searchTextController.clear();
     _searchQuery = '';
     _searchResults = const [];
@@ -1307,8 +1330,21 @@ class _SmartNavScreenState extends State<SmartNavScreen>
                     onResultTap: _handleResultTap,
                     onQueryChanged: _handleQueryChanged,
                     onSubmitted: _handleSubmitted,
+                    slashMode: (_slash?.active ?? false) && _nav.isSearching,
+                    slashController: _slash,
                   ),
                 ),
+
+                // -------- slash 指令态浮层（补全/结果/模态卡） --------
+                // 叠在胶囊之上、抽屉与竖单之下；指令态退出时零占位。
+                if (_slash != null && _nav.isSearching)
+                  Positioned(
+                    key: const ValueKey<String>('slash-layer'),
+                    left: 14,
+                    right: 14,
+                    bottom: 16 + safeBottom + DockGeometry.searchHeight + 8,
+                    child: SlashCommandLayer(controller: _slash!),
+                  ),
 
                 // -------- 侧边抽屉（空壳面板 + 遮罩，在胶囊/AI 条之上） --------
                 if (drawerK > 0.001)

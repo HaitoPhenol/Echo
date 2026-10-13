@@ -224,7 +224,9 @@ class CompletionEngine {
       for (final p in spec.params)
         if (!present.contains(p.name) && p.name.startsWith(prefix))
           CompletionCandidate(
-            insert: p.type == ArgType.boolean ? '--${cli(p)} ' : '--${cli(p)} ',
+            // 布尔与取值参数同形：都补 `--name `，布尔不吃值由提交时
+            // 的词法层决定（面板不预塞 true/false）。
+            insert: '--${cli(p)} ',
             label: '--${cli(p)}',
             detail: p.summary,
             hint: '${p.type.wire}${p.required ? '*' : ''}',

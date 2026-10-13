@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../control/slash_ui/slash_ui.dart';
 import '../../services/nav_badge_service.dart';
 import '../../services/search_service.dart';
 import '../../theme/app_colors.dart';
@@ -40,6 +41,8 @@ class SearchCapsule extends StatelessWidget {
     required this.onResultTap,
     required this.onQueryChanged,
     required this.onSubmitted,
+    this.slashMode = false,
+    this.slashController,
   });
 
   final NavPhysicsController controller;
@@ -74,6 +77,15 @@ class SearchCapsule extends StatelessWidget {
   /// 提交搜索（键盘搜索键）。
   final ValueChanged<String> onSubmitted;
 
+  /// ECP P3-G2：当前为 slash 指令态（输入首字符 `/`）。
+  /// 指令态下图标/提示语换肤，且不挂搜索历史/结果建议区（让位给
+  /// SlashCommandLayer 的补全条与结果卡）。
+  final bool slashMode;
+
+  /// 指令态键事件编排（Esc/↑↓/Tab/Enter）；仅 [slashMode] 时包到
+  /// 输入区外层。
+  final SlashConsoleController? slashController;
+
   // 几何事实（边距/高度/圆点/搜索尺寸/宽度规则）统一收在
   // DockGeometry：把手条、AI 条、竖单、抽屉与本组件共用同一来源，
   // 不再通过 GlobalKey 实时取矩形。
@@ -98,20 +110,23 @@ class SearchCapsule extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // 搜索建议区：仅搜索态挂载，开合均带弹入/淡出
-            _PanelEntrance(
-              visible: searching,
-              contentBuilder: (entrance) => Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: hasQuery
-                    ? _ResultsView(results: results, onTap: onResultTap)
-                    : _HistoryChips(
-                        items: historyItems,
-                        entrance: entrance,
-                        onTap: onHistoryTap,
-                      ),
+            // 搜索建议区：仅搜索态挂载，开合均带弹入/淡出。
+            // slash 指令态让位给 SlashCommandLayer（补全条/结果卡/
+            // 模态卡由 smart_nav_screen 叠在胶囊上方）。
+            if (!slashMode)
+              _PanelEntrance(
+                visible: searching,
+                contentBuilder: (entrance) => Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: hasQuery
+                      ? _ResultsView(results: results, onTap: onResultTap)
+                      : _HistoryChips(
+                          items: historyItems,
+                          entrance: entrance,
+                          onTap: onHistoryTap,
+                        ),
+                ),
               ),
-            ),
             // 胶囊区域：导航条始终静止（圆点/滑块/锚点不参与动画），
             // 搜索框作为独立覆盖层在其上方做缩放过渡，盖住导航条。
             _CapsuleMorph(
@@ -389,17 +404,19 @@ class SearchCapsule extends StatelessWidget {
     );
   }
 
-  /// 搜索态内容：放大镜图标 + 文本输入框。
+  /// 搜索态内容：放大镜（slash 指令态换终端符）+ 文本输入框。
   Widget _searchContent() {
     final isInput = controller.searchState == SearchState.input;
-    return Padding(
+    final field = Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Row(
         children: [
           Icon(
-            Icons.search,
+            slashMode ? Icons.terminal : Icons.search,
             size: 18,
-            color: isInput ? AppColors.accentBlue : AppColors.textMuted,
+            color: slashMode || isInput
+                ? AppColors.accentBlue
+                : AppColors.textMuted,
           ),
           const SizedBox(width: 10),
           Expanded(
@@ -408,23 +425,34 @@ class SearchCapsule extends StatelessWidget {
               focusNode: focusNode,
               onChanged: onQueryChanged,
               onSubmitted: onSubmitted,
-              style: const TextStyle(
-                color: AppColors.textPrimary,
+              style: TextStyle(
+                color: slashMode ? AppColors.accentBlue : AppColors.textPrimary,
                 fontSize: 16,
               ),
               cursorColor: AppColors.accentBlue,
-              textInputAction: TextInputAction.search,
-              decoration: const InputDecoration(
+              // 指令态用回车（多行命令语义），搜索态保持键盘搜索键。
+              textInputAction: slashMode
+                  ? TextInputAction.done
+                  : TextInputAction.search,
+              decoration: InputDecoration(
                 isCollapsed: true,
                 border: InputBorder.none,
-                hintText: '搜索页面、联系人、文件…',
-                hintStyle: TextStyle(color: Color(0xFF5A646E)),
+                hintText: slashMode
+                    ? '输入命令 · 尾随 ? 看 man · ↑↓ 历史'
+                    : '搜索页面、联系人、文件…',
+                hintStyle: const TextStyle(color: Color(0xFF5A646E)),
               ),
             ),
           ),
         ],
       ),
     );
+    // slash 键事件（Esc/↑↓/Tab/Enter 补全）只在指令态包一层；
+    // 搜索态行为零变化。
+    if (slashMode && slashController != null) {
+      return SlashKeyEvents(controller: slashController!, child: field);
+    }
+    return field;
   }
 }
 
