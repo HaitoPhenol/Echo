@@ -24,6 +24,25 @@
 | `--stay` | 开关 | 仅 slash：可视命令执行后不收起指令台 |
 | `--timeout` | 秒 | 覆盖默认超时（最长 60s） |
 
+**slash 行语法**（P3-G1 起；adb 仍只收 JSON，本节约束面板输入）：
+
+- 前导 `/` 可有可无；`ns.verb` 与 `/ns verb` 两种形态等价
+  （`diary.list --limit 5` = `/diary list --limit 5`）；
+- `--k=v` 与 `--k v` 等价；布尔参数是否吃下一个 token 由命令清单
+  决定（`--flag` 出现即真，`--flag=true|false` 显式给值），不存在
+  独立的布尔名单；
+- 单/双引号包裹的值可含空格、`--` 与真实换行（行内粘贴多行）；
+  不做 shell 转义与变量展开；未加引号的独立 `?` 永远是「尾随帮助」，
+  不是参数值；
+- 尾随 `?`（`diary.list?`、`/diary list ?`）或 `--help` 不执行命令，
+  出该命令的 man（等价 `sys.help --command`）；
+- 参数名 kebab-case 与 camelCase 同源（`--keep-seeds` =
+  `--keepSeeds`）；
+- 会话内 ↑↓ 召回历史；清单标 auditRedact 的参数（PIN、聊天正文）
+  不留在历史字面中——历史行截到该参数之前，召回需重新输入；
+- 多行进文本除引号粘贴外，输入区可展开为多行编辑（正文经普通
+  string 参数提交，参数契约不变；与 adb `--text-stdin` 同源互斥语义）。
+
 ### 1.2 日期与时间参数
 
 - 日期：`YYYY-MM-DD`（如 `2026-10-11`），按 04:00 日记日语义解释；
