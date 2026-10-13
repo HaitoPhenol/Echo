@@ -906,8 +906,51 @@ pm clear。
 - 备注：真机观察 PIN【确定】首次触摸偶有数秒系统派发延迟（迟到后
   正确执行、零误触），物理 ENTER 即时，判定为 MIUI/豆包 IME 注入
   时序现象，非本缺陷，挂账观察。
-- **G4-BUG-3 终审：通过。** release 包 R3 全链路（含本修复）待
-  全新装复验后补结论。
+- **G4-BUG-3 终审：通过。**
+
+**R3 release 全新装全链路终审（2026-10-14 凌晨，执行者操作 +
+维护者抽查复核）：G4 整体通过，无阻断缺陷。**
+
+- 包体：app-release.apk 53,060,726B（01:29 构建，含 51f7771）；
+  设备 flags `HAS_CODE ALLOW_CLEAR_USER_DATA`（无 DEBUGGABLE）。
+- R3-1 BUG-2 点号形态：`/diary.` 恰 5 动词无 reset，点选不吞
+  namespace；`/sys.ping` 物理回车正确执行（alive=true）。
+- R3-2 BUG-3 release 复测：确认卡直接贴底，红钮实测中心
+  (884,1887) 一点即中进 PIN 卡（r3-2-confirm-card 等）；
+  补帧修复在 release 渲染通道同样有效。
+- R3-3 同会话不重复 PIN：解锁后后续 3 级命令不再弹 PIN
+  （chat.send 返回业务错误 NOT_FOUND、prune 直接 dryRun 执行，
+  均非 AUTH_REQUIRED——鉴权闸门放行语义成立）。
+- R3-4 HOME 焚会话：后台 3s 回前台再发 3 级命令，AUTH_REQUIRED
+  + PIN 卡重弹；解锁后排队命令自动续跑。
+- R3-5 diary.export（2 级）免 PIN 直跑，输出
+  exports/日记-all-*.sy.zip，entries=3；无分享面板（符合
+  「export 不分享」裁定）。
+- R3-6 prune 预演/真删：dryRun=true 时 deleted=[] kept=2
+  (non-empty)；--dry-run=false --confirm 真删模式链路通；
+  cutoff=2026-10-13（04:00 日界正确，凌晨 2 点属 13 日），
+  种子均非空/不早于 cutoff，故 deleted=[] 属数据所限非缺陷。
+- R3-7 全新装 PIN：两输一致(1234/1234)设置完成并自动继续原
+  命令；不一致(1234/4321)红字「两次输入不一致，请重新设置」
+  回退首步、PIN 不落地、命令不执行。
+- R3-8 静态复核（维护者独立复跑 unzip+strings）：classes*.dex
+  六串全 0（DebugControlReceiver/echo/control/AUTH_REQUIRED/
+  chat.send/badge.notify/console.refresh）；window_insets 0
+  （四修删除的原生通道无残留，dex 与 libapp.so 均 0）；
+  libapp.so clock.set 仍 1 次（既有挂账，注册侧不可达）；
+  清单仅 MainActivity/ShareFileProvider/SharePlusPendingIntent/
+  androidx 两项。
+- R3-9 普通搜索提交正常，无 slash 面板/补帧干扰，logcat 干净。
+- 挂账（非阻断）：① PIN【确定】首次触摸在 release 亦有 2-4s
+  MIUI/豆包派发延迟，迟到后正确执行、零误触，物理 ENTER 即时；
+  ② release ChatStore 纯内存且 incoming 注入为 debug-only，
+  chat.send 成功路径 release 无法端到端构造（返回 NOT_FOUND），
+  鉴权会话语义已用「第二、三条 3 级命令免重解」实证。
+- 收尾：pm clear、show_taps=0、IME 豆包；证据 artifacts/r3-*.png。
+
+**G4 结论：三个阻断缺陷（BUG-1/2/3）全部修复并经 debug +
+release 真机验收通过，可随 feat/ecp-p3-slash-console 合 main
+排 0.12.0+37（合并/打 tag/推送待用户发话）。**
 
 ### 验收总门
 
