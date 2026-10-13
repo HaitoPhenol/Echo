@@ -606,6 +606,64 @@ P2 工作区）：
   bus/假 AuthManager）、确认卡、↑↓ 历史；release 风味用
   ControlBuildMode.release 构造补全/注册断言。
 
+**维护者复审结论（2026-10-13，提交 ca1cfdd）：G2 代码质量通过；
+1 个一行安全 UX 项须在 G3 前修掉，其余挂账。门禁独立复跑 format
+exit 0 / analyze 0 / flutter test 353 全绿（336+17）。**
+
+注入纪律亲核（本轮审查头号约束）：
+- smart_nav_screen 仅 +40 行：字段/装配/dispose/onChanged 与
+  onSubmitted 分流/reset 调 hostClosed/一层 Positioned 浮层，
+  1500+ 行上帝类零重构；未走 ControlBootstrap 的路径 `_slash==null`
+  自动降级纯搜索（widget 测试与既有页面测试因此零改动）；
+- search_capsule 仅 +74 行：两个新字段（默认关）、建议区
+  `if (!slashMode)` 让位、终端符/提示语/回车键，键事件只在
+  slash 态包一层——搜索态路径字节级等价；
+- slash_ui/ 与 slash/ 分层正确：核心零 Widget 红线由 G1
+  slash_seam_test 继续钉（本轮未松动），G3 无新代码面。
+
+3 级闭环逐跳亲核（真 bus + release 风味测试佐证，非自报）：
+- chat.send spec = admin + 显式 `confirmRequired: false`
+  （[chat_commands.dart:114-117](../echo/lib/src/control/commands/chat_commands.dart#L114-L117)），
+  预判不挂卡、解锁即连发，与 Q10 裁定一致；slash 通道 start=user(2)
+  /max=admin(3)，mcp guest(1)/owner(2) 物理挡死写级别；
+- set-pin 首装不死锁：总线 check 对 `auth.set-pin` 显式特判放行
+  （[auth_session.dart:82](../echo/lib/src/control/auth/auth_session.dart#L82)），
+  handler 内双路径自裁——未设 PIN 要求 `channel.isLocal`
+  （=adb||slash，注释钉死未来网络通道必须 false），改 PIN 要求
+  解锁会话 + oldPin；release slash 首装全链路有测试（两输/不一致
+  回退/落盘 verifyPin/slash 会话颁发）；
+- 重放行严谨：确认卡路径追加 ` --confirm` 词法重投，解锁后重放
+  不再撞 CONFIRM；CONFIRM_REQUIRED 信封有兜底补卡；错 PIN 原地
+  重试、冷却剩余秒在结果卡呈现；cancelPin 不留重放；
+- nav.goto 收起四分支齐（成功收/--stay 不收/失败不收/`?` 帮助
+  不收），helpIntent 判断正确（改道后 entry.cmd 保留被查名）；
+- 焚会话联动正确：expire 有会话才写审计+通知，paused 无会话补
+  一次纯 UI 通知（不写审计）→ 首装第一遍暂存随切后台清空，有
+  测试；unlock/lock 通知点对称；busy 期间不被通知打断。
+- G1 三 nit 已清（死三元/无用形参/entries 挂账注释落在 core）。
+
+**须修（G3 前，一行级）：确认卡回显丢原参数。**
+[slash_sheets.dart:317](../echo/lib/src/control/slash_ui/slash_sheets.dart#L317)
+显示 `'${pending.cmd} --confirm'`，而 PendingConfirm.line 带着用户
+完整原行——`diary.prune --before 2026-10-01` 在卡上只剩
+`diary.prune --confirm`，**用户核对不到删除范围**（summary 只是
+一句话描述）。破坏性命令的影响范围恰恰全在参数里。改为回显
+`'${pending.line} --confirm'`（长行允许换行/省略号均可），controller
+测试可顺手加一条带参 pending 的断言。
+
+挂账（不阻塞，终端页立项/后续硬化再议）：
+① controller `_onCoreChanged` 只认 entries.last：多条 3 级命令快速
+连提且完成乱序时，非最新条的 AUTH/确认不弹面板（错误仍留结果流，
+可 ↑ 召回重试；AUTH 为总线同步裁决，实际难触发）；
+② paused 与在飞 unlock 的微秒级竞态理论上可在后台颁发短命会话，
+需要 resume 复核或在飞取消，本期窗口极小且 G4 不可稳定复现；
+③ 纯触屏无 Esc/↑↓：Esc 有清空首字符与点 scrim 兜底，命令历史无
+触屏入口（手册已诚实写明"物理键盘 ↑↓"），G4 真机记录触屏体验，
+随终端页正式立项解决；
+④ 指令态仍照跑 searchAll 一次（结果区不挂载、无泄漏，注释自承，
+可忽略）。多行正文撞 AUTH 不重放（需重新展开提交）是**有意设计
+且测试钉死**——避免敏感正文二次发送，符合安全优先，不是缺陷。
+
 ### G3｜终端页接缝（留饼，不建页面）
 
 - 不新增页面、不占导航位（现有「终端」页 id=console 不动）；
