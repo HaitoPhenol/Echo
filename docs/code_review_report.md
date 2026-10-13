@@ -550,6 +550,45 @@ P2 工作区）：
   （如输入区展开/换行手势），在 plan 文档写明，不改变命令参数契约。
 - 测试：解析、补全分段、历史、视图模型、超时态的纯 Dart 单测。
 
+**维护者复审结论（2026-10-13，提交 43ff0c9）：G1 通过，可进 G2。**
+
+五件套（line_parser/completion/result_view/console_core + barrel）
+逐文件通读，关键安全/契约点亲核：
+
+- **校验不双轨**：解析器只管词法/形状，值一律 String 入 Map，类型/
+  必填/未知参数/鉴权仍只由总线裁决（合成 USAGE 仅限引号未闭合、
+  裸位置参数等词法错），与交接单一致；布尔名单从 spec.params 派生
+  +confirm/stay/help 三个全局开关，无硬编码业务名单。
+- **help 改道正确**：`?`/`--help` 统一改走 `sys.help --command`，
+  entry.cmd 保留被查命令；0 级在 slash 起始 2 级内直放；release 下
+  查 debug-only 命令自然"不存在"，无风味泄漏。
+- **历史脱敏截断**：遇 auditRedact 参数即停止重建（不留占位符防
+  召回重发），且历史在执行前写入——鉴权被拒的行同样安全，有测试
+  钉死（secret-alpha / text 在 id 前两 case）。
+- **超时不自造**：慢命令经真 bus + timeoutOverride 验证 TIMEOUT
+  视图，Core 无 Timer；dispose 后在飞调用静默不通知。
+- **G3 接缝双保险**：源码正则禁 Widget import + 假第二消费者纯
+  Dart 挂载（notifies≥2、KeyValueView 回填）均有测试，核心确实
+  可被未来终端页独立复用。
+- **补全 release 裁剪**：引擎只吃 visibleSpecs，debug-only 物理
+  不可见有 release 风味测试；--confirm 仅 requiresConfirm 命令出现
+  （chat.send 不出现）有断言。
+- 多行 submitMultiline 互斥/string 类型/未知命令/换行保留四 case
+  齐全；手册 §1.1 行语法契约与实现逐条一致。
+- **门禁独立复跑**：format exit 0 / analyze 0 / **flutter test 336
+  全绿**（275+61）；零 android/、零 UI 装配，范围与交接单相符。
+
+**Nit（不阻塞，建议 G2 顺手清，不单开提交）**：
+① [completion.dart:227](../echo/lib/src/control/slash/completion.dart#L227)
+布尔三元两分支完全相同，是死表达式，直接用 `'--${cli(p)} '`；
+② [console_core.dart](../echo/lib/src/control/slash/console_core.dart)
+`_historyLine(displayLine, inv)` 的 displayLine 形参函数体从未使用
+（submitMultiline 传的 `… <多行>` 是无效参数），删形参；
+③ entries 结果流无上限（history 有 100、audit 有 200），搜索栏
+会话期量级有限不致问题，终端页正式立项时定裁剪/分页策略，此处挂账。
+
+真机不涉及（零 UI 装配），G1 无实证项；行为全部在 G4 随 UI 走查。
+
 ### G2｜搜索栏指令态 UI（最薄注入，禁止顺手重构上帝类）
 
 - 搜索栏首字符 `/` 进指令态（提示符 ⌘/变色、Esc 退回搜索语义）；
