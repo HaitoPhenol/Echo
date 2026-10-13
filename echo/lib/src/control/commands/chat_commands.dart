@@ -97,7 +97,11 @@ final CommandSpec chatOpen = CommandSpec(
   },
 );
 
-/// `chat.send`：外发一条消息（非幂等；空文本 USAGE）。
+/// `chat.send`：外发一条消息（3 级；非幂等；空文本 USAGE）。
+///
+/// 定级（2026-10-13 修订，设计 §5.1）：消息真实发出是外部可见、不可
+/// 撤回的副作用，故为 admin 级须当次前台解锁会话；但**非破坏性**，
+/// 会话内连续发送不逐条要 --confirm（显式 confirmRequired:false）。
 ///
 /// 长文本经脚本 `--text-stdin` 注入，总线只看到合并后的 `text` 键，
 /// 命令层不感知文本来源。正文在清单上标 auditRedact：审计流水只记
@@ -105,10 +109,12 @@ final CommandSpec chatOpen = CommandSpec(
 final CommandSpec chatSend = CommandSpec(
   namespace: 'chat',
   verb: 'send',
-  summary: '向指定会话外发一条消息（非幂等）',
+  summary: '向指定会话外发一条消息（需解锁会话；非幂等）',
   kind: CommandKind.write,
-  level: ControlLevel.user,
+  level: ControlLevel.admin,
   idempotent: false,
+  // 3 级但非破坏性：解锁会话即可，不弹确认卡/不要 --confirm。
+  confirmRequired: false,
   params: [
     ParamSpec('id', type: ArgType.string, required: true, summary: '会话 id'),
     ParamSpec(

@@ -279,13 +279,16 @@ final CommandSpec diaryReset = CommandSpec(
 ///
 /// 慢命令（60s 上限）；不迁状态（markExported 是人工确认分享成功后的
 /// UI 流程，不在命令范围），故导出物可重复生成。
+///
+/// 定级（2026-10-13 修订，设计 §5.1）：数据导出是「需要工具辅助的
+/// 正常操作」而非攻击面，降为 user 级——本地通道直放、不要
+/// --confirm；MCP 通道上限 1 仍物理挡住自动化导出。非破坏性。
 final CommandSpec diaryExport = CommandSpec(
   namespace: 'diary',
   verb: 'export',
   summary: '打包 draft 日记为思源 .sy.zip（不分享、不迁状态）',
   kind: CommandKind.write,
-  level: ControlLevel.admin,
-  destructive: true, // 数据外带按破坏级对待：解锁 + --confirm。
+  level: ControlLevel.user,
   slow: true,
   params: [
     ParamSpec('notebook', type: ArgType.string, summary: '思源笔记本名，缺省固定「日记」'),

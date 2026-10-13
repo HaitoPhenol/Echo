@@ -135,6 +135,65 @@ void main() {
   });
 
   group('chat.send', () {
+    setUp(() async {
+      // G0（2026-10-13）：chat.send 升 3 级。组内 adb/slash 调用统一
+      // 预置「当次前台已解锁会话」；锁态/提权用例内部自行 lock 验证。
+      await h.execResult(
+        'auth.set-pin',
+        args: {'newPin': 'echo1', 'newPinConfirm': 'echo1'},
+      );
+      await h.execResult('auth.unlock', args: {'pin': 'echo1'});
+    });
+
+    test('G0 级别 3：未解锁 adb/slash → AUTH_REQUIRED(need 3)；'
+        '解锁后会话内连发免 --confirm；mcp 恒拒', () async {
+      h.chatStore.addIncoming();
+      h.auth.lock(ControlChannel.adb);
+
+      // 1) 本地两通道未解锁：need=3 的提权错误（不是 confirmRequired）。
+      for (final ch in [ControlChannel.adb, ControlChannel.slash]) {
+        final denied = await h.exec(
+          'chat.send',
+          channel: ch,
+          args: {'id': 'incoming-1', 'text': 'x'},
+        );
+        expect(denied.ok, isFalse, reason: ch.wire);
+        expect(denied.error!.code, ControlErrorCode.authRequired);
+        expect(denied.error!.need, 3);
+        expect(denied.error!.elevate, 'auth.unlock');
+      }
+
+      // 2) MCP 上限 1：无论任何会话状态，3 级发送物理不可达。
+      final mcpDenied = await h.exec(
+        'chat.send',
+        channel: ControlChannel.mcp,
+        args: {'id': 'incoming-1', 'text': 'x'},
+      );
+      expect(mcpDenied.error!.code, ControlErrorCode.authRequired);
+
+      // 3) 两通道分别解锁（会话按通道独立持有），confirmed 保持默认
+      //    false：非破坏性 3 级会话内连发，不逐条要 --confirm。
+      await h.execResult('auth.unlock', args: {'pin': 'echo1'});
+      await h.execResult(
+        'auth.unlock',
+        channel: ControlChannel.slash,
+        args: {'pin': 'echo1'},
+      );
+      final r1 = await h.exec(
+        'chat.send',
+        args: {'id': 'incoming-1', 'text': '第一封'},
+      );
+      final r2 = await h.exec(
+        'chat.send',
+        channel: ControlChannel.slash,
+        args: {'id': 'incoming-1', 'text': '第二封'},
+      );
+      expect(r1.ok, isTrue);
+      expect(r2.ok, isTrue);
+      // 1 条 incoming + 2 条 outgoing 全部落库；被拒的 3 次零污染。
+      expect(h.chatStore.messagesOf('incoming-1').items, hasLength(3));
+    });
+
     test('成功：返回消息对象，会话 preview/未读状态不变', () async {
       h.chatStore.addIncoming();
       h.chatStore.markRead('incoming-1');
@@ -225,9 +284,14 @@ void main() {
       expectRedacted(entries[2].paramSummary, '12', 'secret-alpha');
     });
 
-    test('清单标注：chat.send 是唯一非幂等 chat 命令', () async {
+    test('清单标注：chat.send 3 级非破坏（免 confirm）、唯一非幂等', () async {
       final specs = {for (final s in h.bus.visibleSpecs) s.name: s};
-      expect(specs['chat.send']!.idempotent, isFalse);
+      final send = specs['chat.send']!;
+      expect(send.idempotent, isFalse);
+      // G0：3 级但非破坏性——解锁即可，不弹确认卡/不要 --confirm。
+      expect(send.level, ControlLevel.admin);
+      expect(send.destructive, isFalse);
+      expect(send.requiresConfirm, isFalse);
       for (final name in [
         'chat.list',
         'chat.get',

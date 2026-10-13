@@ -121,7 +121,8 @@ class AuthManager extends ControlAuthorizer with WidgetsBindingObserver {
         channel,
         const ControlException(
           ControlErrorCode.pinNotSet,
-          '尚未设置 PIN；debug 包可经 adb 执行 auth.set-pin 首次初始化',
+          '尚未设置 PIN；请在本地通道（adb/slash）执行 '
+          'auth.set-pin 首次初始化',
           elevate: 'auth.set-pin',
         ),
       );

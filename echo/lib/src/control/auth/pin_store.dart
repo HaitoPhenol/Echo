@@ -115,7 +115,7 @@ class PinStore implements PinVerifier {
     return _constantTimeEquals(candidate, record.hash);
   }
 
-  /// 首次初始化（无旧 PIN；调用方负责通道/构建限制与审计）。
+  /// 首次初始化（无旧 PIN；调用方负责通道本地性门禁与审计）。
   Future<void> initialize({
     required String newPin,
     required String confirmPin,

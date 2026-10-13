@@ -180,6 +180,69 @@ void main() {
     });
   });
 
+  group('PIN 首装门禁（G0 通道本地性，2026-10-13）', () {
+    test('ControlChannel.isLocal：adb/slash 本地，mcp 非本地', () {
+      expect(ControlChannel.adb.isLocal, isTrue);
+      expect(ControlChannel.slash.isLocal, isTrue);
+      expect(ControlChannel.mcp.isLocal, isFalse);
+    });
+
+    test('release+slash 首装成功；mcp 拒绝；已设后无 oldPin 走改 PIN', () async {
+      final rel = await ControlHarness.create(
+        buildMode: ControlBuildMode.release,
+      );
+      addTearDown(rel.dispose);
+
+      // 非本地通道：set-pin 虽总线级直放，handler 内首装门禁拒绝，
+      // PIN 未被设置（错误不再提 debug/adb）。
+      final mcpDenied = await rel.exec(
+        'auth.set-pin',
+        channel: ControlChannel.mcp,
+        args: {'newPin': 'echo1', 'newPinConfirm': 'echo1'},
+      );
+      expect(mcpDenied.ok, isFalse);
+      expect(mcpDenied.error!.code, ControlErrorCode.authDenied);
+      expect(mcpDenied.error!.message, contains('本地通道'));
+      expect(await rel.pins.isPinSet(), isFalse);
+
+      // release 风味 slash 面板：本地通道首装成功
+      //（修订前条件 buildMode==debug && channel==adb 会挡住）。
+      final init = await rel.execResult(
+        'auth.set-pin',
+        channel: ControlChannel.slash,
+        args: {'newPin': 'echo1', 'newPinConfirm': 'echo1'},
+      );
+      expect(init, {'pinSet': true, 'changed': false});
+      expect(await rel.pins.isPinSet(), isTrue);
+      expect(rel.audit.list().map((e) => e.cmd), contains('auth.pin-init'));
+
+      // 已设 PIN 后首装路径不可达：解锁后进改 PIN 流程，缺 --old-pin
+      // 报 USAGE，PIN 未被改动（首装不发会话，先 unlock）。
+      await rel.execResult(
+        'auth.unlock',
+        channel: ControlChannel.slash,
+        args: {'pin': 'echo1'},
+      );
+      final noOld = await rel.exec(
+        'auth.set-pin',
+        channel: ControlChannel.slash,
+        args: {'newPin': 'echo2', 'newPinConfirm': 'echo2'},
+      );
+      expect(noOld.error!.code, ControlErrorCode.usage);
+      expect(await rel.pins.verifyPin('echo1'), isTrue);
+    });
+
+    test('adb/debug 原首装路径保持（本地通道，与构建风味解绑后仍通）', () async {
+      final fresh = await ControlHarness.create();
+      addTearDown(fresh.dispose);
+      final init = await fresh.execResult(
+        'auth.set-pin',
+        args: {'newPin': 'echo1', 'newPinConfirm': 'echo1'},
+      );
+      expect(init, {'pinSet': true, 'changed': false});
+    });
+  });
+
   group('PIN 存储', () {
     test('规则校验：长度/字符集/二次确认；initialize 一次性', () async {
       final h = await ControlHarness.create();

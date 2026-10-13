@@ -1,6 +1,7 @@
 import 'package:flutter/scheduler.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:echo/src/control/protocol/command_spec.dart';
 import 'package:echo/src/control/protocol/control_error.dart';
 import 'package:echo/src/diary/data/diary_repository.dart';
 import 'package:echo/src/diary/sy/diary_model.dart';
@@ -290,22 +291,19 @@ void main() {
       expect(years, isNotEmpty);
     });
 
-    test('export：无 draft → EXPORT_EMPTY；有 draft → 落 zip', () async {
-      await h.execResult(
-        'auth.set-pin',
-        args: {'newPin': 'echo1', 'newPinConfirm': 'echo1'},
-      );
-      await h.execResult('auth.unlock', args: {'pin': 'echo1'});
-
-      // 已解锁 + 已确认：空库时错误来自业务而非裁决层。
+    test('export（G0 降 2 级）：本地通道未设 PIN/未解锁/无 confirm 直放；'
+        'mcp 拒绝', () async {
+      // 全新 harness 默认未设 PIN：2 级在本地通道起始级别内，直接放行；
+      // 空库时错误来自业务而非裁决层（非 confirmRequired/authRequired）。
       expect(
-        (await h.exec('diary.export', confirmed: true)).error!.code,
+        (await h.exec('diary.export')).error!.code,
         ControlErrorCode.exportEmpty,
       );
 
       await h.execResult('diary.ensure', args: {'date': '2026-10-10'});
 
-      final zip = await h.execResult('diary.export', confirmed: true);
+      // 不传 confirmed：export 已删 destructive 标记。
+      final zip = await h.execResult('diary.export');
       expect(zip['entries'], 1);
       expect(zip['notebook'], '日记');
       expect((zip['path'] as String).endsWith('.sy.zip'), isTrue);
@@ -316,6 +314,13 @@ void main() {
         await h.repo.stateOfDay(DateTime(2026, 10, 10)),
         DiaryDocState.draft,
       );
+
+      // MCP 上限 1：2 级写物理不可达（agent 导出仍被通道挡住）。
+      final mcpDenied = await h.exec(
+        'diary.export',
+        channel: ControlChannel.mcp,
+      );
+      expect(mcpDenied.error!.code, ControlErrorCode.authRequired);
     });
   });
 }

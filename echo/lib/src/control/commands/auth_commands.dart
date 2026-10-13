@@ -11,7 +11,9 @@ import '../protocol/control_error.dart';
 /// - PIN 只存在 `--pin` 参数里，通道层负责 stdin 采集；
 ///   PIN 参数在清单上标 auditRedact，审计只留长度（见 ParamSpec），
 ///   PIN 永不落日志；
-/// - `auth.set-pin` 的首次初始化只允许 debug 包经 adb 发起；
+/// - `auth.set-pin` 的首次初始化只允许**本地通道**（adb/slash）发起
+///   （2026-10-13 修订：release 包 slash 面板同样允许，本地持机用户
+///   最高权限；判定见 ControlChannel.isLocal）；
 /// - 改 PIN 必须处于当次前台 3 级会话（总线保证解锁与确认语义，
 ///   本命令额外要求旧 PIN）；二次输入 PIN 充当该命令的显式确认。
 List<CommandSpec> buildAuthCommands() => [
@@ -66,7 +68,8 @@ List<CommandSpec> buildAuthCommands() => [
   authSetPin,
 ];
 
-/// `auth.set-pin`：首次初始化（debug + adb）或改 PIN（已解锁 + 旧 PIN）。
+/// `auth.set-pin`：首次初始化（本地通道 adb/slash，含 release）
+/// 或改 PIN（已解锁 + 旧 PIN）。
 ///
 /// 级别标 3 但豁免总线的 `--confirm`：新 PIN 必须二次输入一致，
 /// 这本身就是显式确认，避免交互上连问两遍。
@@ -110,13 +113,13 @@ final CommandSpec authSetPin = CommandSpec(
 
     final pinSet = await pins.isPinSet();
     if (!pinSet) {
-      // 首装铁律：release 包没有初始化入口；非 adb 通道（未来 slash
-      // 面板化后）也不允许命令行首装。
-      if (ctx.bus.buildMode != ControlBuildMode.debug ||
-          ctx.channel != ControlChannel.adb) {
+      // 首装门禁按通道本地性判定（设计 §5.3，2026-10-13 修订）：
+      // adb/slash 代表用户本人持机，release 包 slash 同样放行；
+      // MCP 等自动化通道上限 1，首装物理拒绝。与构建风味无关。
+      if (!ctx.channel.isLocal) {
         throw const ControlException(
           ControlErrorCode.authDenied,
-          'PIN 首次初始化只允许 debug 包经 adb 执行',
+          'PIN 首次初始化只允许本地通道（adb/slash）执行',
           elevate: 'settings.pin',
         );
       }

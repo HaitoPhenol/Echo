@@ -58,6 +58,15 @@ enum ControlChannel {
   final String wire;
   final ControlLevel startLevel;
   final ControlLevel maxLevel;
+
+  /// 本地通道：用户本人持机的物理/UI 通道（adb、slash）。
+  ///
+  /// 威胁模型（2026-10-13 裁定，设计 §5）防的是 MCP/内置 agent 等
+  /// 自动化通道，本地持机用户拥有最高权限——PIN 首装等裁定以此判定。
+  /// **未来新增网络/自动化通道必须保持 false**（默认即是），不要随手
+  /// 放行首装。
+  bool get isLocal =>
+      this == ControlChannel.adb || this == ControlChannel.slash;
 }
 
 // --------------------------------------------------------------------
@@ -278,7 +287,8 @@ abstract class ControlBusHandle {
   /// 类型键控的服务注册表（具体实现见 control_registry.dart）。
   ControlServices get services;
 
-  /// 当前构建风味（首装 PIN 等命令需要区分 debug/release）。
+  /// 当前构建风味：debug-only 命令的注册可见性据此裁剪
+  /// （release 物理不可见；PIN 首装改按通道本地性判定，与此无关）。
   ControlBuildMode get buildMode;
 
   /// 当前清单中已注册的全部命令（`sys.help` 枚举来源）。
