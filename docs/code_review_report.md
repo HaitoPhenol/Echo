@@ -500,6 +500,36 @@ P2 工作区）：
 5. G0 收口：analyze 0 / flutter test 全绿 / format exit 0，**独立
    一个提交**（`feat(ecp): P3-G0 权限模型修订…`），便于单独复审。
 
+**维护者复审结论（2026-10-13，提交 8df045b）：G0 通过，可进 G1。**
+
+- 生产代码 6 文件与本单 G0.1–G0.3 逐条对应，无夹带；文档/注释四处
+  过时表述（含 pin_store、ControlBusHandle.buildMode）同步干净。
+- **确认门语义亲核**：[command_spec.dart:167](../echo/lib/src/control/protocol/command_spec.dart#L167)
+  构造期推导 `requiresConfirm = confirmRequired ?? level==admin`，
+  总线 [auth_session.dart:82](../echo/lib/src/control/auth/auth_session.dart#L82)
+  裁决只认该字段，`destructive` 是 help/UI 元数据不参与裁决。故：
+  chat.send 升 admin 后**必须**显式 `confirmRequired:false`（否则默认
+  要 --confirm），agent 加得正确；export 降 user 后默认免确认；
+  set-pin 总线特判（二次输入 PIN 即确认）保留。
+- **清单双向断言亲核**（manifest_consistency_test.dart:59-77）：
+  destructive→requiresConfirm 与 admin+requiresConfirm→destructive，
+  本就是「子集」语义，chat.send（admin/非破坏/免确认）合法落入，
+  无需改测试；提交说明属实。合法三组合：prune/reset/seed
+  （admin+破坏+确认）、chat.send（admin+非破坏+仅解锁）、
+  set-pin（总线特判）。
+- 测试矩阵评审：三通道 × chat.send（need=3 / mcp 恒拒 / adb+slash
+  解锁后 confirmed:false 连发）、export（未设 PIN 直放落 zip / mcp
+  AUTH_REQUIRED）、release+slash 首装成功+pin-init 审计、mcp
+  authDenied 且 PIN 未被设、已设后走改 PIN 缺 oldPin 报 USAGE；
+  被拒发送零污染有 `hasLength(3)` 兜底。夹具每测试重建，
+  group setUp 的 set-pin 每次均走首装路径，生命周期正确。
+- echo-cmd 脚本无需改：confirm 为通用透传开关，对 export 无硬编码。
+- **门禁独立复跑（非沿用提交说明）**：format exit 0 / analyze 0 /
+  **flutter test 275 全绿**；零 android/ 改动，JVM 不涉及。
+- 设计 §11 旧措辞「3 级均 destructive 且需确认」已随签复订正为
+  子集语义。**G0 行为变化（export 免确认、send 需解锁、slash 首装）
+  的真机实证不单独装机，并入 G4 debug+release 双包走查。**
+
 ### G1｜slash 控制台核心（`lib/src/control/slash/`，与入口解耦）
 
 - **`ControlConsoleCore`**（ChangeNotifier 风格，与项目既有状态管理
