@@ -30,7 +30,12 @@ class SlashCommandLayer extends StatelessWidget {
 
   final SlashConsoleController controller;
 
-  /// 结果 + 补全整体的最大高度占屏比，超出内部滚动。
+  /// 整个浮层（补全 + 结果 + 模态卡）的最大高度占屏比。
+  ///
+  /// G4-BUG-3：模态卡（确认/PIN/多行）始终以固有高度完整布局在约束盒
+  /// 底部；补全/结果区是唯一可压缩项，空间不足时整块在内部滚动（可被
+  /// 压到 0），任何高度下都不会把卡片按钮挤出 RenderBox 造成溢出区
+  /// hitTest 恒 false（「可见不可点」）。
   final double maxHeightFactor;
 
   @override
@@ -53,13 +58,30 @@ class SlashCommandLayer extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              if (controller.active) _CompletionBar(controller: controller),
-              Flexible(child: _ResultsList(controller: controller)),
-              if (controller.active && controller.canOpenMultiline)
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: _MultilineToggle(controller: controller),
+              // 可压缩区（Flexible + 内部滚动）：补全条/结果流/多行入口
+              // 争用剩余高度，最坏可被压到 0；reverse 使溢出时最新结果
+              // 与多行入口（紧邻卡片一侧）优先可见。
+              Flexible(
+                child: SingleChildScrollView(
+                  reverse: true,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      if (controller.active)
+                        _CompletionBar(controller: controller),
+                      _ResultsList(controller: controller),
+                      if (controller.active && controller.canOpenMultiline)
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: _MultilineToggle(controller: controller),
+                        ),
+                    ],
+                  ),
                 ),
+              ),
+              // 模态卡宿主在 Flexible 之外：非弹性项以固有高度布局，
+              // 永远完整落在约束盒内（G4-BUG-3）。
               SlashSheetHost(controller: controller),
             ],
           ),

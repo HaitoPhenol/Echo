@@ -5,7 +5,9 @@
 //
 // 真机机理（见 docs/code_review_report.md G4）：IME done 触发
 // onSubmitted 后主动 hide 键盘 → 搜索框失焦；widget 测试里以
-// focusNode.unfocus() 显式复现该失焦。
+// focusNode.unfocus() 显式复现该失焦。G4-BUG-3 的 IME hide 补帧器
+// 不做任何失焦/断连动作（只标脏根 RenderView 重提帧），本文件的
+// 保活断言不受其影响；补帧器单例在每个用例后重置，避免状态互串。
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -15,6 +17,7 @@ import 'package:echo/src/app/echo_app.dart';
 import 'package:echo/src/control/bootstrap.dart';
 import 'package:echo/src/control/slash_ui/slash_ui.dart';
 import 'package:echo/src/diary/data/in_memory_diary_repository.dart';
+import 'package:echo/src/services/window_inset_refresher.dart';
 
 import '../control/control_test_harness.dart';
 
@@ -23,6 +26,18 @@ void main() {
   setUpAll(() {
     diaryRepo = InMemoryDiaryRepository(seedDebugData: true);
     addTearDown(diaryRepo.dispose);
+    // G4-BUG-3：slash 提交会安排 50ms（覆盖）后的兜底补帧标脏；
+    // 既有的 200ms 级 pump 自然触发（避免 fake-async 悬挂定时器），
+    // 标脏只重提当前 scene，不触碰焦点与输入连接。补帧窗口也缩到
+    // 100ms，让各用例既有的 200ms pump 越过窗口超时。
+    WindowInsetRefresher.fallbackDelayOverride = const Duration(
+      milliseconds: 50,
+    );
+    WindowInsetRefresher.windowOverride = const Duration(milliseconds: 100);
+    addTearDown(() {
+      WindowInsetRefresher.fallbackDelayOverride = null;
+      WindowInsetRefresher.windowOverride = null;
+    });
   });
 
   late ControlHarness h;
@@ -42,6 +57,9 @@ void main() {
     );
     addTearDown(ControlBootstrap.detachTestInstance);
     addTearDown(() => tester.runAsync(h.dispose));
+
+    WindowInsetRefresher.debugReset();
+    addTearDown(WindowInsetRefresher.debugReset);
 
     await tester.pumpWidget(EchoApp(diaryRepository: diaryRepo));
     await tester.pump();

@@ -13,6 +13,7 @@ import '../services/console_stats_service.dart';
 import '../services/haptics.dart';
 import '../services/nav_badge_service.dart';
 import '../services/search_service.dart';
+import '../services/window_inset_refresher.dart';
 import '../theme/app_colors.dart';
 import '../theme/mechanical_style.dart';
 import 'dock_geometry.dart';
@@ -202,6 +203,10 @@ class _SmartNavScreenState extends State<SmartNavScreen>
         systemNavigationBarIconBrightness: Brightness.light,
       ),
     );
+
+    // G4-BUG-3：在键盘弹起前注册 IME hide 终态补帧器，建立全屏物理
+    // 高基线（app 级单例，幂等；详见 WindowInsetRefresher）。
+    WindowInsetRefresher.ensureRegistered();
 
     // ---- 组装配置与服务（依赖关系：providers → searchService）----
     _destinations = buildDefaultDestinations(
@@ -401,6 +406,14 @@ class _SmartNavScreenState extends State<SmartNavScreen>
   void _handleSubmitted(String value) {
     if (_slash?.active ?? false) {
       _slash!.submit(value);
+      // G4-BUG-3：触屏 IME 点「完成」提交后键盘 hide，部分 MIUI +
+      // 第三方 IME 会在 surface resize 回全屏期间丢掉引擎的最终布局
+      // 帧——布局/hit-test 已在最终全屏位置，画面却停在键盘动画中途
+      // （确认卡/PIN 卡按钮「看着在错位处、实际命中盒在正确位置」）。
+      // 打开短时补帧窗口：终态全屏 metrics 到达后强制重提一帧，让
+      // 视觉追上布局。仅 slash 指令链路挂钩，普通搜索提交不触发。
+      // 详见 WindowInsetRefresher。
+      WindowInsetRefresher.scheduleAfterSlashSubmit();
       return;
     }
     if (value.trim().isNotEmpty) {

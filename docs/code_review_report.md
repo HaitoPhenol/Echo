@@ -705,6 +705,210 @@ release 全新安装走完整链路：`/` 指令态 → 3 级命令触发 PIN �
 release 包 dex/清单无 adb 入口复核（同 P1/P2 六特征串）。验毕
 pm clear。
 
+#### G4 首轮结果（2026-10-13，release 全新装 + MIX 2S 真机）：**不通过，2 个阻断缺陷回派修复**
+
+已通过项（证据 artifacts/g4-r1-*.png）：
+
+- **release 冷启动/指令态/几何**：长按灰色导航胶囊呼出搜索，
+  tap(300,2078) 聚焦，输 `/` 出终端符与候选；命名空间计数
+  sys 5 / auth 4 / nav 2 / diary 5 / chat 5 / console 2 / badge 5。
+- **debugOnly 补全裁剪（真机实证）**：`/diary.` 动词恰 5 个
+  list/get/ensure/prune/export，**无 reset**；`/sys.` 恰 5 个
+  ping/help/info/status/audit，**无 clock.set**；级别标注正确。
+- **dex/清单无 adb 入口**：app-release.apk classes.dex（567KB）
+  对 DebugControlReceiver/echo/control/AUTH_REQUIRED/chat.send/
+  badge.notify/console.refresh 六串命中全 **0**；清单仅
+  MainActivity + ShareFileProvider + 两个 androidx receiver，
+  无 DebugControlReceiver。
+- 轻微（不阻断，挂账）：libapp.so 中 `clock.set` 字面量残留 1 次
+  ——来源 [command_spec.dart:239](../echo/lib/src/control/protocol/command_spec.dart#L239)
+  协议层 `controlledVerbs` 白名单（parser 用，无 debug 守卫）；
+  命令注册侧已物理跳过（真机补全不可见、不可达），无功能风险，
+  仅为字符串残留。`diary.reset` 0 命中。
+
+**G4-BUG-1（阻断，触屏路径全灭）：IME"完成"提交即失焦，指令台 150ms 后自毁**
+
+- 位置：[smart_nav_screen.dart:357-371](../echo/lib/src/navigation/smart_nav_screen.dart#L357-L371)
+  `_handleFocusChange` + [slash_console_controller.dart:229-239](../echo/lib/src/control/slash_ui/slash_console_controller.dart#L229-L239)
+  `hostClosed()`。
+- 机理：MIUI 豆包/搜狗 IME 点蓝色"完成"键（触屏用户唯一提交动作，
+  imeAction done/search）触发 onSubmitted 后**主动 hide 键盘 →
+  搜索 TextField 失焦**；失焦 150ms 定时器判定后执行
+  closeSearch()+_resetSearchPanel()→hostClosed()，同步清空
+  `_confirm`/multiline/`_pin`/`_pendingReplay` 并 bind('')。
+- 实测（artifacts/g4-s0/s1/s2.png，0.2/0.7/2.2s 三时序；
+  g4-r1-confirm-card.png、g4-r1-reopen.png）：输全 `/diary.prune`
+  点完成，0.2s 面板开始关闭，确认卡从未可交互，重开后面板纯搜索态、
+  挂起态全失。`/sys.ping` 同样提交后即关，结果流不可见。
+- 后果：纯触屏下确认卡不可点、PIN 首装/解锁面板不出现、AUTH 后
+  重放命令丢失、结果不可见——G4 清单全部交互链路（3 级命令、
+  chat.send 连发、prune 预演/真删）在第一步提交即断。
+- 测试缺口：Widget 测试模拟 onSubmitted 不经过真实 IME hide，
+  焦点链不触发，故 G2 测试 356 全绿未暴露。
+- 修复约束（交业务 agent）：slash 指令态（active）或存在挂起交互
+  （confirmPending / pin.visible / multiline / 有结果 entries）时，
+  失焦定时器不得 closeSearch/reset；显式退出路径（BACK、scrim、
+  ESC、nav.goto 成功收起）行为不变；普通搜索态行为不变。补 Widget
+  测试：提交后焦点丢失，确认卡/PIN 面板仍在且可交互。
+
+**G4-BUG-2（阻断，点号形态补全损坏 + 精确命令无法回车提交）**
+
+- 位置：[completion.dart:189-211](../echo/lib/src/control/slash/completion.dart#L189-L211)
+  `_verbs`（点号形态 insert 为 `verb ` 而 replaceStart=body 首字符）
+  与 [slash_console_controller.dart:186-200](../echo/lib/src/control/slash_ui/slash_console_controller.dart#L186-L200)
+  applySelected/applyCandidate；连带 handleEnter 判定（550-551 行）。
+- 机理：`/sys.pi` 动词段候选 insert=`ping `、replaceStart=1，
+  应用后文本 = `/ping `——**namespace 被吞**（空格形态
+  `/sys pi` replaceStart 正确，不受影响）。另：命令敲全
+  `/sys.ping` 时动词段仍返回唯一高亮候选，hasCandidates=true，
+  物理回车走补全把文本改坏（实测 artifacts/g4-ping-enter.png：
+  `/sys.ping` 回车 → `/ping `）而非提交。
+- 后果：点号形态（主推用法）点候选或物理回车必损坏命令；触屏点
+  `/diary.` 候选（g4-r1-diary2 主交互）同样必现。
+- 测试缺口：[completion_test.dart:42-51](../echo/test/control/slash/completion_test.dart#L42-L51)
+  段二只断言候选 label/replaceStart，从无"应用后完整文本"断言；
+  controller 测试未覆盖点号形态 applySelected 与"精确命令回车提交"。
+- 修复约束：点号形态应用候选后须保留 ns（如 `/sys.ping `）；
+  当前尾串已精确等于某命令（或应用候选后文本无变化）时 Enter
+  必须放行给 onSubmitted 提交。补纯 Dart 测试钉死两类场景。
+
+**G4-BUG-3（阻断，修复后复验新发现：确认卡/PIN 卡底部按钮在 MIUI 键盘收起后可见不可点，触屏确认路径全灭）**
+
+- 复现：MIX 2S（豆包 IME）输 `/diary.prune` 后点蓝色"完成"或物理
+  ENTER 提交 → 破坏性命令确认卡出现 →「确认执行」「取消」点按无任何
+  反应（右上角 X 同样点不中）。release/debug 双包均现；HOME 切后台再
+  回前台不恢复。证据：artifacts/g4-bug3.mp4（10s 内 4 次点按三按钮
+  画面零变化）、g4-dbg-tapx2.png（debug 条纹
+  `BOTTOM OVERFLOWED BY 33 PIXELS`）。
+- 机理（两层叠加，均已用证据闭合）：
+  1. **IME hide 后窗口 metrics 卡滞，视觉/触摸坐标缩放错位**：键盘收起
+     后系统侧 mImeHeight=0、窗口 frame 恢复 [0,0][1080,2160]，但 Flutter
+     逻辑画布高度卡在键盘压缩值（实测约 1751，缩放比 ≈0.81）。引擎仍按
+     1751/2160 归一化触摸点：物理 y>1751 的点击全部落在逻辑底边，按钮
+     （物理 y≈1788）与输入胶囊永不可点；物理 (905,1385) 被映射到逻辑
+     ≈1123，实际命中参数列表 `--stay` 行并把 token 插入命令行
+     （g4-bug3-tile.png 第 6 帧起命令变 `/diary.prune --stay`）。重新
+     长按呼出搜索可恢复一次，提交后再次卡滞。
+  2. **SlashCommandLayer 高度约束导致 Sheet 底部溢出**：
+     [slash_command_layer.dart:47-64](../echo/lib/src/control/slash_ui/slash_command_layer.dart#L47-L64)
+     以 `mq.size.height * 0.45` 为最大高（压缩态仅约 788），Column 中
+     CompletionBar/ResultsList 与固有高度的 SlashSheetHost 争高，确认卡
+     [slash_sheets.dart:343-368](../echo/lib/src/control/slash_ui/slash_sheets.dart#L343-L368)
+     按钮行被挤出 RenderBox 边界 33px——Flutter 对 size 外的点不做
+     hitTest，即使坐标映射正确按钮仍不可点。PIN 面板同理在风险中。
+- 影响：纯触屏用户（无物理键盘）**无法确认任何 3 级破坏性命令**，
+  R1 的 PIN 首装/重放链路也无法通过触屏走完；BUG-1 修复保住的卡片
+  变成看得见点不动的死卡。
+- 修复方向（业务侧择一或组合，需真机实测）：
+  - 根因 1：排查/消除对 adjustResize 压缩窗口高度的依赖（如
+    Scaffold resizeToAvoidBottomInset:false + 自行消费 viewInsets，
+    使窗口逻辑高度不随 IME 改变，坐标永不缩放）；或提交后主动触发一次
+    metrics 恢复。须在 MIX 2S 豆包 IME 真机验证触摸坐标准确。
+  - 根因 2：Layer 在高度不足时优先压缩 ResultsList（Expanded/最小 0）并
+    保证 Sheet 按固有高度完整布局、永不 overflow；或确认/PIN 卡改走
+    showModalBottomSheet 等独立路由挂载，脱离 Layer 高度约束。
+- 测试缺口：现有 widget 测试给 Layer 的高度约束恒充足，未模拟键盘压缩
+  与确认卡同屏。须补：小 MediaQuery 高度（如 780/2160）下挂确认卡，
+  断言无 overflow 且「确认执行」「取消」的 hitTest 点位于其 RenderBox
+  内并可 tap 生效；PIN 面板同测。
+
+**一修复审（2026-10-13 晚，MIX 2S debug 真机）：方案部分被否，回派二修**
+
+- 一修内容：Manifest `adjustResize`→`adjustNothing` + Scaffold
+  `resizeToAvoidBottomInset:false` + 浮层以 `max(padding,viewInsets)`
+  手动避让 + Layer 内 SheetHost 移出 Flexible、压缩区改可滚动
+  （analyze 0 / 377 测试全绿 / format 0）。
+- 真机结果：根因 2 的 Layer 改造成立（压缩高度测试通过）；但根因 1
+  规避失败并引入新阻断——**adjustNothing 下豆包 IME 键盘弹起时
+  Flutter 收不到 viewInsets.bottom（上报恒 0），浮层不抬升，搜索胶囊
+  被键盘整体盖住、无法看到输入内容与候选**（证据
+  artifacts/g4-fix-ime2.png：键盘顶缘 y≈1295，其上方无胶囊/面板）。
+  「API29 启发式仍派发 systemWindowInsetBottom」的假设在该
+  MIUI+豆包组合不成立。无键盘态几何正常（g4-fix-type.png）。
+- 二修方向：① 回退 Manifest/Scaffold/DiaryShell/smart_nav 的
+  adjustNothing 链路到 adjustResize 原状（键盘弹起态旧几何真机本来
+  正确），**保留** SlashCommandLayer 的 Sheet 不溢出改造与几何测试；
+  ② 根因 1 改走原生侧强制 relayout：MainActivity 加薄 MethodChannel
+  （如 echo/window_insets），提供 refreshInsets（先
+  `decorView.requestApplyInsets()`；若不足则
+  setSoftInputMode 在 ADJUST_NOTHING/ADJUST_RESIZE 间 post 切换一次
+  强制 WindowManager 重新布局），Flutter 侧在指令 onSubmitted 后
+  （IME hide 动画后约 200-300ms）调用一次；③ 本期因此产生 Kotlin
+  改动，门禁加跑 testDebugUnitTest；④ widget 测试调整为 adjustResize
+  语义（body 随 inset 压缩），并对通道调用补 mock 断言。
+
+修复后重建双包，从 release pm clear 全新装重跑全部 R1-R3 链路。
+
+**二修复审（2026-10-13 深夜，MIX 2S debug 真机）：真机证伪，回派三修**
+
+- 二修内容：Manifest/Scaffold 回退 adjustResize；新增原生
+  `echo/window_insets#refreshInsets` 通道（requestApplyInsets +
+  softInputMode ADJUST_NOTHING→RESIZE 两层 post toggle），Dart 侧
+  提交后 280ms 调用（Kotlin 单测 4 绿、Dart 377 绿）。
+- 真机结果：按钮仍不可点。View/窗口尺寸本就正确，没有真实几何变化
+  的 relayout 不会让引擎重发 metrics，机理上无效。关键旁证：卡滞态
+  BACK 退出搜索态后 metrics 立即自愈、重开面板一切正常。
+
+**三修复审（2026-10-14 凌晨）：真机证伪，且坐标探针推翻旧根因模型**
+
+- 三修内容：提交后 250ms 先
+  `focusManager.primaryFocus?.unfocus()` 再调原生通道，试图程序化
+  复刻 BACK 的失焦路径。门禁 analyze 0 / 377 绿 / format 0。
+- 真机结果（验收方独立复验）：确认卡三按钮仍不可点。Dart unfocus
+  不 dispose FocusNode、不清 TextInput 客户端，走不到 BACK 的
+  IMM 断链；且后续证据表明缺陷与焦点无关。
+- **根因重定性（坐标对照实锤）**：临时在 runApp 根挂指针探针
+  （[PTRMAP]，验毕已删），测得卡滞态引擎
+  `physicalSize=1080x2160、dpr=2.75` 全程正确，adb 注入与真人手指
+  两类触摸源的物理→逻辑映射完全一致，**不存在 metrics 卡滞**：
+  - adb tap 按钮视觉中心物理 (887,1595) → logical(322.5,580.0)
+    → 无响应；
+  - adb tap 视觉空白处物理 (887,1893) → logical(322.5,688.4)
+    → 【确认执行】被命中（AUTH_REQUIRED + PIN 卡弹出）；
+  - 真人手指点按物理 (907,1893) 同样命中。
+- 真根因：豆包 IME hide 且 SurfaceView resize 回全屏期间，Flutter
+  **布局/hit-test 已随最终 metrics 到达贴底位置（真实命中盒
+  y≈1893），但引擎把最终布局帧丢失/未提交，屏幕最后一帧停在键盘
+  动画中途（按钮画在 y≈1595）**；此后 app 静止无脏区不再产帧，
+  形成「视觉残影 vs 触摸已正确」。任何后续产帧（BACK、命中后的状态
+  变更）画面立刻对齐，反证只差一帧。旁证：`wm density` 真实
+  configuration 改变（界面确有重排）仍不治——新帧仍可能被 resize
+  时序吞掉；`wm overscan` 对 MIUI SurfaceView 仅输出裁切。
+  先前"点 (905,1385) 误命中 --stay"等现象即点在视觉旧帧、命中在
+  新布局的同一错位，原"0.81 归一化"推断作废。根因 2 的 Layer
+  不溢出改造（一修第 4 项）独立有效，继续保留。
+
+**四修（最终修复）+ 终审通过（2026-10-14，MIX 2S debug 真机）**
+
+- 修复（纯 Dart）：[window_inset_refresher.dart](../echo/lib/src/services/window_inset_refresher.dart)
+  `MetricsFramePacer`——app 级 WidgetsBindingObserver，
+  `scheduleAfterSlashSubmit()`（仅 slash 提交分支）打开 1.2s 补帧
+  窗口；窗口内收到「viewInsets.bottom==0 且物理高恢复全屏基线」的
+  终态 metrics 时对全部根 RenderView `markNeedsLayout()` 强制重提
+  一帧 scene，并 addPostFrameCallback 次帧再补一次（覆盖 surface
+  resize 晚于首个全屏 metrics 的 ROM）；另设 200ms fallback Timer
+  兜住 metrics 回调缺失。窗口外零开销，非 Android 静默。
+- 无效路径全部清除：三修 unfocus、二修原生通道
+  （MainActivity.kt 回退 HEAD、删除 WindowInsetRelayout.kt 及其
+  单测）、main.dart PTRMAP 临时探针，均不在最终代码中。
+- 门禁（验收方独立复跑）：flutter analyze **0 issue**；
+  flutter test **379 全绿**；dart format --set-exit-if-changed
+  **exit 0**；Kotlin 净零改动，免 Gradle。
+- 真机验收（验收方独立操作，证据 artifacts/verify-r1~r3-*.png、
+  verify-enter.png）：豆包 IME 点「完成」后确认卡**直接贴底渲染**，
+  【确认执行】(887,1886) 一点即中 → PIN 解锁卡；输 1234 点视觉
+  【确定】→ 解锁、prune 自动重放成功（cutoff 2026-10-13、
+  dryRun true）；【取消】(670,1886) 关卡零新增；【X】(979,1545)
+  关卡零执行；物理 ENTER 提交确认卡同样贴底正常。三轮重复稳定。
+  业务 agent 另回归：普通搜索不触发补帧、键盘弹起连点/快提无闪烁
+  报错（logcat 干净）、窗口关闭后 3.5s 再点仍精确命中（画面持久
+  对齐）、退出 slash 重开输入正常。
+- 备注：真机观察 PIN【确定】首次触摸偶有数秒系统派发延迟（迟到后
+  正确执行、零误触），物理 ENTER 即时，判定为 MIUI/豆包 IME 注入
+  时序现象，非本缺陷，挂账观察。
+- **G4-BUG-3 终审：通过。** release 包 R3 全链路（含本修复）待
+  全新装复验后补结论。
+
 ### 验收总门
 
 analyze 0 / flutter test 全绿 / format exit 0；动了 android/ 才跑
