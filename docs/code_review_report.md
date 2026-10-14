@@ -1026,6 +1026,35 @@ testDebugUnitTest（本期预期零 android 改动）；语义 diff 交维护者
    过滤、poll 命中即返回、wait 超时返回空、新事件提前唤醒、
    stream 的 ceiling 过滤与历史不补发。
 
+**维护者 G0 复审结论（2026-10-14，提交 05a1be1）：G0 通过，可进 G1。**
+
+- 范围干净：仅新增 events/event.dart、events/event_bus.dart 与
+  两份测试（+608 行，+19 用例，总测试 379→398），零夹带、
+  android/ 零 diff。
+- 逐条亲核派单：seq 从 1 单调、256 环下限 assert、淘汰不回收
+  seq；poll 的 since 空洞/ceiling 物理过滤/types/limit/命中即
+  返回/wait 8000ms 上限抛 USAGE/超时空集/新命中事件提前唤醒/
+  无权事件不唤醒/多等待者广播，均有对应用例且断言到位；stream
+  不补历史、ceiling/types 过滤、双订阅独立；接缝源码正则只准
+  foundation、假常驻消费者双通道消费。
+- 关键并发路径亲核：poll 从初判为空到建立 broadcast 订阅之间无
+  await（同一同步段原子完成），不存在"事件落在订阅建立前窗口被
+  丢"的竞态；broadcast 无监听者时丢的事件仍在环内，下次唤醒后
+  `_match` 复判能捞回——实现正确。
+- 门禁独立复跑：analyze 0、flutter test 398 全绿、
+  format exit 0。
+- Nit（不阻塞，G2 接线时收口）：
+  ① [event_bus.dart](../echo/lib/src/control/events/event_bus.dart)
+  `close()` 后在飞 poll 的 `stream.first` 会收到 done 并抛
+  StateError（Bad state: No element）穿透 poll；G0 无生产接线
+  无实际影响，G2 把 EventBus 挂上 bootstrap 生命周期时需钉明
+  语义（建议等待中 poll 在 close 时返回空集而非抛错，或补测试
+  固定现状）；
+  ② 类注释「只允许依赖 flutter/foundation」措辞不精确——实际
+  还复用了 protocol/command_spec.dart（ControlLevel）与
+  control_error.dart（USAGE）；接缝正则禁 Widget 本身正确，
+  注释改为「零 Widget import，允许复用协议层模型」即可。
+
 ### G1｜作业化执行与 E4 根治（adb 轮询，Kotlin 零改动）
 
 1. `ControlBus.execute` 增加**通道可选**命名参数
