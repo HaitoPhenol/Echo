@@ -1099,6 +1099,42 @@ testDebugUnitTest（本期预期零 android 改动）；语义 diff 交维护者
    形状。Kotlin 无 diff（验收时 `git diff --stat -- android/`
    必须为空），免 Gradle。
 
+**维护者 G1 复审结论（2026-10-14，提交 16ac30a）：G1 通过，可进 G2。**
+
+- 范围：control_bus（execute 抽 _finishAuthorized 唯一收口 +
+  backgroundSlow 开关）、新增 jobs/job_store.dart、protocol
+  信封加 async/jobId（条件序列化，普通信封形状不变）、adb 通道
+  固定传 backgroundSlow:true、bootstrap/测试夹具同实例装配、
+  sys.job.get/sys.delay 两命令、受控动词扩 job.get/delay、
+  echo-cmd 自动轮询 + --no-wait、手册两小节。**android/ 零
+  diff（git diff 实测为空），E4 根治未动一行 Kotlin。**
+- 关键安全路径亲核：
+  ① USAGE（未知参数）在作业化**之前**驳回，不产生作业（测试
+  钉死）；handler 内业务 USAGE 走作业终态 error——两层区分正确；
+  ② sys.job.get 先跨通道隔离（他通道/已淘汰统一 NOT_FOUND，不
+  泄露存在性），再按作业原 spec 在**当前**通道重过 authorizer，
+  会话焚尽时 AUTH_REQUIRED 且作业保留、重解后沿用原 confirmed
+  可取（测试完整覆盖焚尽→拒绝→重解→done）；
+  ③ 后台终态与同步共用 _finishAuthorized：审计、60s 超时、脱敏
+  无分叉（fakejob 成败入审计 + timeoutOverride 后台 TIMEOUT
+  两测亲核）；
+  ④ slash（backgroundSlow=false）与全部 fast 命令逐字节旧行为，
+  既有 379 基线测试零修改通过；
+  ⑤ nonce 撞表退化为 job-<n> 不覆盖旧作业；环 32 淘汰后
+  complete 空操作、id 映射 identical 防护正确。
+- echo-cmd 亲核：--no-wait 在进 PAIRS 前剥除绝不下发 App；
+  轮询 0.5s×130=65s，done 打印**内层**信封并按内层错误码退出，
+  AUTH_REQUIRED/空回包等意外以外层信封为结论直接退出（不会
+  死等）；bash -n 通过。
+- 手册异步信封/running-done 形状/跨通道与重鉴权语义齐备。
+- 门禁独立复跑：analyze 0、flutter test **415** 全绿（+17
+  作业用例）、format exit 0。
+- Nit（不阻塞，G2/G3 顺手）：手册把 sys.job.get、sys.delay
+  标注「幂等」，但两条 [CommandSpec](../echo/lib/src/control/protocol/command_spec.dart)
+  未设 `idempotent:true`（该字段纯声明元数据、总线不强制，
+  sys.clock.set 有设）；G3 播种命令落地时统一裁定（补字段或
+  修手册表述），本期不阻断。G0 的 2 个 nit 仍挂 G2 收口。
+
 ### G2｜事件接入（五个冻结事件，零 services→control 反向依赖）
 
 事件类型与级别（本期冻结，手册登记）：
