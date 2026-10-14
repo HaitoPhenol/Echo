@@ -94,16 +94,18 @@ am broadcast -a com.everse.echo.CTRL --es cmd 'diary.prune' --es args '{...}'
 - 结果同时回 `resultData`（JSON 信封）与 logcat tag `EchoCtrl`，
   `am broadcast` 部分 ROM 不回显 resultData 时用 logcat 兜底。
 
-> **已知限制（E4，随 P4 事件流/结果轮询根治；2026-10-13 订正）**：
-> 原标注"随 P3"有误——slash 指令台是进程内调用，没有接收器 9s 预算
-> 问题；事件流在 P4，根治随 P4。接收器 `goAsync()`
-> 的系统广播预算约 10s，`DebugControlReceiver` 保守取 **9s**；而总线
-> 侧 slow 命令预算是 **60s**。命令执行超过 9s 时，接收器先回
-> `TIMEOUT`，但 Dart 侧调用**不会被取消**——命令继续执行，产物
-> （如导出 zip）仍可能正常落盘。因此收到 `TIMEOUT` 不代表失败，
-> 判定以**落盘文件/审计流水为准**：`sys.audit` 中该命令的最终
-> `ok/error` 与落盘结果才是结论（P1 实测导出约 80ms，不触发；
-> 日志与审计时间戳可与接收器回包的 nonce 对应）。
+> **E4（P4 已根治：作业化执行 + 结果轮询，Kotlin 零改动）**：
+> 接收器 `goAsync()` 的系统广播预算约 10s，`DebugControlReceiver`
+> 保守取 **9s**；总线侧 slow 命令预算是 **60s**。P4 起 adb 通道对
+> slow 命令（`diary.export`、debug 验证命令 `sys.delay`）立即回
+> `async:true` 的 running 信封（远小于 9s），真正执行在后台继续，
+> 工作站用普通广播 `sys.job.get --id <jobId>`（jobId＝原调用
+> nonce）轮询终态；`scripts/echo-cmd` 默认每 0.5s 自动轮询至 done
+> （最长 65s），`--no-wait` 只取 running 信封。即便旧路径上接收器
+> 已先回 `TIMEOUT`，Dart 侧调用也不取消，仍可用同一 nonce 轮询到
+> 最终信封——`TIMEOUT` 不代表失败的旧判定（落盘文件/审计流水）
+> 被轮询终态取代。slash 通道是进程内调用，无 9s 预算，行为不变
+> （始终直接等待终态，不异步化）。
 
 ### 3.3 代码布局
 
@@ -145,7 +147,9 @@ release 构建不包含 `src/debug/` 源集，物理无 receiver；Dart 侧通�
 - 受控动词表：`list/get/status`（读）、
   `goto/open/create/set/send/refresh/ensure`（写）、
   `notify/exception/view/resolve`（信号）、
-  `prune/delete/reset`（生命周期）；
+  `prune/delete/reset`（生命周期）、
+  `job.get`（P4：异步作业轮询）、`delay`（P4：仅 debug 验证用）；
+  带点复合动词 `clock.set` 等与清单逐字一致；
 - 首批命名空间：`sys` `auth` `nav` `diary` `chat` `console` `badge`；
 - 仅 debug 构建注册：`sys.clock.set`、`diary.seed`、`diary.reset`
   （release manifest 中不存在，而非"存在但拒绝"）。

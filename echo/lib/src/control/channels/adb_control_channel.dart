@@ -63,6 +63,10 @@ class AdbControlChannel {
       rawArgs: args,
       confirmed: raw['confirmed'] == true,
       nonce: raw['nonce'] as String?,
+      // P4-G1：slow 命令（diary.export / debug sys.delay）作业化——
+      // 立即回 running，绕开接收器 9s 预算；终态由 sys.job.get 轮询。
+      // 非 slow 命令该开关无作用，行为不变。
+      backgroundSlow: true,
     );
     // 广播结果只能承载字符串（setResultData），Kotlin 侧拿到后
     // 原样回传并落 logcat；Map 经 StandardMessageCodec 虽能过

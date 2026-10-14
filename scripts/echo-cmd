@@ -7,7 +7,9 @@
 #   2. 把 `--k v / --flag` 参数编成 args JSON，经 am broadcast 发给
 #      debug 包的 DebugControlReceiver；
 #   3. PIN 只在本机 stdin 交互采集（不回显），绝不进进程参数/历史；
-#   4. 解析 resultData 信封，stdout 原样打印 JSON，退出码对齐手册 §1.4。
+#   4. 解析 resultData 信封，stdout 原样打印 JSON，退出码对齐手册 §1.4；
+#      slow 命令的 async 首包自动每 0.5s 轮询 sys.job.get 至 done
+#      （最长 65s），打印/退出对齐内层信封，--no-wait 只取 running。
 #
 # 仅适用 debug 包：release 包物理无 receiver（am 会报无组件）。
 # 依赖：adb、python3（仅标准库，做 JSON 编解码）；不需要 jq。
@@ -18,6 +20,8 @@
 #   scripts/echo-cmd diary.prune --confirm --dry-run
 #   scripts/echo-cmd auth.unlock            # stdin 提示输 PIN，不回显
 #   cat msg.txt | scripts/echo-cmd chat.send --id incoming-1 --text-stdin
+#   scripts/echo-cmd sys.delay --ms 12000  # slow 命令自动轮询至 done
+#   scripts/echo-cmd sys.delay --ms 12000 --no-wait  # 只取 running 信封
 set -euo pipefail
 
 # ---- 常量（与 debug 源集/AdbControlWire 逐字一致）---------------------
@@ -131,6 +135,54 @@ except Exception:
 PY
 }
 
+# 点路径取信封字段（async/jobId/result.status/result.envelope）。
+# dict/list 重新序列化为紧凑 JSON 单行；标量打印字面；路径不存在/
+# JSON 非法以非零退出（调用方按需 || true 兜底）。
+json_query() {
+  local json="$1" query="$2"
+  ENVELOPE_JSON="$json" QUERY="$query" python3 - <<'PY'
+import json, os, sys
+try:
+    v = json.loads(os.environ["ENVELOPE_JSON"])
+    for part in os.environ["QUERY"].split("."):
+        if part:
+            v = v[part]
+    if isinstance(v, (dict, list)):
+        print(json.dumps(v, ensure_ascii=False))
+    elif v is None:
+        print("")
+    else:
+        print(v)
+except Exception:
+    sys.exit(1)
+PY
+}
+
+# P4：收到 async running 信封后轮询终态。每 0.5s 一次 sys.job.get
+# （普通广播，自带新 nonce），至 done 打印内层信封并按内层错误码退出；
+# 最长 65s（slow 预算 60s + 余量）。--no-wait 不进本函数。
+poll_job() {
+  local job_id="$1" i reply status inner job_args
+  echo "echo-cmd: 作业已受理 jobId=${job_id}，轮询终态（最长 65s）…" >&2
+  for ((i = 0; i < 130; i++)); do
+    sleep 0.5
+    job_args=$(JOB_ID="$job_id" python3 -c \
+      'import json,os;print(json.dumps({"id":os.environ["JOB_ID"]}))')
+    reply="$(send_broadcast "sys.job.get" "$job_args" "false" "$(make_nonce)" || true)"
+    status="$(json_query "$reply" 'result.status' 2>/dev/null || true)"
+    if [[ "$status" == "done" ]]; then
+      inner="$(json_query "$reply" 'result.envelope')"
+      # 内层信封决定输出与退出码（与同步调用逐字一致）。
+      emit_envelope "$inner"
+    fi
+    if [[ "$status" != "running" ]]; then
+      # 空回包/AUTH_REQUIRED/NOT_FOUND 等意外：外层信封就是结论。
+      emit_envelope "$reply"
+    fi
+  done
+  die "作业 ${job_id} 在 65s 内未完成（用 sys.job.get --id ${job_id} 手工续查）"
+}
+
 # 打印信封并按错误码退出（成功 0）。
 emit_envelope() {
   local json="$1"
@@ -187,6 +239,9 @@ shift
 CONFIRM="false"
 # --text-stdin：聊天长文本走 stdin 全文（多行不能进 PAIRS 行协议）。
 TEXT_STDIN="false"
+# --no-wait：工作站侧开关（不进 args JSON、不下发 App）：slow 命令
+# 只打印 async running 信封，不自动轮询终态。
+NO_WAIT="false"
 declare -a PAIRS=()
 
 is_bool_flag() {
@@ -217,6 +272,15 @@ while [[ $# -gt 0 ]]; do
     continue
   fi
   [[ "$name" != text-stdin=* ]] || die "--text-stdin 是纯开关（用法：--text-stdin < 文件）"
+
+  # --no-wait 同为工作站侧纯开关：在进 PAIRS 之前剥掉，绝不下发给 App
+  # （否则总线按未知参数 USAGE 驳回）。
+  if [[ "$name" == "no-wait" ]]; then
+    NO_WAIT="true"
+    shift
+    continue
+  fi
+  [[ "$name" != no-wait=* ]] || die "--no-wait 是纯开关，不接受取值"
 
   # 形态一：--name=value（显式赋值，布尔只认真/假字面量）。
   if [[ "$name" == *=* ]]; then
@@ -356,4 +420,15 @@ fi
 ensure_app_ready
 NONCE="$(make_nonce)"
 REPLY="$(send_broadcast "$CMD" "$ARGS_JSON" "$CONFIRM" "$NONCE")"
+
+# P4-G1：slow 命令的 async 首包（jobId 即本次 nonce）。--no-wait
+# 直接打印 running 信封（退出码 0）；否则自动轮询至内层终态信封。
+if [[ "$(json_query "$REPLY" 'async' 2>/dev/null || true)" == "true" ]]; then
+  JOB_ID="$(json_query "$REPLY" 'jobId')"
+  if [[ "$NO_WAIT" == "true" ]]; then
+    emit_envelope "$REPLY"
+  fi
+  poll_job "$JOB_ID"
+fi
+
 emit_envelope "$REPLY"

@@ -13,6 +13,8 @@ class ControlEnvelope {
     this.result,
     this.error,
     this.nonce,
+    this.async = false,
+    this.jobId,
   });
 
   /// 失败信封的便捷构造。
@@ -42,6 +44,14 @@ class ControlEnvelope {
   /// adb 通道逐请求回响（其他通道为 null）。
   final String? nonce;
 
+  /// P4：true 表示这是 slow 命令异步化的**首包**（running），真正
+  /// 结果要用 [jobId] 轮询 `sys.job.get`。普通信封恒 false、不进 JSON
+  /// （成功信封形状向后兼容）。
+  final bool async;
+
+  /// 异步作业 id（adb 侧等于本次调用 nonce）；仅 [async] 首包出现。
+  final String? jobId;
+
   /// 失败时的进程退出码（成功 0）；供 adb 接收器与包装脚本使用。
   int get exitCode => ok ? 0 : error!.code.exitCode;
 
@@ -49,6 +59,8 @@ class ControlEnvelope {
     'ok': ok,
     'cmd': cmd,
     'ms': ms,
+    // 异步首包标记只在 true 时出现，普通信封形状逐字节不变。
+    if (async) ...{'async': true, 'jobId': jobId},
     if (ok) 'result': result,
     if (!ok) 'error': error!.toJson(),
     if (nonce != null) 'nonce': nonce,

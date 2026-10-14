@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:echo/src/control/auth/audit_log.dart';
 import 'package:echo/src/control/control_bus.dart';
 import 'package:echo/src/control/control_registry.dart';
+import 'package:echo/src/control/jobs/job_store.dart';
 import 'package:echo/src/control/protocol/command_spec.dart';
 import 'package:echo/src/control/protocol/control_envelope.dart';
 import 'package:echo/src/control/protocol/control_error.dart';
@@ -71,6 +72,7 @@ void main() {
       services: ControlRegistry(),
       authorizer: auth,
       auditLog: AuditLog(),
+      jobs: ControlJobStore(),
     );
     bus.registerAll(specs);
     return bus;
@@ -244,6 +246,7 @@ void main() {
             services: ControlRegistry(),
             authorizer: _AllowAll(),
             auditLog: audit = AuditLog(),
+            jobs: ControlJobStore(),
           )..registerAll([
             _spec('r', 'get', ControlLevel.owner),
             _spec('w', 'set', ControlLevel.user),
@@ -263,6 +266,7 @@ void main() {
             services: ControlRegistry(),
             authorizer: _AllowAll(),
             auditLog: audit = AuditLog(),
+            jobs: ControlJobStore(),
           )..register(
             _spec(
               'w',
@@ -290,6 +294,7 @@ void main() {
             services: ControlRegistry(),
             authorizer: _AllowAll(),
             auditLog: audit = AuditLog(),
+            jobs: ControlJobStore(),
           )..register(
             CommandSpec(
               namespace: 'w',
@@ -324,6 +329,7 @@ void main() {
             services: ControlRegistry(),
             authorizer: _AllowAll(),
             auditLog: audit = AuditLog(),
+            jobs: ControlJobStore(),
           )..register(
             CommandSpec(
               namespace: 'w',

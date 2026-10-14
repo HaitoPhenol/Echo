@@ -16,6 +16,7 @@ import 'package:echo/src/control/commands/sys_commands.dart';
 import 'package:echo/src/control/control_app_state.dart';
 import 'package:echo/src/control/control_bus.dart';
 import 'package:echo/src/control/control_registry.dart';
+import 'package:echo/src/control/jobs/job_store.dart';
 import 'package:echo/src/control/protocol/command_spec.dart';
 import 'package:echo/src/control/protocol/control_envelope.dart';
 import 'package:echo/src/services/chat_session_controller.dart';
@@ -54,6 +55,7 @@ class ControlHarness {
     required this.chatSession,
     required this.badges,
     required this.consoleStats,
+    required this.jobs,
   });
 
   final Directory tempDir;
@@ -74,6 +76,9 @@ class ControlHarness {
   final ChatSessionController chatSession;
   final NavBadgeService badges;
   final ConsoleStatsService consoleStats;
+
+  /// P4：slow 命令后台作业表（与生产总线同源实例）。
+  final ControlJobStore jobs;
 
   /// 可变墙钟（拨钟测试直接改）；未 override 时 [DiaryClock.now] 读它。
   late DateTime wallTime;
@@ -163,12 +168,17 @@ class ControlHarness {
     auth.attach();
     registry.set(auth);
 
+    // P4：作业表注册进注册表（sys.job.get 按类型取），同一实例给总线。
+    final jobs = ControlJobStore();
+    registry.set(jobs);
+
     final bus =
         ControlBus(
             buildMode: buildMode,
             services: registry,
             authorizer: auth,
             auditLog: audit,
+            jobs: jobs,
           )
           ..registerAll(buildSysCommands())
           ..registerAll(buildAuthCommands())
@@ -195,22 +205,30 @@ class ControlHarness {
       chatSession: chatSession,
       badges: badges,
       consoleStats: consoleStats,
+      jobs: jobs,
     )..wallTime = wall;
     return h;
   }
 
   /// 便捷执行（参数已按线格式构造时用）。
+  ///
+  /// [backgroundSlow] 默认 false＝历史逐字节行为（既有全部测试按同步
+  /// 语义断言）；生产 adb 通道固定传 true，作业化测试显式传 true。
+  /// [nonce] 默认 'n'，多条并存作业时各自传唯一 nonce。
   Future<ControlEnvelope> exec(
     String cmd, {
     ControlChannel channel = ControlChannel.adb,
     Map<String, Object?>? args,
     bool confirmed = false,
+    bool backgroundSlow = false,
+    String? nonce,
   }) => bus.execute(
     channel: channel,
     cmd: cmd,
     rawArgs: args,
     confirmed: confirmed,
-    nonce: 'n',
+    nonce: nonce ?? 'n',
+    backgroundSlow: backgroundSlow,
   );
 
   /// 成功结果断言便捷器。
@@ -219,6 +237,8 @@ class ControlHarness {
     ControlChannel channel = ControlChannel.adb,
     Map<String, Object?>? args,
     bool confirmed = false,
+    bool backgroundSlow = false,
+    String? nonce,
   }) async {
     final env = await exec(
       cmd,

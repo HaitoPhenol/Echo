@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'auth/audit_log.dart';
 import 'control_registry.dart';
+import 'jobs/job_store.dart';
 import 'protocol/command_spec.dart';
 import 'protocol/control_envelope.dart';
 import 'protocol/control_error.dart';
@@ -17,6 +18,7 @@ class ControlBus implements ControlBusHandle {
     required this.services,
     required this.authorizer,
     required this.auditLog,
+    required this.jobs,
   });
 
   @override
@@ -27,6 +29,10 @@ class ControlBus implements ControlBusHandle {
   final ControlRegistry services;
   final ControlAuthorizer authorizer;
   final AuditLog auditLog;
+
+  /// P4：slow 命令后台作业表（adb 通道作业化执行 / sys.job.get
+  /// 轮询；同时注册进 services 供命令层取）。
+  final ControlJobStore jobs;
 
   /// 已注册命令（全名 → 规格），注册后不可变。
   final Map<String, CommandSpec> _specs = {};
@@ -65,15 +71,21 @@ class ControlBus implements ControlBusHandle {
   ///
   /// [rawArgs] 为通道解码后的参数 Map（adb 侧由 JSON 字符串解码）；
   /// [confirmed] 对应 3 级命令的 `--confirm`；[nonce] 仅 adb 回响。
+  ///
+  /// [backgroundSlow]（P4-G1，默认 false）：true 且命令标 `slow` 时
+  /// 立即回 async running 信封，真正执行在后台继续、终态落 [jobs]
+  /// 供 `sys.job.get` 轮询——根治 adb 接收器 9s 预算（E4）。false
+  /// （slash 与全部非 slow 命令）行为与历史逐字节一致。
   Future<ControlEnvelope> execute({
     required ControlChannel channel,
     required String cmd,
     Map<String, Object?>? rawArgs,
     bool confirmed = false,
     String? nonce,
+    bool backgroundSlow = false,
   }) async {
     final stopwatch = Stopwatch()..start();
-    ControlEnvelope fail(ControlException error) {
+    ControlEnvelope failBeforeRun(ControlException error) {
       stopwatch.stop();
       return ControlEnvelope.failure(
         cmd,
@@ -85,7 +97,7 @@ class ControlBus implements ControlBusHandle {
 
     final spec = _specs[cmd];
     if (spec == null) {
-      return fail(
+      return failBeforeRun(
         ControlException(ControlErrorCode.unknownCommand, '未知命令：$cmd'),
       );
     }
@@ -95,7 +107,7 @@ class ControlBus implements ControlBusHandle {
     try {
       args = _parseArgs(spec, rawArgs ?? const {});
     } on ControlException catch (e) {
-      return fail(e);
+      return failBeforeRun(e);
     }
 
     // 2) 权限裁决（含 3 级 --confirm）。
@@ -109,12 +121,59 @@ class ControlBus implements ControlBusHandle {
         error: denied,
         ms: stopwatch.elapsedMilliseconds,
       );
-      return fail(denied);
+      return failBeforeRun(denied);
     }
 
-    // 3) 执行（超时按清单标注：普通 10s / slow 60s）。
-    // 过鉴权后的执行失败同样入审计（设计 §6：≥2 级调用无论成败都记；
-    // 参数解析/未知命令发生在裁决前，不记）。
+    // 3) slow 命令作业化（仅当通道显式要求；adb 传 true，slash 不传）。
+    if (backgroundSlow && spec.slow) {
+      final job = jobs.start(
+        spec: spec,
+        channel: channel,
+        confirmed: confirmed,
+        // nonce 即 jobId：接收器 9s TIMEOUT 后工作站仍能用同一 nonce
+        // 轮询到终态（E4 兜底）；撞表/无 nonce 时作业表自行生成。
+        preferredId: nonce,
+      );
+      // 完成路径与同步调用完全共用：审计/超时/脱敏绝不分叉。
+      unawaited(
+        _finishAuthorized(
+          spec,
+          channel,
+          args,
+          nonce,
+          stopwatch,
+        ).then((envelope) => jobs.complete(job, envelope)),
+      );
+      return ControlEnvelope(
+        ok: true,
+        cmd: cmd,
+        ms: stopwatch.elapsedMilliseconds,
+        async: true,
+        jobId: job.id,
+        nonce: nonce,
+        result: {
+          'status': 'running',
+          'jobId': job.id,
+          'cmd': cmd,
+          'hint': 'sys.job.get --id ${job.id}',
+        },
+      );
+    }
+
+    return _finishAuthorized(spec, channel, args, nonce, stopwatch);
+  }
+
+  /// 鉴权通过后的执行收口（同步调用与后台作业**唯一**共用路径）：
+  /// 跑 handler（普通 10s / slow 60s 超时）、成败入审计、统一异常
+  /// 映射。设计 §6：≥2 级调用无论成败都记；参数解析/未知命令/鉴权
+  /// 拒绝发生在进入本方法之前。
+  Future<ControlEnvelope> _finishAuthorized(
+    CommandSpec spec,
+    ControlChannel channel,
+    Map<String, Object?> args,
+    String? nonce,
+    Stopwatch stopwatch,
+  ) async {
     ControlEnvelope failAudited(ControlException error) {
       stopwatch.stop();
       _auditIfNeeded(
@@ -125,7 +184,12 @@ class ControlBus implements ControlBusHandle {
         error: error,
         ms: stopwatch.elapsedMilliseconds,
       );
-      return fail(error);
+      return ControlEnvelope.failure(
+        spec.name,
+        stopwatch.elapsedMilliseconds,
+        error,
+        nonce: nonce,
+      );
     }
 
     final context = CommandContext(
@@ -146,7 +210,7 @@ class ControlBus implements ControlBusHandle {
       );
       return ControlEnvelope(
         ok: true,
-        cmd: cmd,
+        cmd: spec.name,
         ms: stopwatch.elapsedMilliseconds,
         result: result,
         nonce: nonce,
@@ -157,7 +221,7 @@ class ControlBus implements ControlBusHandle {
       return failAudited(
         ControlException(
           ControlErrorCode.timeout,
-          '执行超时（${spec.timeout.inSeconds}s）：$cmd',
+          '执行超时（${spec.timeout.inSeconds}s）：${spec.name}',
         ),
       );
     } on ArgumentError catch (e) {

@@ -44,6 +44,7 @@ void main() {
             services: h.registry,
             authorizer: h.auth,
             auditLog: h.audit,
+            jobs: h.jobs,
           )
           ..register(_levelSpec(ControlLevel.guest))
           ..register(_levelSpec(ControlLevel.owner))

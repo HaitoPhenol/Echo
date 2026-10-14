@@ -19,6 +19,7 @@ import 'commands/sys_commands.dart';
 import 'control_app_state.dart';
 import 'control_bus.dart';
 import 'control_registry.dart';
+import 'jobs/job_store.dart';
 import 'protocol/command_spec.dart';
 import '../services/console_stats_service.dart';
 
@@ -85,11 +86,16 @@ class ControlBootstrap with WidgetsBindingObserver {
     auth.attach(); // 息屏/切后台立即销毁会话
     registry.set(auth);
 
+    // P4：slow 命令后台作业表（sys.job.get 经注册表按类型取用）。
+    final jobs = ControlJobStore();
+    registry.set(jobs);
+
     final bus = ControlBus(
       buildMode: kDebugMode ? ControlBuildMode.debug : ControlBuildMode.release,
       services: registry,
       authorizer: auth,
       auditLog: audit,
+      jobs: jobs,
     );
     bus.registerAll([
       ...buildSysCommands(),

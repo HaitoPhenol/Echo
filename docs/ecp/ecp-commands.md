@@ -86,6 +86,21 @@
 
 下文"返回"节只列 `result` 内的业务字段。
 
+**异步作业信封（P4，仅 adb 通道的 slow 命令）**：命令被作业化时，
+首包立即（远小于接收器 9s 预算）返回
+
+```json
+{"ok": true, "cmd": "diary.export", "ms": 1, "async": true,
+ "jobId": "<作业 id，等于本次 nonce>",
+ "result": {"status": "running", "jobId": "<id>", "cmd": "diary.export",
+            "hint": "sys.job.get --id <id>"}}
+```
+
+消费者随后用普通广播轮询 `sys.job.get --id <id>` 取终态；
+`scripts/echo-cmd` 默认自动轮询并打印/退出对齐**内层信封**，
+`--no-wait` 可只取 running 信封。slash 通道是进程内调用，不异步化，
+始终直接等终态。
+
 ---
 
 ## 2. `sys` —— 系统与协议自身
@@ -130,6 +145,39 @@
   ```bash
   scripts/echo-cmd sys.clock.set --time 2026-10-12T03:59
   scripts/echo-cmd sys.clock.set --reset
+  ```
+
+### `sys.job.get`
+- 类 读 · 级 1 · 幂等 · 起始 P4 · 构建 all
+- 参数：`--id`（必填，异步首包 `jobId`，adb 侧即原调用 nonce）
+- 作用：轮询异步作业（adb 通道 slow 命令）。作业**跨通道隔离**：
+  adb 起的作业 slash 查不到（NOT_FOUND）；mcp 起始 guest(0) 且只读
+  铁律下永不解锁，owner 级的本命令在 mcp 恒被 AUTH_REQUIRED 拒于
+  鉴权门。作业表为内存环 32 个，超容量淘汰最旧。取作业时按作业
+  原命令在**当前**通道重新过鉴权：后台执行期间会话被销毁（切后台/
+  息屏）后，未重新解锁取不回结果（AUTH_REQUIRED），作业保留，
+  重解后可再取。
+- 返回（running）：`{"status":"running","jobId":"…","cmd":"…"}`
+- 返回（done）：`{"status":"done","envelope":{…原命令最终信封…}}`；
+  不存在/已淘汰/他通道作业：NOT_FOUND。
+- 用途：根治 E4（接收器 9s 预算 vs slow 60s）；轮询本身是普通
+  exec 广播，接收器零改动。手工示例：
+  ```bash
+  scripts/echo-cmd diary.export --no-wait        # 只取 running 信封
+  scripts/echo-cmd sys.job.get --id ecp-123-abcd # 手工轮询
+  ```
+
+### `sys.delay`
+- 类 读 · 级 0 · 幂等 · **仅 debug** · 起始 P4 · slow（60s 预算）
+- 参数：`--ms`（整数 0..30000，缺省 5000）
+- 作用：**验证用**——挂起指定毫秒后回 `{"sleptMs":n}`，专走
+  slow/异步作业路径，用于真机验证 E4 轮询（接收器 9s 预算边界）
+  与 echo-cmd 自动等待，无任何业务副作用。release 包物理不注册。
+- 示例：
+  ```bash
+  scripts/echo-cmd sys.delay --ms 12000 --no-wait  # 立即取 running
+  scripts/echo-cmd sys.job.get --id <jobId>        # 手工轮至 done
+  scripts/echo-cmd sys.delay --ms 12000            # 包装自动等≈12s
   ```
 
 ---
@@ -374,8 +422,14 @@ scripts/echo-cmd diary.prune --confirm --dry-run=false # 真实删除
 # （confirm/reset 为纯开关，不取值）
 
 # 导出为 2 级：无需解锁、无需 --confirm，直接取路径
+# adb 通道 slow 命令先回 async running，包装自动轮询至 done 后打印
+# 内层信封（总耗时可能 >9s，不再撞接收器预算）：
 scripts/echo-cmd diary.export --notebook Echo日记
 adb pull /data/local/tmp/…  # 实际路径以返回 path 为准（debug 可拉取）
+
+# 异步作业（E4 验证）：--no-wait 只取 running 信封，轮询自己掌控
+scripts/echo-cmd sys.delay --ms 12000 --no-wait
+scripts/echo-cmd sys.job.get --id <上一步 jobId>   # running→done
 
 # 机能风读数条：立即刷新（不等 5s 周期）与最近快照
 scripts/echo-cmd console.refresh

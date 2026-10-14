@@ -243,6 +243,8 @@ class CommandSpec {
     'prune', 'delete', 'reset', 'export',
     // 协议自身
     'ping', 'help', 'info', 'audit',
+    // P4：异步作业轮询（复合动词）/ debug 验证用挂起
+    'job.get', 'delay',
     // 鉴权
     'unlock', 'lock',
   };
