@@ -196,8 +196,15 @@ class ControlBus implements ControlBusHandle {
   }) async {
     // P4：裁决后执行收口的唯一事件出口（成功/业务失败/超时都经此）。
     // 裁决前失败（未知命令/USAGE/鉴权拒绝）走不到本方法，天然不发。
+    //
+    // 关停容忍：走 tryEmit 而非严格 emit。宿主 dispose（bootstrap/
+    // 测试拆机）会先关事件中心，晚到的在飞后台作业终态不能因「发不出
+    // 事件」把命令执行打成失败——严格 emit 会抛 StateError，被下方
+    // `on StateError → CONFLICT` 误捕，failAudited 内二次 emit 再抛
+    // 并穿透 catch，导致 jobs.complete 不执行（作业永久 running）、
+    // 成功命令被误判 CONFLICT 且产生未捕获异步异常。
     void emitFinished(ControlEnvelope envelope) {
-      events.emit(
+      events.tryEmit(
         type: ControlEventType.commandFinished,
         level: ControlLevel.owner,
         data: {

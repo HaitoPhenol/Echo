@@ -561,6 +561,51 @@ void main() {
     });
   });
 
+  group('G2 复审必改项：收口缝关停容忍', () {
+    test('events.close 后在飞后台 slow 作业仍正常收口，晚到事件安静丢弃', () async {
+      final h = await ControlHarness.create();
+      addTearDown(h.dispose);
+
+      // 起一条短后台作业：同步首包只回 running（不发收口事件）。
+      final running = await h.exec(
+        'sys.delay',
+        args: {'ms': 60},
+        backgroundSlow: true,
+        nonce: 'tolerant-1',
+      );
+      expect(running.async, isTrue);
+      final maybe = h.jobs.lookup(
+        id: 'tolerant-1',
+        channel: ControlChannel.adb,
+      );
+      expect(maybe, isNotNull, reason: '作业应已登记入表');
+      final job = maybe!;
+      expect(job.isDone, isFalse);
+
+      // 模拟宿主关停：事件中心先关，作业在其后才跑完收口。
+      // 修复前收口走严格 emit → 抛 StateError → 被 `on StateError`
+      // 误捕成 CONFLICT → failAudited 内二次 emit 再抛并穿透 catch →
+      // jobs.complete 不执行（作业永久 running）+ 未捕获异步异常。
+      // close 后 sys.events 不再是可用观测手段，直接查作业表。
+      final lengthAtClose = h.events.length;
+      h.events.close();
+
+      final deadline = DateTime.now().add(const Duration(seconds: 5));
+      while (!job.isDone && DateTime.now().isBefore(deadline)) {
+        await Future<void>.delayed(const Duration(milliseconds: 5));
+      }
+
+      // 关停容忍：终态照写作业表，成功命令不被拖垮。
+      expect(job.isDone, isTrue, reason: 'close 后作业仍应写入终态信封');
+      expect(job.envelope!.ok, isTrue);
+      expect(job.envelope!.cmd, 'sys.delay');
+      expect(job.envelope!.nonce, 'tolerant-1');
+      expect(job.envelope!.result!['sleptMs'], 60);
+      // 晚到的事件安静丢弃：close 后事件环不再增长。
+      expect(h.events.length, lengthAtClose);
+    });
+  });
+
   group('分层硬项：services/navigation 零 control 反向依赖', () {
     test('services/ 全目录与导航物理层源码无 control import', () {
       final banned = RegExp(r'''import\s+['"][^'"]*control/''');
