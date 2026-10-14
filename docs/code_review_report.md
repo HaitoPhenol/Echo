@@ -1175,6 +1175,70 @@ testDebugUnitTest（本期预期零 android 改动）；语义 diff 交维护者
   wait/long-poll/ceiling 过滤、装配适配器对 ChatStore/导航
   变化的转发、services 层零 control import 的源码断言。
 
+**维护者 G2 复审结论（2026-10-14，提交 5d34327）：有条件通过——1 个必改小项，修完即放 G3。**
+
+- 交付面：events/event_types.dart 冻结五事件（级别
+  audit.entry/command.finished/chat.incoming=owner、
+  diary.export.completed=user、nav.changed=guest）；
+  AuditLog.onRecord 回调转发审计；总线唯一收口发
+  command.finished（含后台作业 jobId 关联）；diary.export
+  handler 经 ctx.emitEvent 发完成事件；ChatStore 自有
+  ChatIncomingPayload + incoming 广播（零 control import）；
+  control_event_bridge.dart 装配适配器（chat/nav 两源，页号
+  diff、attach 幂等、随屏 dispose）；sys.events（游标/
+  nextSeq/长轮询/types 白名单/动态 ceiling）；bootstrap
+  装配同一事件中心；受控动词扩 events。+14 集成用例，总
+  测试 415→429。
+- 亲核通过的关键点：
+  ① 裁决前失败（解析 USAGE/未知命令/鉴权拒绝）走不到收口，
+  天然不发 command.finished（测试逐条钉死）；审计先于
+  finished、export 完成先于终态 finished，seq 顺序可关联；
+  ② sys.events ceiling 取 `auth.effectiveLevel(channel)`
+  动态值（焚会话即降级），超级别事件物理消失非打码；
+  wait-ms 0..8000 / limit 1..100 / 未知 types 三条 USAGE
+  矩阵齐；缺省 since=lastSeq 不补历史，空批 nextSeq 回
+  since 可原样续轮；
+  ③ 分层硬项：services/ 全目录 + nav 物理层源码正则钉死零
+  control import；ChatStore 只认自有载荷类型；适配器单向
+  control→services/navigation；
+  ④ addIncoming({String? text}) 对 UI 零参调用逐字节兼容，
+  自定义文本 trim 后正文/预览同源，空白回落默认文案；
+  ⑤ G0 挂账 2 nit 均收口：close 时在飞 poll 返空集且环内
+  历史 close 后仍可一次性读出；新增 tryEmit 关停容忍缝；
+  类注释已订正为「零 Widget import，允许复用协议层」；
+  ⑥ 装配/拆除顺序正确（先挂服务后挂桥；dispose 先摘桥再
+  毁服务），running 首包不发 finished。
+- **必改项（P2，回派执行者，独立小提交，勿与 G3 混）**：
+  [control_bus.dart](../echo/lib/src/control/control_bus.dart)
+  收口闭包 `emitFinished` 用的是严格 `events.emit`，与本
+  提交自己确立的容错原则矛盾——同文件 handler 缝
+  `emitEvent`、AuditLog.onRecord、tryEmit 文档注释都声明
+  「事件是尽力而为的遥测，绝不能因发不出事件把命令执行打
+  成失败」。后果链：events.close() 后在飞**后台 slow 作业**
+  收口时，emit 抛 StateError → 被同 try 的
+  `on StateError → CONFLICT` 误捕 → failAudited 内二次
+  emit 再抛并穿透 catch → `jobs.complete` 不执行（作业永久
+  running）、成功命令被误判 CONFLICT、且产生未捕获异步异常。
+  生产 dispose 不调用故事实不阻断发版，但 bootstrap.dispose
+  （测试/热卸载）真实可触发，且与提交内契约直接冲突。
+  修法：emitFinished 内改用 `events.tryEmit`；补一条测试
+  ——起 sys.delay 短作业后立即 events.close()，待作业时长
+  耗尽后断言 jobs 表内该作业 envelope 为 done 且 ok=true
+  （轮询可用第二个持有同 jobs 的总线或直接 lookup，注意
+  close 后 sys.events 不可再作为观测手段）。
+- 派单裁定（已顺手订正本文 §G4）：G2 测试发现派单 §G4
+  「mcp 调 sys.events：ceiling=owner 收得到事件」与 P3
+  冻结鉴权矩阵冲突。**裁定维持冻结矩阵**：mcp 恒 guest 且
+  永不解锁，owner 级 sys.events/sys.job.get 在 mcp 鉴权门
+  即 AUTH_REQUIRED；ceiling 物理过滤用 bus.poll 直测
+  （G2 已覆盖）；跨通道 NOT_FOUND 用能过门的 slash 通道
+  验证。执行者按此实现正确，不予返工。
+- 门禁独立复跑：analyze 0、flutter test **429** 全绿、
+  format exit 0；android/ 零 diff。
+- 遗留挂账：G1 nit（sys.job.get/sys.delay 手册称幂等但
+  spec 未设 idempotent；sys.events 已正确设置）仍归 G3
+  统一裁定。
+
 ### G3｜播种增强（debug-only，关掉 R3 两个实证缺口）
 
 1. 受控动词表加 `seed`（手册先改）。
@@ -1215,11 +1279,20 @@ testDebugUnitTest（本期预期零 android 改动）；语义 diff 交维护者
 - mcp 发任何 ≥2 级命令（含 diary.export/chat.seed/sys.delay
   不可见）→ AUTH_REQUIRED；diary.seed/reset 在 release 构建
   物理不存在（UNKNOWN_*）双重保险；
-- mcp 调 sys.events：ceiling=owner，收得到 audit.entry/
-  command.finished/chat.incoming，**收不到**
-  diary.export.completed（user 级）——造事件后断言结果中该
-  事件物理缺失；
-- mcp 调 sys.job.get 取 adb 作业 → 跨通道隔离 NOT_FOUND；
+- **【2026-10-14 G2 复审订正】** mcp 通道有效级别恒为
+  guest(0)（只读铁律永不解锁），故 owner(1) 读命令
+  sys.events / sys.job.get 在 mcp **鉴权门即
+  AUTH_REQUIRED**——连事件环/作业表层都到不了。原派单
+  「mcp 调 sys.events：ceiling=owner 收得到 owner 级事件」
+  与冻结鉴权矩阵冲突，作废，以 G2 实现与
+  event_integration_test 现有断言为准；
+- 事件 ceiling 物理过滤的负向断言不经 mcp 命令面（门前进不
+  去），直接用 `bus.poll(ceiling: …)` 假消费者验证：owner
+  ceiling 看不到 user 级 diary.export.completed、guest
+  ceiling 只看得到 nav.changed（G2 已覆盖，G4 复核即可）；
+- 跨通道作业隔离用**能过鉴权门**的 slash 通道（user 2 ≥
+  owner 1）取 adb 作业 → NOT_FOUND（G1 已钉死）；mcp 取
+  作业是 AUTH_REQUIRED 而非 NOT_FOUND，二者不要混；
 - slash/adb 本地通道事件全集可见（对照组）。
 
 ### G5｜门禁与 MIX 2S 真机终审（维护者主导，执行者先自验）
