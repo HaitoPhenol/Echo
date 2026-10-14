@@ -1175,7 +1175,17 @@ testDebugUnitTest（本期预期零 android 改动）；语义 diff 交维护者
   wait/long-poll/ceiling 过滤、装配适配器对 ChatStore/导航
   变化的转发、services 层零 control import 的源码断言。
 
-**维护者 G2 复审结论（2026-10-14，提交 5d34327）：有条件通过——1 个必改小项，修完即放 G3。**
+**维护者 G2 复审结论（2026-10-14，提交 5d34327；必改项修复
+2026-10-15 提交 a89ff53，已复核）：G2 通过，可进 G3。**
+
+> 必改项复核（a89ff53）：emitFinished 已改走 tryEmit，注释把
+> 误捕链写清；新增回归测试按复审要求构造——起 60ms 后台作业后
+> 立即 events.close()，直接查作业表（close 后 sys.events 不可
+> 用）断言 envelope done/ok/nonce/result 正确且事件环不增长。
+> 独立复跑 analyze 0、flutter test **430** 全绿、format 0、
+> android 零 diff。挂账清零，G2 放行。
+
+<details><summary>原审结论（含必改项细节，留档）</summary>
 
 - 交付面：events/event_types.dart 冻结五事件（级别
   audit.entry/command.finished/chat.incoming=owner、
@@ -1238,6 +1248,8 @@ testDebugUnitTest（本期预期零 android 改动）；语义 diff 交维护者
 - 遗留挂账：G1 nit（sys.job.get/sys.delay 手册称幂等但
   spec 未设 idempotent；sys.events 已正确设置）仍归 G3
   统一裁定。
+
+</details>
 
 ### G3｜播种增强（debug-only，关掉 R3 两个实证缺口）
 
