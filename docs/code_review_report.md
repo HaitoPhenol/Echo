@@ -959,6 +959,248 @@ testDebugUnitTest（本期预期零 android 改动）；语义 diff 交维护者
 终审 → G4 真机 → 合 main 排 **0.12.0+37**。D3 挂账中"Slash 命令
 面板"随本期关闭，日记编辑器 ↑↓ 逐行跳焦留独立小 patch。
 
+## H. ECP P4 施工交接单（2026-10-14，分支 feat/ecp-p4-events，基底 main 0.12.0+37）
+
+> 设计依据：ecp-design.md §10 P4 行、§3.2 E4 条、§4（diary.seed
+> 已承诺）、§5.2（MCP 上限 1 铁律）、§6（审计）。本期范围＝
+> **事件流 + adb 9s 预算根治（作业轮询）+ 播种增强 + 只读边界负向
+> 测试**。明确**不做**：终端页正式 UI、MCP 真实传输接入（另立
+> 专项）、事件/审计 sqflite 持久化（内存实现，持久化随后续）、
+> 任何新页面/导航位。本期预期**零 android/ 改动**（轮询复用普通
+> exec 广播，见 G1）。
+
+### 现状盘点（维护者 2026-10-14，执行者先核对）
+
+- [DebugControlReceiver.kt](../echo/android/app/src/debug/kotlin/com/everse/echo/DebugControlReceiver.kt)
+  goAsync 9s 预算、慢命令不取消（E4）；MethodChannel 仅一个
+  `exec` 方法。**G1 轮询设计为纯 Dart：`sys.job.get` 是普通命令，
+  经现有 exec 到达，接收器零改动。**
+- [control_bus.dart](../echo/lib/src/control/control_bus.dart)：
+  慢命令（`slow:true`，仅 diary.export，60s 预算）与总线 await
+  模型；审计在各终止分支写入。execute 需新增"通道可选的后台慢执行"
+  开关，**slash 的 await 行为不得改变**。
+- [audit_log.dart](../echo/lib/src/control/auth/audit_log.dart)
+  纯内存环（200），record 无对外通知——G2 加注入回调即可，不改
+  存储模型。
+- [command_spec.dart](../echo/lib/src/control/protocol/command_spec.dart)：
+  `ControlChannel.mcp` 已建模（guest→owner 上限 1），负向测试
+  直接用它构造假通道，不需要任何传输代码。**`controlledVerbs`
+  当前没有 `seed` 也没有 `delay`——本期扩充受控动词表＝协议变更，
+  必须先改手册再注册命令（§4 已承诺 seed）。**
+- [chat_store.dart](../echo/lib/src/services/chat_store.dart)：
+  addIncoming() 无参、release 下空表；debug UI 按钮是唯一入口
+  （R3 挂账：release chat.send 成功路径不可构造，本期 debug 侧
+  用命令补齐端到端，release 仍物理不可注入，属设计）。
+- [diary_seed_data.dart](../echo/lib/src/diary/data/diary_seed_data.dart)：
+  仅「上月+昨天」两篇非空稿；R3 暴露的缺口是**无法构造 cutoff
+  之前的空稿**，diary.seed 必须能造可被 prune 识别的空稿。
+- [scripts/echo-cmd](../scripts/echo-cmd)：一问一答；G1 加
+  async 信封自动轮询。
+
+### G0｜事件核心（纯 Dart，先做，独立提交，先于一切接线）
+
+新建 `lib/src/control/events/`：
+
+1. `event.dart`：不可变 `ControlEvent {seq, time, type, level,
+   data}`。type 为点号命名字符串常量（本期冻结五种，见 G2）；
+   `level` 是订阅该事件所需的最低 `ControlLevel`（敏感度，越敏
+   感级别越高），data 为 JSON 兼容 Map，**事件同样遵守脱敏纪律：
+   不放 PIN、不放聊天全文以外无授权数据**（chat.incoming 的首条
+   正文随 chat.get 同为 owner 可读，允许；export 路径 user 级）。
+2. `event_bus.dart` `ControlEventBus`：
+   - 单调递增 seq（从 1）、内存环形缓冲（容量 256，下限测试钉
+     死，超容量丢最旧，seq 不回收，允许出现空洞）；
+   - `emit(type, level, data)`：分配 seq/time，入环，唤醒等待者
+     与广播订阅者；
+   - `poll({required int since, required ControlLevel ceiling,
+     Set<String>? types, int limit=50, Duration? wait})`：
+     返回 seq>since、level≤ceiling、type 命中的事件（≤limit）；
+     立即无事件且 wait≠null 时挂起至新事件或 wait 超时（上限
+     8000ms，超 8000 按 USAGE 拒——必须小于接收器 9s 预算）；
+   - `stream({required ceiling, types})`：给未来 MCP/内置 agent
+     的进程内广播流（本期无消费者也要交付，G4 负向测试用），
+     **广播流不补历史，补历史只走 poll**。
+   - 只依赖 flutter/foundation，与 G1 核心同纪律：零 Widget
+     import（G3 接缝风格的源码正则 + 假消费者测试）。
+3. 单测：seq 顺序与环淘汰、since 空洞语义、ceiling 过滤、types
+   过滤、poll 命中即返回、wait 超时返回空、新事件提前唤醒、
+   stream 的 ceiling 过滤与历史不补发。
+
+### G1｜作业化执行与 E4 根治（adb 轮询，Kotlin 零改动）
+
+1. `ControlBus.execute` 增加**通道可选**命名参数
+   `backgroundSlow`（默认 false）：true 且 `spec.slow` 时，立即
+   返回 `{ok:true, cmd, async:true, status:"running", jobId,
+   hint:"sys.job.get --id <jobId>"}`，真正的执行在后台跑
+   （refactor 现有执行体为内部 `_executeOnce`，同步/后台两条路
+   共用，审计/超时/脱敏行为不得分叉）；false（slash 与全部非
+   slow 命令）行为与今天**逐字节一致**（回归现有 379 测试）。
+   `ControlEnvelope` 增加可选 `async`/`jobId` 字段（toJson 条件
+   输出，成功信封形状向后兼容）。
+2. 新建 `lib/src/control/jobs/job_store.dart` `ControlJobStore`：
+   jobId＝调用方 nonce（adb 每次都带），无 nonce 时生成
+   `job-<n>`；状态 running/done，存最终信封；内存环 32 个，
+   超容量淘汰最旧；跨通道隔离（adb 作业 mcp/slash 不可见）。
+   adb 通道（[adb_control_channel.dart](../echo/lib/src/control/channels/adb_control_channel.dart)）
+   调 execute 时传 `backgroundSlow:true`，并把 nonce 落为 jobId
+   ——接收器 9s TIMEOUT 后工作站仍可用已知 nonce 轮询（E4 兜底
+   语义，写进手册）。
+3. 新命令 `sys.job.get`（全构建注册，owner(1)，read）：
+   `--id` 必填；running 返回 `{status:"running",jobId,cmd}`，
+   done 返回 `{status:"done", envelope:{…原信封…}}`，不存在
+   NOT_FOUND。**轮询即普通 exec 广播，Kotlin 零改动**。安全门：
+   取作业时按作业命令的 spec 在**当前**通道重新过一次
+   authorizer.check（后台销毁会话后，3 级作业结果在未重解时
+   取不回，返回 AUTH_REQUIRED，作业保留）。
+4. 新增 debug-only 验证命令 `sys.delay`（受控动词表扩充
+   `delay`，手册先改）：`--ms` 0..30000（默认 5000），`slow:true`
+   →走 60s 预算/异步路径，await Future.delayed 后回
+   `{sleptMs}`；guest 级、debugOnly。定位与 sys.clock.set/
+   diary.reset 同：真机验证用的 debug-only 能力，release 物理
+   不注册；手册明确标注「验证用」。
+5. echo-cmd 包装：收到 async 信封后，除非用户给工作站侧开关
+   `--no-wait`（该开关不进 args JSON），否则每 0.5s 发一次
+   `sys.job.get --id`，至 done 打印**内层信封**并按内层错误码
+   退出（最长等到 65s）；`--no-wait` 直接打印 running 信封。
+   sys.events 的 wait-ms 长轮询天然是一次 ≤8s 广播，无需包装
+   特殊处理。
+6. 单测：slow+backgroundSlow 立即回 running/作业终态正确、
+   fast 与 backgroundSlow=false 行为不变、job 环淘汰与跨通道
+   隔离、get 的 NOT_FOUND/AUTH_REQUIRED 门、async 信封 JSON
+   形状。Kotlin 无 diff（验收时 `git diff --stat -- android/`
+   必须为空），免 Gradle。
+
+### G2｜事件接入（五个冻结事件，零 services→control 反向依赖）
+
+事件类型与级别（本期冻结，手册登记）：
+
+| type | 最低级别 | 发射点 | data 要点 |
+|---|---|---|---|
+| `audit.entry` | owner(1) | AuditLog.record | AuditEntry 脱敏后 JSON |
+| `command.finished` | owner(1) | 总线执行收口（含后台作业终态） | cmd/ok/error?/ms/nonce?/jobId? |
+| `diary.export.completed` | user(2) | diary.export handler | path/entries/sizeBytes/notebook |
+| `chat.incoming` | owner(1) | ChatStore.addIncoming | id/nickname/preview/首条正文 |
+| `nav.changed` | guest(0) | NavPhysicsController 页切换 | index/page |
+
+接线纪律（code review 硬项）：
+
+- AuditLog 构造加可选 `onRecord` 回调（bootstrap 装配转发到
+  EventBus），auth 层不 import events 以外的东西；
+- command.finished 在总线**唯一收口处**发（成功/业务失败/超时
+  都要发，USAGE/未知命令等裁决前失败不发），后台作业完成时
+  也发同一事件；
+- diary.export 在 handler 内经 CommandContext 新增的
+  `emitEvent(...)` 缝发射（bus 句柄暴露 EventBus，不新增全局
+  单例引用）；
+- **ChatStore/NavPhysicsController 属 services/navigation 层，
+  禁止 import control**（项目 G3 挂账的分层倒置不许扩大）：
+  ChatStore 新增 `Stream<incoming 载荷>`（addIncoming 扩展
+  `{String? text}` 可选参，UI 按钮零改动）；导航读数已经是
+  ChangeNotifier，由**装配层适配器**（SmartNavScreen bootstrap
+  注册 ChatStore 附近）订阅并转发 EventBus，页号 diff 后发
+  nav.changed。
+- 新命令 `sys.events`（全构建，owner(1)，read）：`--since`
+  （int，缺省=当前尾 seq，不补历史）、`--wait-ms` 0..8000
+  （缺省 0）、`--limit` 1..100（缺省 50）、`--types`（逗号
+  分隔）；返回 `{events:[…], nextSeq}`。通道级别经 execute
+  的 channel 推导 ceiling（本地通道未解锁=startLevel，已解锁
+  =maxLevel；mcp 恒≤owner），超级别事件在结果中**物理消失**
+  （不是打码，seq 空洞允许调用方感知"有事件无权看"）。
+- 单测：五类事件发射点（用内存假件）、sys.events 的 since/
+  wait/long-poll/ceiling 过滤、装配适配器对 ChatStore/导航
+  变化的转发、services 层零 control import 的源码断言。
+
+### G3｜播种增强（debug-only，关掉 R3 两个实证缺口）
+
+1. 受控动词表加 `seed`（手册先改）。
+2. `diary.seed`（debugOnly、admin、**destructive:true 需
+   --confirm**，与设计 §5.1 destructive 集合
+   prune/reset/seed 一致）：
+   - `--days` 1..60（缺省 7）、`--end` YYYY-MM-DD（缺省＝
+     DiaryClock 昨天；今天不自动种，显式给 --end 可种）、
+     `--empty-every` K（0..days，缺省 0＝全部非空；K>0 时每
+     K 天造一篇空稿）；
+   - **空稿形状必须与 composer 空稿判定同一实现**（研究
+     DiaryComposer.isUserEmpty/模板骨架规则，复用同一构造，
+     保证 prune 认得；不许命令层自创"空"定义）；非空稿走
+     DiarySeedData 同源段落构造；
+   - 已存在日期跳过不覆盖（结果给 created/empty/skipped 三个
+     日期列表），要干净重灌用既有 diary.reset --keep-seeds；
+   - 全程走 repo.upsertDraft，不直连 sqflite。
+3. `chat.seed`（debugOnly、admin、**非 destructive**——只造
+   数据不删除，解锁即可、不弹确认，参照 chat.send 语义）：
+   `--count` 1..20（缺省 1）、`--text`（缺省模拟文案）；经
+   ChatStore.addIncoming(text:) 同源入口；返回创建的 id 列表。
+   release 物理不注册（R3 的 release NOT_FOUND 是预期行为，
+   本期不改）。
+4. 手册 ecp-commands.md 同步五新命令（sys.events/sys.job.get/
+   sys.delay/diary.seed/chat.seed）的完整小节（参数/级别/
+   debug-only 标注/示例）；manifest 一致性测试里「P4 命令
+   豁免」注释（现行写死 diary.seed）更新为按实际注册断言；
+   §4 动词表补 seed/delay。
+5. 单测：日期回推（月末/跨年/--end 边界）、空稿与 prune 的
+   端到端（seed 空稿→prune dryRun 列出→真删→list 复核）、
+   已存在跳过、release 构建模式下三 debug-only 命令不注册、
+   chat.seed→chat.send 同会话解锁端到端（debug 假件）。
+
+### G4｜MCP 只读边界负向测试（假通道，不写任何传输）
+
+用 `ControlChannel.mcp` 假通道补测试（无网络代码）：
+
+- mcp 发任何 ≥2 级命令（含 diary.export/chat.seed/sys.delay
+  不可见）→ AUTH_REQUIRED；diary.seed/reset 在 release 构建
+  物理不存在（UNKNOWN_*）双重保险；
+- mcp 调 sys.events：ceiling=owner，收得到 audit.entry/
+  command.finished/chat.incoming，**收不到**
+  diary.export.completed（user 级）——造事件后断言结果中该
+  事件物理缺失；
+- mcp 调 sys.job.get 取 adb 作业 → 跨通道隔离 NOT_FOUND；
+- slash/adb 本地通道事件全集可见（对照组）。
+
+### G5｜门禁与 MIX 2S 真机终审（维护者主导，执行者先自验）
+
+- 门禁（基线 379，只增不减）：flutter analyze 0、flutter test
+  全绿、dart format --set-exit-if-changed exit 0；
+  **android/ 零 diff 免 Gradle**（若被迫动 Kotlin 必须停下
+  报维护者并补 testDebugUnitTest）。
+- debug 真机（3f6cc09b；优先用 scripts/echo-cmd 走 adb 通道，
+  绕开豆包 IME；PIN=1234，非交互 `printf '1234\n' |
+  scripts/echo-cmd auth.unlock`）：
+  1. E4：`sys.delay --ms 12000 --no-wait` 立即拿 running（远
+     小于 9s）→ 手动 sys.job.get 轮询至 done；再直接
+     `sys.delay --ms 12000` 验包装自动等待，总耗时≈12s、
+     退出码 0；
+  2. diary.export async 化：running→job done 信封含 path，
+     文件真实落盘；
+  3. 事件：后台挂 `sys.events --since <seq> --wait-ms 8000`，
+     另一条 adb 触发 export/chat.seed，长轮询提前返回对应
+     事件；admin 命令后能查到 audit.entry；导航切页后
+     nav.changed 可见；
+  4. 播种补 R3 缺口：diary.seed --days 10 --empty-every 3
+     --end 2026-09-20 → prune dryRun 的 deleted **非空**且
+     恰为空稿日期 → --dry-run=false --confirm 真删 → list
+     复核；
+  5. chat.seed --count 1 → chat.send --id incoming-1
+     --text-stdin 端到端成功（debug 补齐成功路径实证）；
+  6. slash 回归：指令台跑 diary.export 仍是**直接等待出结果
+     卡**（不 async 化）；三按钮/PIN 卡 P3 行为不回退。
+- release 全新装（pm clear + app-release.apk）：sys.help 含
+  sys.events/sys.job.get，**不含** sys.delay/diary.seed/
+  chat.seed（/diary. 仍恰 5 动词）；dex grep
+  DebugControlReceiver 六串 + diary.seed/chat.seed/sys.delay
+  全 0；libapp.so 若残留 debug-only 字面（clock.set 先例为
+  1 次）如实计数登记；slash 普通搜索/导出回归。
+- 收尾 pm clear、show_taps=0、豆包 IME；证据 artifacts/p4-*.png
+  与 echo-cmd 输出原文；维护者独立复跑门禁 + 抽查截图后，在
+  本文件写 P4 终审结论。
+
+### 提交节奏
+
+G0（事件核心）独立提交先复审；G1（作业/轮询/包装）、G2（事件
+接入）可同批；G3（播种）独立提交；G4 测试随各组落地不单开；
+G5 维护者终审。每步门禁自跑、报告真实，禁止 commit/push（合
+main 与 0.13.0 排号待用户发话）。
+
 ## 维护规则
 
 - 修复即更新本文件（快通道，governance §4.2）；
