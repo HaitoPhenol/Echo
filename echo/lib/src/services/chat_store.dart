@@ -1,4 +1,34 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+
+/// 一条 incoming 消息到达的广播载荷（P4 事件源）。
+///
+/// 这是 services 层自己的信号类型：ChatStore **不认识 control 事件
+/// 总线**（分层接缝：services 禁止反向 import control），由 control
+/// 装配层适配器订阅 [ChatStore.incoming] 并翻译成 `chat.incoming`
+/// 事件。字段均为可直接线传的 JSON 兼容标量。
+@immutable
+class ChatIncomingPayload {
+  const ChatIncomingPayload({
+    required this.id,
+    required this.nickname,
+    required this.preview,
+    required this.text,
+  });
+
+  /// 新会话稳定 id（`incoming-<n>`）。
+  final String id;
+
+  /// 会话昵称（`新消息 <n>`）。
+  final String nickname;
+
+  /// 会话列表上的预览文案。
+  final String preview;
+
+  /// 首条 incoming 消息正文（与 chat.get 同源，owner 可读）。
+  final String text;
+}
 
 /// 一条会话（脚手架阶段的不可变值对象）。
 ///
@@ -120,6 +150,15 @@ class ChatStore extends ChangeNotifier {
   /// 自增序号，用于给新进来的会话生成稳定 id。
   int _incomingSeq = 0;
 
+  /// incoming 消息广播（P4 装配适配器的事件源）。broadcast 不缓存：
+  /// 订阅由 UI/装配层在创建 store 后立即建立，错过订阅的历史消息
+  /// 仍可用 chat.list/messagesOf 回看。
+  final StreamController<ChatIncomingPayload> _incoming =
+      StreamController<ChatIncomingPayload>.broadcast();
+
+  /// 新 incoming 消息到达流（载荷见 [ChatIncomingPayload]）。
+  Stream<ChatIncomingPayload> get incoming => _incoming.stream;
+
   /// 消息全局自增序号（会话消息与外发消息共用同一序列器，
   /// 杜绝两个命名空间撞 id）。
   int _messageSeq = 0;
@@ -140,17 +179,26 @@ class ChatStore extends ChangeNotifier {
   }
 
   /// 收到一条新消息：在列表最前插入一条未读会话，同时落地首条
-  /// incoming 消息（chat.get 有正文可读，不只是会话壳）。
-  void addIncoming() {
+  /// incoming 消息（chat.get 有正文可读，不只是会话壳），并向
+  /// [incoming] 广播载荷（P4 事件源；无监听者时无副作用）。
+  ///
+  /// [text] 为可选首条正文（P4 chat.seed 同源入口）：null 或空白
+  /// 时用默认文案，UI 按钮零参调用行为不变；给文本时会话预览
+  /// 同步为该文本（与 [send] 更新预览的行为一致）。
+  void addIncoming({String? text}) {
     final seq = ++_incomingSeq;
     final time = _now();
     final id = 'incoming-$seq';
+    final nickname = '新消息 $seq';
+    final body = (text == null || text.trim().isEmpty)
+        ? '你有一条新消息'
+        : text.trim();
     _items.insert(
       0,
       ChatConversation(
         id: id,
-        nickname: '新消息 $seq',
-        preview: '你有一条新消息',
+        nickname: nickname,
+        preview: body,
         updatedAt: time,
         unread: true,
       ),
@@ -159,11 +207,19 @@ class ChatStore extends ChangeNotifier {
       ChatMessage(
         id: 'msg-${++_messageSeq}',
         conversationId: id,
-        text: '你有一条新消息',
+        text: body,
         direction: ChatDirection.incoming,
         createdAt: time,
       ),
     ];
+    _incoming.add(
+      ChatIncomingPayload(
+        id: id,
+        nickname: nickname,
+        preview: body,
+        text: body,
+      ),
+    );
     notifyListeners();
   }
 
@@ -258,6 +314,12 @@ class ChatStore extends ChangeNotifier {
     if (index < 0 || _items[index].unread == unread) return;
     _items[index] = _items[index].copyWith(unread: unread);
     notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _incoming.close();
+    super.dispose();
   }
 }
 

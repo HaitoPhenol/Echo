@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'auth/audit_log.dart';
 import 'control_registry.dart';
+import 'events/event_bus.dart';
+import 'events/event_types.dart';
 import 'jobs/job_store.dart';
 import 'protocol/command_spec.dart';
 import 'protocol/control_envelope.dart';
@@ -19,6 +21,7 @@ class ControlBus implements ControlBusHandle {
     required this.authorizer,
     required this.auditLog,
     required this.jobs,
+    required this.events,
   });
 
   @override
@@ -33,6 +36,19 @@ class ControlBus implements ControlBusHandle {
   /// P4：slow 命令后台作业表（adb 通道作业化执行 / sys.job.get
   /// 轮询；同时注册进 services 供命令层取）。
   final ControlJobStore jobs;
+
+  /// P4：事件中心（sys.events 经 services 取；域命令经句柄缝发射）。
+  final ControlEventBus events;
+
+  @override
+  void emitEvent({
+    required String type,
+    required ControlLevel level,
+    Map<String, Object?> data = const {},
+    // 关停容忍：事件是尽力而为的遥测，总线收口/handler 可能在事件
+    // 中心 close 之后才跑完（后台作业撞上宿主 dispose），此时安静
+    // 丢事件，绝不把命令执行打成失败。
+  }) => events.tryEmit(type: type, level: level, data: data);
 
   /// 已注册命令（全名 → 规格），注册后不可变。
   final Map<String, CommandSpec> _specs = {};
@@ -142,6 +158,7 @@ class ControlBus implements ControlBusHandle {
           args,
           nonce,
           stopwatch,
+          jobId: job.id,
         ).then((envelope) => jobs.complete(job, envelope)),
       );
       return ControlEnvelope(
@@ -172,8 +189,28 @@ class ControlBus implements ControlBusHandle {
     ControlChannel channel,
     Map<String, Object?> args,
     String? nonce,
-    Stopwatch stopwatch,
-  ) async {
+    Stopwatch stopwatch, {
+    // 仅后台作业路径传入：command.finished 事件带 jobId，消费者可
+    // 据此把终态与 running 首包关联。同步路径恒为 null。
+    String? jobId,
+  }) async {
+    // P4：裁决后执行收口的唯一事件出口（成功/业务失败/超时都经此）。
+    // 裁决前失败（未知命令/USAGE/鉴权拒绝）走不到本方法，天然不发。
+    void emitFinished(ControlEnvelope envelope) {
+      events.emit(
+        type: ControlEventType.commandFinished,
+        level: ControlLevel.owner,
+        data: {
+          'cmd': envelope.cmd,
+          'ok': envelope.ok,
+          if (!envelope.ok) 'error': envelope.error!.toJson(),
+          'ms': envelope.ms,
+          'nonce': ?nonce,
+          'jobId': ?jobId,
+        },
+      );
+    }
+
     ControlEnvelope failAudited(ControlException error) {
       stopwatch.stop();
       _auditIfNeeded(
@@ -184,12 +221,14 @@ class ControlBus implements ControlBusHandle {
         error: error,
         ms: stopwatch.elapsedMilliseconds,
       );
-      return ControlEnvelope.failure(
+      final envelope = ControlEnvelope.failure(
         spec.name,
         stopwatch.elapsedMilliseconds,
         error,
         nonce: nonce,
       );
+      emitFinished(envelope);
+      return envelope;
     }
 
     final context = CommandContext(
@@ -208,13 +247,15 @@ class ControlBus implements ControlBusHandle {
         ok: true,
         ms: stopwatch.elapsedMilliseconds,
       );
-      return ControlEnvelope(
+      final envelope = ControlEnvelope(
         ok: true,
         cmd: spec.name,
         ms: stopwatch.elapsedMilliseconds,
         result: result,
         nonce: nonce,
       );
+      emitFinished(envelope);
+      return envelope;
     } on ControlException catch (e) {
       return failAudited(e);
     } on TimeoutException {

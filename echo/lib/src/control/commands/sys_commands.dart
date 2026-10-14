@@ -9,6 +9,8 @@ import '../auth/audit_log.dart';
 import '../auth/auth_session.dart';
 import '../control_app_state.dart';
 import '../control_registry.dart';
+import '../events/event_bus.dart';
+import '../events/event_types.dart';
 import '../jobs/job_store.dart';
 import '../protocol/command_spec.dart';
 import '../protocol/control_error.dart';
@@ -156,6 +158,7 @@ List<CommandSpec> buildSysCommands() => [
       };
     },
   ),
+  sysEvents,
   jobGet,
   sysClockSet,
   sysDelay,
@@ -206,6 +209,92 @@ final CommandSpec sysClockSet = CommandSpec(
       'before': isoDateTime(before),
       'after': isoDateTime(after),
       'diaryDate': isoDate(clock.today()),
+    };
+  },
+);
+
+/// `sys.events`（P4，全构建）：事件流游标拉取 + 长轮询（手册 §1.5）。
+///
+/// owner(1) 读命令；ceiling 取调用通道**当前有效级别**（未解锁＝
+/// 起始级、已解锁＝会话级；mcp 恒 ≤owner），超级别事件在结果中
+/// 物理消失。等待预算 ≤8s（事件中心硬限），嵌进接收器 9s 预算内。
+final CommandSpec sysEvents = CommandSpec(
+  namespace: 'sys',
+  verb: 'events',
+  summary: '游标拉取/长轮询结构化事件（audit/command/export/chat/nav）',
+  kind: CommandKind.read,
+  level: ControlLevel.owner,
+  idempotent: true,
+  params: [
+    ParamSpec(
+      'since',
+      type: ArgType.integer,
+      summary: '只返 seq>since 的事件；缺省＝当前尾 seq（不补历史）',
+    ),
+    ParamSpec(
+      'waitMs',
+      type: ArgType.integer,
+      defaults: 0,
+      summary: '无命中时挂起毫秒数，0..8000（默认 0 立即返回）',
+    ),
+    ParamSpec(
+      'limit',
+      type: ArgType.integer,
+      defaults: 50,
+      summary: '本批最多条数，1..100（默认 50）',
+    ),
+    ParamSpec('types', type: ArgType.string, summary: '逗号分隔类型白名单（冻结五种）；缺省全部类型'),
+  ],
+  handler: (ctx) async {
+    final bus = ctx.requireService<ControlEventBus>('事件中心');
+    final auth = ctx.requireService<AuthManager>('鉴权会话');
+
+    final waitMs = ctx.arg<int>('waitMs');
+    if (waitMs < 0 || waitMs > ControlEventBus.maxWait.inMilliseconds) {
+      throw ControlException(
+        ControlErrorCode.usage,
+        '--wait-ms 允许范围 0..${ControlEventBus.maxWait.inMilliseconds}',
+      );
+    }
+    final limit = ctx.arg<int>('limit');
+    if (limit < 1 || limit > 100) {
+      throw const ControlException(
+        ControlErrorCode.usage,
+        '--limit 允许范围 1..100',
+      );
+    }
+
+    Set<String>? types;
+    final rawTypes = ctx.optionalArg<String>('types')?.trim();
+    if (rawTypes != null && rawTypes.isNotEmpty) {
+      types = rawTypes
+          .split(',')
+          .map((t) => t.trim())
+          .where((t) => t.isNotEmpty)
+          .toSet();
+      final unknown = types.difference(ControlEventType.levelOf.keys.toSet());
+      if (unknown.isNotEmpty) {
+        throw ControlException(
+          ControlErrorCode.usage,
+          '未知事件类型：${unknown.join(',')}'
+          '（冻结五种：${ControlEventType.all.join(',')}）',
+        );
+      }
+    }
+
+    // 缺省 since＝当前尾 seq：只等新事件，不补历史。
+    final since = ctx.optionalArg<int>('since') ?? bus.lastSeq;
+    final events = await bus.poll(
+      since: since,
+      ceiling: auth.effectiveLevel(ctx.channel),
+      types: types,
+      limit: limit,
+      wait: waitMs == 0 ? null : Duration(milliseconds: waitMs),
+    );
+    return {
+      'events': events.map((e) => e.toJson()).toList(growable: false),
+      // 空批回 since 本身，调用方原样续轮不会错漏；非空取末条 seq。
+      'nextSeq': events.isEmpty ? since : events.last.seq,
     };
   },
 );

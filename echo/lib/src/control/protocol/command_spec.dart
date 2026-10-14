@@ -243,8 +243,8 @@ class CommandSpec {
     'prune', 'delete', 'reset', 'export',
     // 协议自身
     'ping', 'help', 'info', 'audit',
-    // P4：异步作业轮询（复合动词）/ debug 验证用挂起
-    'job.get', 'delay',
+    // P4：异步作业轮询（复合动词）/ 事件游标长轮询 / debug 验证用挂起
+    'job.get', 'events', 'delay',
     // 鉴权
     'unlock', 'lock',
   };
@@ -282,6 +282,16 @@ class CommandContext {
   /// 取域服务；对应模块尚未装配（如未进过笔记页）时抛 NOT_READY。
   T requireService<T extends Object>(String what) =>
       bus.services.require<T>(what);
+
+  /// 发射一条 P4 域事件（如 diary.export 成功后发
+  /// `diary.export.completed`）：经 bus 句柄到事件中心，命令层不
+  /// 持全局单例。类型必须是 events/event_types 的冻结登记项；
+  /// 载荷脱敏由发射点负责。
+  void emitEvent({
+    required String type,
+    required ControlLevel level,
+    Map<String, Object?> data = const {},
+  }) => bus.emitEvent(type: type, level: level, data: data);
 }
 
 /// 总线暴露给命令层的最小句柄。
@@ -295,6 +305,15 @@ abstract class ControlBusHandle {
 
   /// 当前清单中已注册的全部命令（`sys.help` 枚举来源）。
   List<CommandSpec> get visibleSpecs;
+
+  /// P4 事件发射缝：域命令 handler 经 [CommandContext.emitEvent]
+  /// 间接调用；实现由总线持有事件中心完成，类型/级别/载荷约定见
+  /// events/event_types.dart。裁决前失败不得产生事件。
+  void emitEvent({
+    required String type,
+    required ControlLevel level,
+    Map<String, Object?> data = const {},
+  });
 }
 
 /// 权限裁决的协议层契约（auth/ 层实现）：返回 null 放行，

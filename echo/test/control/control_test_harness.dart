@@ -16,6 +16,8 @@ import 'package:echo/src/control/commands/sys_commands.dart';
 import 'package:echo/src/control/control_app_state.dart';
 import 'package:echo/src/control/control_bus.dart';
 import 'package:echo/src/control/control_registry.dart';
+import 'package:echo/src/control/events/event_bus.dart';
+import 'package:echo/src/control/events/event_types.dart';
 import 'package:echo/src/control/jobs/job_store.dart';
 import 'package:echo/src/control/protocol/command_spec.dart';
 import 'package:echo/src/control/protocol/control_envelope.dart';
@@ -56,6 +58,7 @@ class ControlHarness {
     required this.badges,
     required this.consoleStats,
     required this.jobs,
+    required this.events,
   });
 
   final Directory tempDir;
@@ -80,6 +83,9 @@ class ControlHarness {
   /// P4：slow 命令后台作业表（与生产总线同源实例）。
   final ControlJobStore jobs;
 
+  /// P4：事件中心（sys.events 与五个冻结事件的同源实例）。
+  final ControlEventBus events;
+
   /// 可变墙钟（拨钟测试直接改）；未 override 时 [DiaryClock.now] 读它。
   late DateTime wallTime;
 
@@ -98,7 +104,16 @@ class ControlHarness {
         ..createSync(recursive: true),
     );
     final registry = ControlRegistry();
-    final audit = AuditLog();
+    // P4-G2：事件中心先建，审计回调转发 audit.entry（与生产同构，
+    // 同样走 tryEmit 容忍关停途中晚到的审计）。
+    final events = ControlEventBus();
+    final audit = AuditLog(
+      onRecord: (entry) => events.tryEmit(
+        type: ControlEventType.auditEntry,
+        level: ControlLevel.owner,
+        data: entry.toJson(),
+      ),
+    );
     final pins = PinStore(
       directory: paths.controlRoot!,
       // 迭代数不影响正确性（记录自带 rounds），测试取小值加速。
@@ -170,7 +185,9 @@ class ControlHarness {
 
     // P4：作业表注册进注册表（sys.job.get 按类型取），同一实例给总线。
     final jobs = ControlJobStore();
-    registry.set(jobs);
+    registry
+      ..set(jobs)
+      ..set(events);
 
     final bus =
         ControlBus(
@@ -179,6 +196,7 @@ class ControlHarness {
             authorizer: auth,
             auditLog: audit,
             jobs: jobs,
+            events: events,
           )
           ..registerAll(buildSysCommands())
           ..registerAll(buildAuthCommands())
@@ -206,6 +224,7 @@ class ControlHarness {
       badges: badges,
       consoleStats: consoleStats,
       jobs: jobs,
+      events: events,
     )..wallTime = wall;
     return h;
   }
@@ -252,6 +271,7 @@ class ControlHarness {
 
   Future<void> dispose() async {
     auth.detach();
+    events.close();
     chatSession.dispose();
     chatStore.dispose();
     badges.dispose();

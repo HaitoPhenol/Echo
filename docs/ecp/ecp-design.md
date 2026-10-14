@@ -128,6 +128,13 @@ lib/src/control/
     chat_commands.dart
     console_commands.dart
     badge_commands.dart
+  events/
+    event.dart               # 不可变事件值对象（seq/time/type/level/data）
+    event_bus.dart           # 内存环形事件流（poll 长轮询 + 广播流）
+    event_types.dart         # P4 冻结事件类型与敏感度登记表
+  jobs/
+    job_store.dart           # slow 命令后台作业表（环 32，跨通道隔离）
+  control_event_bridge.dart  # 装配层适配器：services/navigation → 事件
   channels/
     adb_control_channel.dart # MethodChannel 绑定
   bootstrap.dart             # debug 引导：注册各域 + 挂通道（release 空实现）
@@ -148,7 +155,8 @@ release 构建不包含 `src/debug/` 源集，物理无 receiver；Dart 侧通�
   `goto/open/create/set/send/refresh/ensure`（写）、
   `notify/exception/view/resolve`（信号）、
   `prune/delete/reset`（生命周期）、
-  `job.get`（P4：异步作业轮询）、`delay`（P4：仅 debug 验证用）；
+  `job.get`（P4：异步作业轮询）、`events`（P4：事件游标/长轮询）、
+  `delay`（P4：仅 debug 验证用）；
   带点复合动词 `clock.set` 等与清单逐字一致；
 - 首批命名空间：`sys` `auth` `nav` `diary` `chat` `console` `badge`；
 - 仅 debug 构建注册：`sys.clock.set`、`diary.seed`、`diary.reset`
@@ -296,7 +304,7 @@ UI 改为消费控制器：
 | **P1** | 协议核心（spec/envelope/bus/错误码）+ PIN/会话/审计 + adb 通道（receiver+MethodChannel）+ `scripts/echo-cmd` + `sys`/`auth`/`nav`/`diary` 命名空间（含 `sys.clock.set`，04:00 边界真机直测；`diary.prune` 立即触发） | 总线/鉴权/参数校验单测；真机广播逐命令实测；analyze 0、全测试绿 |
 | **P2** | §9 控制器提升重构 + `chat`/`console`/`badge` 命名空间 | 重构后既有 widget 测试全绿；新域命令逐真机实测 |
 | **P3** | §5 权限模型 2026-10-13 修订（`chat.send`→3 级、`diary.export`→2 级、本地通道放开 PIN 首装）+ slash 指令台 UI（指令态、三段补全、卡片、PIN 引导/解锁面板、确认卡、历史）+ `ControlConsoleCore` 终端页接缝（不建页面） | 权限矩阵/解析/补全单测 + widget 测试；MIX 2S debug+release 双包真机走查（release 首装 PIN→发消息/导出/删除全链路）；release 包无 adb 入口残留 |
-| **P4** | 事件流（结构化订阅：状态变更/导出完成/审计事件；**含 E4 的 adb 9s 预算根治——结果轮询**）、播种增强；MCP 通道接入（只读，§5.2 铁律）另立专项评审；内置 agent 通道（§5.2 愿景）更后 | 事件流单测；MCP 只读边界有负向测试 |
+| **P4** | 事件流（结构化订阅：五种冻结事件 `audit.entry`/`command.finished`/`diary.export.completed`/`chat.incoming`/`nav.changed`，详见命令手册 §1.5；敏感度分级 + `sys.events` 游标/长轮询；装配层适配器转发，services 层禁反向 import control）、**E4 的 adb 9s 预算根治——作业化结果轮询**、播种增强；MCP 通道接入（只读，§5.2 铁律）另立专项评审；内置 agent 通道（§5.2 愿景）更后 | 事件流单测；MCP 只读边界有负向测试；services→control 零反向依赖源码断言 |
 
 每阶段独立分支 `feat/ecp-pN-*`，从 main 拉出，完成后按项目版本规则
 排 MINOR；P1 是基础设施，建议优先于 M6（7 天连写）——连写期间产生的

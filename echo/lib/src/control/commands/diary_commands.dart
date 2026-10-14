@@ -4,6 +4,7 @@ import '../../diary/data/diary_seed_data.dart';
 import '../../diary/export/diary_export_service.dart';
 import '../../diary/template/diary_composer.dart';
 import '../control_registry.dart';
+import '../events/event_types.dart';
 import '../protocol/command_spec.dart';
 import '../protocol/control_error.dart';
 import 'control_json.dart';
@@ -311,12 +312,22 @@ final CommandSpec diaryExport = CommandSpec(
         year: ctx.optionalArg<int>('year'),
         outputDirectory: paths.diaryExports,
       );
-      return {
+      final result = {
         'path': build.path,
         'entries': build.entries,
         'sizeBytes': build.sizeBytes,
         'notebook': build.notebook,
       };
+      // P4：导出成功（含后台作业路径）发 user 级事件；失败不发——
+      // 失败结论在 command.finished（error）里。事件由 handler 经
+      // 上下文缝发射，总线在 handler 返回后才发 command.finished，
+      // 同一导出自此有先后两事件可关联。
+      ctx.emitEvent(
+        type: ControlEventType.diaryExportCompleted,
+        level: ControlLevel.user,
+        data: result,
+      );
+      return result;
     } on DiaryExportEmptyException {
       throw const ControlException(
         ControlErrorCode.exportEmpty,

@@ -40,11 +40,17 @@ class AuditEntry {
 /// 记录范围：所有 ≥2 级命令调用（总线写入）、解锁成功/失败、
 /// 会话失效、PIN 初始化/变更（鉴权层写入）。
 class AuditLog {
-  AuditLog({this.capacity = 200})
+  AuditLog({this.capacity = 200, this.onRecord})
     : assert(capacity >= 200, '审计缓冲下限 200 条（设计 §6）');
 
   final int capacity;
   final Queue<AuditEntry> _entries = Queue();
+
+  /// P4 事件缝：每条审计落环后同步回调（bootstrap 装配层把它转发
+  /// 为 `audit.entry` 事件）。auth 层只认识这个回调，**不 import
+  /// 事件总线/任何 control 上层**——分层方向由接缝测试钉死。
+  /// 回调内不得再触发审计写入（递归）；事件载荷即 [AuditEntry.toJson]。
+  final void Function(AuditEntry entry)? onRecord;
 
   /// 追加一条；超容量丢弃最旧记录。
   void record(AuditEntry entry) {
@@ -52,6 +58,7 @@ class AuditLog {
     while (_entries.length > capacity) {
       _entries.removeFirst();
     }
+    onRecord?.call(entry);
   }
 
   /// 倒序返回最近 [limit] 条（`sys.audit --limit`，上限 200）。

@@ -299,6 +299,12 @@ void main() {
         nonce: 'p',
       );
       expect(crossMcp.error!.code, ControlErrorCode.authRequired);
+
+      // 收尾：等本测试起的 500ms 后台作业落终态，避免它活到 teardown
+      // 关闭事件中心之后才收口（P4-G2 起收口会发 command.finished）。
+      final terminal = await pollJob('iso-1');
+      expect(terminal.ok, isTrue);
+      expect(terminal.result!['status'], 'done');
     });
 
     test('鉴权门：3 级作业执行期间会话焚尽 → AUTH_REQUIRED 且作业保留；'
@@ -320,6 +326,7 @@ void main() {
               authorizer: h.auth,
               auditLog: h.audit,
               jobs: jobs2,
+              events: h.events,
             )
             ..register(jobGet)
             ..register(
@@ -399,6 +406,7 @@ void main() {
               authorizer: h.auth,
               auditLog: h.audit,
               jobs: jobs2,
+              events: h.events,
             )
             ..register(jobGet)
             ..register(

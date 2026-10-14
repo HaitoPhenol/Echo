@@ -16,8 +16,10 @@ import 'event.dart';
 /// 可见性：每个事件带敏感度 [ControlLevel]，消费者声明自己的 ceiling
 /// （通道当前级别），超级别事件在两条路径上都物理过滤掉。
 ///
-/// 纯 Dart 核心：只允许依赖 flutter/foundation（@immutable 等），零
-/// Widget import——与 slash 核心同纪律，源码正则接缝测试钉死。
+/// 纯 Dart 核心：零 Widget import（不碰 flutter 的
+/// widgets/material/cupertino，接缝正则钉死）；允许复用协议层模型
+/// （command_spec 的 ControlLevel）与 control_error 的 USAGE——
+/// 与 slash 核心同纪律。
 class ControlEventBus {
   ControlEventBus({this.capacity = 256})
     : assert(capacity >= 256, '事件环容量下限 256（P4 交接单 §G0）');
@@ -52,12 +54,40 @@ class ControlEventBus {
   /// poll 等待者与广播订阅者。返回落库后的不可变事件。
   ///
   /// [data] 做浅不可变拷贝；事件内容的脱敏由发射点负责。
+  ///
+  /// close 后调用**抛 StateError**（严格缝：直接发射方多为业务
+  /// 发射点，关停后还在发事件属于装配生命周期错误，应当暴露）。
+  /// 装配层对「关停途中晚到的终态/审计」需容忍时用 [tryEmit]。
   ControlEvent emit({
     required String type,
     required ControlLevel level,
     Map<String, Object?> data = const {},
   }) {
     if (_closed) throw StateError('ControlEventBus 已 close，禁止再发射');
+    return _emitLocked(type: type, level: level, data: data);
+  }
+
+  /// 关停容忍的发射缝：close 后安静丢一条并返回 null（不抛）。
+  ///
+  /// 仅供装配层收口使用——后台作业终态/审计回调可能在宿主 dispose
+  /// 关闭事件中心之后才跑完（如 500ms 的 slow 作业撞上测试 teardown、
+  /// App 关停途中命令收尾）：事件本质是尽力而为的遥测，**绝不能**
+  /// 让「事件发不出去」反过来把命令执行打成失败。业务发射点仍用
+  /// 严格的 [emit]，生命周期接错会以 StateError 暴露。
+  ControlEvent? tryEmit({
+    required String type,
+    required ControlLevel level,
+    Map<String, Object?> data = const {},
+  }) {
+    if (_closed) return null;
+    return _emitLocked(type: type, level: level, data: data);
+  }
+
+  ControlEvent _emitLocked({
+    required String type,
+    required ControlLevel level,
+    required Map<String, Object?> data,
+  }) {
     final event = ControlEvent(
       seq: _nextSeq++,
       time: DateTime.now(),
@@ -118,6 +148,12 @@ class ControlEventBus {
         await _controller.stream.first.timeout(remaining);
       } on TimeoutException {
         return const <ControlEvent>[];
+      } on StateError {
+        // G0 挂账 nit① 收口：等待期间宿主 close() 关闭广播流，
+        // stream.first 会收到 done 抛 StateError。语义钉明为
+        // 「流已终结，不会再有新事件」——在飞 poll 返空集，不穿透。
+        if (_closed) return const <ControlEvent>[];
+        rethrow;
       }
       matched = _match(since, ceiling, types, limit);
       if (matched.isNotEmpty) return matched;
@@ -157,7 +193,9 @@ class ControlEventBus {
         .toList(growable: false);
   }
 
-  /// 宿主停机时关闭广播管道；关闭后 [emit] 抛 StateError。
+  /// 宿主停机时关闭广播管道；关闭后 [emit] 抛 StateError，在飞
+  /// [poll] 立即以空集结束（不抛错）。环内历史仍可在 close 后
+  /// 被一次性 [poll]（wait 为 null）读出。
   void close() {
     if (_closed) return;
     _closed = true;

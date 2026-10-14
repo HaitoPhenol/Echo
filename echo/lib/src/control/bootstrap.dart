@@ -19,6 +19,8 @@ import 'commands/sys_commands.dart';
 import 'control_app_state.dart';
 import 'control_bus.dart';
 import 'control_registry.dart';
+import 'events/event_bus.dart';
+import 'events/event_types.dart';
 import 'jobs/job_store.dart';
 import 'protocol/command_spec.dart';
 import '../services/console_stats_service.dart';
@@ -40,6 +42,7 @@ class ControlBootstrap with WidgetsBindingObserver {
     required this.appState,
     required this.audit,
     required this.consoleStats,
+    required this.events,
     // 字段私有而命名参数不允许下划线开头，这里保留显式赋值。
     AdbControlChannel? adb,
     // ignore: prefer_initializing_formals
@@ -55,6 +58,11 @@ class ControlBootstrap with WidgetsBindingObserver {
   final ControlAppState appState;
   final AuditLog audit;
   final ConsoleStatsService consoleStats;
+
+  /// P4 事件中心（sys.events 经 registry 取用；UiEventBridge 装配
+  /// 时也取这同一实例）。
+  final ControlEventBus events;
+
   final AdbControlChannel? _adb;
 
   /// 装配总线并挂载通道；必须在 [runApp] 前 await（确保首条
@@ -66,8 +74,19 @@ class ControlBootstrap with WidgetsBindingObserver {
     );
     await paths.controlRoot!.create(recursive: true);
 
+    // 事件中心先于审计创建：审计经 onRecord 回调把每条审计转发为
+    // audit.entry 事件（auth 层不 import 事件，方向不反转）。
+    // tryEmit：关停途中（events 已 close）落审计不再抛错，遥测
+    // 安静丢弃，审计本身照常落环。
+    final events = ControlEventBus();
     final registry = ControlRegistry();
-    final audit = AuditLog();
+    final audit = AuditLog(
+      onRecord: (entry) => events.tryEmit(
+        type: ControlEventType.auditEntry,
+        level: ControlLevel.owner,
+        data: entry.toJson(),
+      ),
+    );
     final pinStore = PinStore(directory: paths.controlRoot!);
     final appState = ControlAppState();
     // 读数服务在 runApp 前创建：冷启动 sys.info/console 命令与 UI
@@ -88,7 +107,10 @@ class ControlBootstrap with WidgetsBindingObserver {
 
     // P4：slow 命令后台作业表（sys.job.get 经注册表按类型取用）。
     final jobs = ControlJobStore();
-    registry.set(jobs);
+    registry
+      ..set(jobs)
+      // sys.events 与域命令 emitEvent 各取所需（命令经 bus 句柄）。
+      ..set(events);
 
     final bus = ControlBus(
       buildMode: kDebugMode ? ControlBuildMode.debug : ControlBuildMode.release,
@@ -96,6 +118,7 @@ class ControlBootstrap with WidgetsBindingObserver {
       authorizer: auth,
       auditLog: audit,
       jobs: jobs,
+      events: events,
     );
     bus.registerAll([
       ...buildSysCommands(),
@@ -125,6 +148,7 @@ class ControlBootstrap with WidgetsBindingObserver {
       appState: appState,
       audit: audit,
       consoleStats: consoleStats,
+      events: events,
       adb: adb,
     );
     WidgetsBinding.instance.addObserver(bootstrap);
@@ -144,6 +168,7 @@ class ControlBootstrap with WidgetsBindingObserver {
     required ControlAppState appState,
     required AuditLog audit,
     required ConsoleStatsService consoleStats,
+    ControlEventBus? events,
   }) {
     final bootstrap = ControlBootstrap._(
       registry: registry,
@@ -153,6 +178,8 @@ class ControlBootstrap with WidgetsBindingObserver {
       appState: appState,
       audit: audit,
       consoleStats: consoleStats,
+      // widget 测试不断言事件：给独立空实例即可，不碰夹具事件中心。
+      events: events ?? ControlEventBus(),
     );
     instance = bootstrap;
     return bootstrap;
@@ -178,6 +205,9 @@ class ControlBootstrap with WidgetsBindingObserver {
     auth.detach();
     _adb?.detach();
     consoleStats.dispose();
+    // 关事件中心：在飞 sys.events 长轮询以空集结束。UI 事件适配器
+    // 由 SmartNavScreen 随其服务自行拆除（生命周期归屏幕）。
+    events.close();
     instance = null;
   }
 }

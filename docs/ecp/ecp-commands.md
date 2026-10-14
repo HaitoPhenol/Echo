@@ -101,6 +101,34 @@
 `--no-wait` 可只取 running 信封。slash 通道是进程内调用，不异步化，
 始终直接等终态。
 
+### 1.5 事件流（P4）
+
+`sys.events` 消费一条内存环形事件流（容量 256，seq 从 1 单调递增、
+淘汰不回收，允许出现 seq 空洞）。事件形状：
+
+```json
+{"seq": 7, "time": "2026-10-14T10:00:00.000", "type": "audit.entry",
+ "level": 1, "data": {"cmd": "diary.export", "ok": true}}
+```
+
+**本期冻结五种事件**（新类型＝协议变更，先改本手册再登记）：
+
+| type | level | 发射点 | data 要点 |
+|---|---|---|---|
+| `audit.entry` | 1 | AuditLog 落一条审计 | 审计条脱敏后 JSON（§6，绝无 PIN/正文全文） |
+| `command.finished` | 1 | 总线执行唯一收口（含后台作业终态） | `cmd/ok/error?/ms/nonce?/jobId?`；裁决前失败（USAGE/未知命令/鉴权拒绝）不发 |
+| `diary.export.completed` | 2 | diary.export 成功 handler | `path/entries/sizeBytes/notebook`；导出失败不发（看 command.finished） |
+| `chat.incoming` | 1 | ChatStore.addIncoming（装配适配器转发） | `id/nickname/preview/text`（首条正文，与 chat.get 同为 owner 可读） |
+| `nav.changed` | 0 | 导航页切换（装配适配器页号 diff 后发） | `index/page` |
+
+- **敏感度物理过滤**：事件 level 是订阅所需最低级别；调用通道
+  级别不够的事件在结果中**物理消失**（不是打码；seq 空洞允许
+  调用方感知"有事件但无权看"）。通道级别＝未解锁取起始级、
+  已解锁取会话级（mcp 恒 ≤1）。
+- 接线纪律：services/navigation 层**零 control 依赖**，
+  ChatStore/导航只暴露自身变化信号（Stream/ChangeNotifier），
+  由 control 层的装配适配器订阅并转发为事件。
+
 ---
 
 ## 2. `sys` —— 系统与协议自身
@@ -145,6 +173,28 @@
   ```bash
   scripts/echo-cmd sys.clock.set --time 2026-10-12T03:59
   scripts/echo-cmd sys.clock.set --reset
+  ```
+
+### `sys.events`
+- 类 读 · 级 1 · 幂等 · 起始 P4 · 构建 all
+- 参数：
+  - `--since`（int，缺省＝当前尾 seq，即**不补历史**，只等新事件）；
+  - `--wait-ms`（0..8000，缺省 0＝立即返回；>8000 USAGE——必须小于
+    接收器 9s 预算）；
+  - `--limit`（1..100，缺省 50）；
+  - `--types`（逗号分隔的白名单，仅允许冻结五类型，未知类型 USAGE；
+    缺省＝全部类型）。
+- 作用：游标拉取 + 长轮询事件流（§1.5）。无命中且 `--wait-ms>0`
+  时挂起到新事件或等待截止（截止返回空集，退出码仍 0）。
+- 返回：`{"events":[…事件…], "nextSeq": <int>}`；`nextSeq` 是
+  本批末条 seq（空批等于传入 since），作为下一次 `--since` 游标。
+  超级别事件在 `events` 中**物理消失**（seq 可有空洞）。
+- 示例：
+  ```bash
+  # 后台挂起等新事件（另一条 adb 触发命令即提前返回）
+  scripts/echo-cmd sys.events --wait-ms 8000
+  # 只听两类、从游标续拉
+  scripts/echo-cmd sys.events --since 12 --types audit.entry,command.finished
   ```
 
 ### `sys.job.get`

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../control/bootstrap.dart';
+import '../control/control_event_bridge.dart';
 import '../control/slash_ui/slash_ui.dart';
 import '../diary/data/diary_repository.dart';
 import '../services/chat_session_controller.dart';
@@ -113,6 +114,10 @@ class _SmartNavScreenState extends State<SmartNavScreen>
   /// ECP slash 指令态编排（P3-G2）；widget 测试未走 ControlBootstrap
   /// 时为 null，搜索栏保持纯搜索行为。
   SlashConsoleController? _slash;
+
+  /// P4-G2 UI 服务→控制面事件适配器（chat.incoming/nav.changed）；
+  /// 仅在 ControlBootstrap 存在时挂接，随本屏服务一起拆除。
+  UiEventBridge? _eventBridge;
 
   /// 快捷操作弧组件的 key：用于调用其收起方法（仅快捷弧出现时存在，
   /// 不在冷启动首帧路径上）。
@@ -292,6 +297,15 @@ class _SmartNavScreenState extends State<SmartNavScreen>
         onEditText: (v) => _searchTextController.value = v,
         onRequestClose: _exitSearch,
       );
+
+      // P4-G2：ChatStore incoming 广播 + 导航页变化经装配适配器
+      // 转发为 chat.incoming/nav.changed 事件（services 层自身
+      // 不 import control，反向依赖接缝测试钉死）。
+      _eventBridge = UiEventBridge(
+        events: control.events,
+        chatStore: _chatStore,
+        nav: _nav,
+      )..attach();
     }
   }
 
@@ -301,6 +315,8 @@ class _SmartNavScreenState extends State<SmartNavScreen>
     _readTimer?.cancel();
     _aiHoldTimer?.cancel();
     _drawerAnim.dispose();
+    // 先摘事件适配器（它监听下面两个服务），再销毁服务本身。
+    _eventBridge?.dispose();
     _nav.dispose();
     _chatSession.dispose();
     _chatStore.dispose();
