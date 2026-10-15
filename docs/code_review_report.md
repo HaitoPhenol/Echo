@@ -1325,6 +1325,30 @@ R3 两个实证缺口在单测层已关闭。**
    已存在跳过、release 构建模式下三 debug-only 命令不注册、
    chat.seed→chat.send 同会话解锁端到端（debug 假件）。
 
+**维护者 G4 复审结论（2026-10-15，提交 594f2d9 + 7ca574d）：
+G4 通过。代码侧 G0-G4 全部收官，门禁基线 441。**
+
+- 补漏（594f2d9）：async_jobs_test 的 release harness 补
+  visibleSpecs 不含 sys.delay 的物理断言。
+- 汇总组（7ca574d，新增 g4_mcp_boundary_test.dart，4 用例）：
+  ① mcp 鉴权门矩阵——sys.status/diary.list（owner 1 读）、
+  diary.ensure/diary.export/nav.goto（user 2 写）、
+  chat.send（admin 3 非破坏）、diary.prune（admin 3 破坏）
+  全 AUTH_REQUIRED，对照组 sys.ping（guest 0）放行；
+  ② mcp 调 sys.events/sys.job.get 均 AUTH_REQUIRED（非
+  NOT_FOUND，门都没过），与 G1/G2 既有钉死一致；
+  ③ debug-only 四命令（diary.seed/diary.reset/chat.seed/
+  sys.delay）在 release 双重保险：UNKNOWN_COMMAND +
+  visibleSpecs 物理不含；
+  ④ release 下 mcp 调未注册 debug 命令仍 UNKNOWN——未知
+  先于鉴权。
+- 文件头注释诚实写明「本组是 §G4 点名项汇总复验+补漏，
+  不重复机制测试」，无凑数重复。
+- 门禁独立复跑：analyze 0、flutter test **441** 全绿
+  （437+4）、format exit 0；android/ 零 diff。
+- 唯一与 async_jobs_test 对 sys.delay 有一处断言重复
+  （594f2d9 与 G4 组③），属点名项汇总的有意冗余，不返工。
+
 ### G4｜MCP 只读边界负向测试（假通道，不写任何传输）
 
 用 `ControlChannel.mcp` 假通道补测试（无网络代码）：
