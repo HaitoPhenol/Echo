@@ -1372,6 +1372,75 @@ G4 通过。代码侧 G0-G4 全部收官，门禁基线 441。**
   作业是 AUTH_REQUIRED 而非 NOT_FOUND，二者不要混；
 - slash/adb 本地通道事件全集可见（对照组）。
 
+**维护者 G5 真机终审结论（2026-10-15，MIX 2S 3f6cc09b，
+P4 HEAD 9f9192b debug + release 双包）：App 侧 7 组全过；
+抓到 1 个 P2 缺陷（工作站脚本，不进 APK）回派修复复验后
+即可收口合 main。**
+
+debug 包（versionName 0.12.0 未排号，PIN=1234 首装实测，
+全程 echo-cmd adb 通道，截图 artifacts/g5/01..17）：
+
+1. **E4 根治实证（delay 12s）**：`sys.delay --ms 12000
+   --no-wait` 首包信封 ms=11、墙钟 0.46s（接收器 9s 预算
+   不再构成约束）；手工 sys.job.get 轮询至 done，内层信封
+   ms=12020、sleptMs=12000，作业真实跑满 12s。
+2. **diary.export async**：running 首包 9ms，0.5s 后轮询
+   得 done，内层信封 entries=3/sizeBytes=3398；run-as
+   核 `app_flutter/echo_diary/exports/日记-all-*.sy.zip`
+   真实落盘 3398 字节。
+3. **事件长轮询/五事件**：8s 等待实测 1.99s 被新事件提前
+   唤醒（非超时返回）；audit.entry（含
+   auth.session-expired、diary.ensure 成功两类）、
+   diary.export.completed（lv2，path/entries 齐）、
+   nav.changed（横滑 console→chat，lv0，index/page 载荷
+   正确）历史环逐条核见；chat.incoming 见第 5 项。
+4. **播种实证①（R3 缺口一）**：diary.seed
+   `--days 10 --empty-every 3 --end 2026-09-20 --confirm`
+   返回 empty 恰为 09-11/14/17/20、created 6 篇，与单测
+   逐字一致；prune dry-run deleted 同 4 天、6 篇有字稿
+   reason=non-empty；显式 `--dry-run=false` 真删后二次
+   dry-run 残留 []、diary.list 仅剩 6 篇非空——空稿物理
+   消失。注：dryRun 参数默认 true（安全默认），真机首跑
+   漏给 =false 误报一次"未删除"，排查确认属设计非缺陷。
+5. **播种实证②（R3 缺口二）**：chat.seed --count 1 →
+   chat.incoming 事件 seq107 lv1（id/nickname/preview/
+   text 载荷完整，bridge 真机链路活）→ chat.send
+   --text-stdin 成功（msg-2 out）→ chat.get 见 in+out
+   双消息、lastPreview 更新；debug 端到端链路真机关闭。
+6. **slash 不 async 化回归**：UI 引导输 `/diary.export`
+   提交，条目直接绿✓终态（path/entries=11/8473），**非
+   running 信封**；代码层亦核：生产代码仅
+   adb_control_channel.dart:69 一处传 backgroundSlow:true，
+   slash 三个 execute 调用点全默认 false。
+7. **release 裁剪**：pm clear 全新装，包 flags 无
+   DEBUGGABLE；echo-cmd 15s 就绪超时 die、显式广播无
+   resultData（组件物理不存在）；classes.dex（567KB，与
+   R3 同尺寸级）六串全 0；slash 补全真机计数 **sys 7**
+   （R3 的 5 + events/job.get，逐词展开确认无 delay/
+   clock.set）、**diary 5 / chat 5**（seed×2 与 reset
+   物理不可见）；libapp.so diary.seed/chat.seed/sys.delay
+   全名 0 命中，clock.set 残留 1 次（R3 既有挂账：
+   controlledVerbs 白名单无 debug 守卫，注册侧不可达，
+   无功能风险）。P4 对 android/ 与 window_inset_refresher
+   零 diff（BUG-3 修复面无回归风险面）。
+
+**P2 缺陷（回派，不阻断 App 内容但属 G1 承诺交付物）**：
+echo-cmd 自动轮询真机从未生效——json_query 的 python 取值
+对 JSON bool 走 print(v)，输出大写 `True`，而主流程
+L426 比较小写 `"true"`，async 分支整体短路（--no-wait 也
+是碰巧行为一致）。证据：delay 12s 不带 --no-wait 墙钟
+0.44s 直接返 running、无轮询提示。成因：Dart 测试覆盖不到
+bash 脚本，G1 复审仅 bash -n + 真机只验了手工轮询路径。
+修法：json_query python 段对 bool 输出 `true/false`；
+**并要求补脚本级自动化测试**（bool/string/int 标量与点
+路径快照），不得只靠真机抽验。修复后我复验：delay 12s
+不带 --no-wait 应墙钟≈12s、打印内层信封、退出码 0；
+--no-wait 仍立即返 running。
+
+执行者真机自验未做（本组由维护者独立完成全程）；门禁
+441 全绿为代码侧最终基线。设备留 release 0.12.0 包
+（P4 未排号），合 main 排 0.13.0+38 待发话。
+
 ### G5｜门禁与 MIX 2S 真机终审（维护者主导，执行者先自验）
 
 - 门禁（基线 379，只增不减）：flutter analyze 0、flutter test
