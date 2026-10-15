@@ -457,13 +457,19 @@ void main() {
   });
 
   group('sys.delay 命令', () {
-    test('release 构建物理不注册（UNKNOWN_COMMAND）；debug 注册', () async {
+    test('release 构建物理不注册（UNKNOWN_COMMAND + 清单不含）；debug 注册', () async {
       final rel = await ControlHarness.create(
         buildMode: ControlBuildMode.release,
       );
       addTearDown(rel.dispose);
       final missing = await rel.exec('sys.delay', args: {'ms': 1});
       expect(missing.error!.code, ControlErrorCode.unknownCommand);
+      // 物理不注册钉死：release manifest 里根本不存在这条命令，
+      // 而非「存在但拒绝」（G4 派单点名的 debug-only 三命令之一）。
+      expect(
+        rel.bus.visibleSpecs.map((s) => s.name),
+        isNot(contains('sys.delay')),
+      );
 
       final dbg = await ControlHarness.create();
       addTearDown(dbg.dispose);
