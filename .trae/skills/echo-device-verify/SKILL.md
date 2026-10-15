@@ -18,7 +18,8 @@ adb id `3f6cc09b`，1080×2160，density 440，包名 `com.everse.echo`，
 cd echo && flutter analyze && flutter test
 ```
 
-analyze 必须零 issue，测试必须全过（当前 24 个）。改了渲染结构后若测试报
+analyze 必须零 issue，测试必须全过（数字随版本增长，勿写死，以
+`flutter test` 末尾计数为准；2026-10-15 P4 收官基线 441）。改了渲染结构后若测试报
 "A Stack requires bounded constraints"，通常是 Stack 子节点全被
 Positioned 包了——留一个非定位子定尺寸。
 
@@ -115,3 +116,38 @@ ffmpeg -y -loglevel error -ss 2.5 -i in.mp4 -frames:v 1 cover.png
 - 视觉终态：放大抽单帧确认无残留（色差副本/位移/透明片在动画末段归零）
 - 同步类需求（如页名牌↔转鼓）：同框帧确认同帧出现/消失、底边对齐
 - 自检通过后再装机之外不做声明；汇报措辞与证据一致
+
+## 7. echo-cmd / slash 控制台操作（P3-P4 校准）
+
+adb 通道优先于 UI 输入：绕开豆包 IME 吞字和 MIUI 触摸延迟，验证快得多。
+设备串行同样持 `artifacts/.device.lock`，每条命令前先发 WAKEUP。
+
+- **非交互鉴权**：set-pin 交互提示读三行（新 PIN/确认/旧 PIN），脚本喂
+  `printf '1234\n1234\n\n' | scripts/echo-cmd auth.set-pin`（末行空＝
+  首装无旧 PIN）；解锁 `printf '1234\n' | scripts/echo-cmd auth.unlock`。
+  会话会被前后台切换/超时焚掉（可在 sys.events 里看到
+  audit.entry=auth.session-expired），遇 AUTH_REQUIRED 重新 unlock。
+- **信封字段嵌在 `result` 里**：取游标要
+  `... | python3 -c 'import sys,json;print(json.load(sys.stdin)["result"]["nextSeq"])'`，
+  顶层没有 nextSeq。
+- **dry-run 默认安全**：`diary.prune` 的 `--dry-run` 默认 **true**
+  （只报告不删），真删必须显式 `--dry-run=false`；给 `--confirm` 也不够。
+- **设备内文件核查**：
+  `adb -s 3f6cc09b shell run-as com.everse.echo ls -l app_flutter/echo_diary/exports/`。
+- **bash 脚本改动要补脚本级测试**：Dart 测试覆盖不到 scripts/，
+  只跑 `bash -n` + 真机抽验曾漏掉 bool 大小写缺陷（P4 G5 P2）。
+  回归跑 `scripts/tests/echo_cmd_test.sh`（fake-adb，无需设备）。
+
+slash 控制台 UI（豆包 doubaoime 环境，`input text` 长串被吞时用点选）：
+
+- 开搜索栏：长按底部胶囊 `input swipe 740 2092 740 2092 700`；
+  点搜索框 `input tap 300 2040` 聚焦，再 `input text "/"` 唤起控制台
+  （首个短串通常能进；`diary.export` 这种长串字母会被吞，别硬喂）。
+- 用补全列表点选（1080×2160 实测，键盘弹起态）：命名空间行
+  sys y≈1468、diary y≈1640、chat y≈1720；diary 命令列表里
+  export 行 y≈1925。坐标随列表项数漂移，点完必须截图确认再继续。
+- 误点参数行（如填入 `--notebook`）时：先 `tap 300 2040` 唤键盘，
+  再连发若干次 `input keyevent 67`（退格；键盘收起时退格无目标）；
+  提交用聚焦后的 `input keyevent 66`（回车）。
+- 验证 async 回归时：slash 通道 slow 命令**不作业化**，应直接出终态
+  （绿✓卡片），不出现 running/jobId 信封。
