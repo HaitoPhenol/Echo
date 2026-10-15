@@ -309,6 +309,9 @@ final CommandSpec jobGet = CommandSpec(
   summary: '查询异步作业状态/终态信封（adb slow 命令轮询用）',
   kind: CommandKind.read,
   level: ControlLevel.owner,
+  // 显式声明幂等（查询不改作业表，重复取回同一终态）：CommandSpec
+  // 默认即 true，此处与 sys.events 同款写明，消除手册↔清单歧义。
+  idempotent: true,
   params: [
     ParamSpec(
       'id',
@@ -356,6 +359,8 @@ final CommandSpec sysDelay = CommandSpec(
   level: ControlLevel.guest,
   debugOnly: true,
   slow: true,
+  // 显式声明幂等（同一 --ms 重复执行效果一致）：与手册表述对齐。
+  idempotent: true,
   params: [
     ParamSpec(
       'ms',

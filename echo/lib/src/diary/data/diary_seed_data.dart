@@ -39,4 +39,21 @@ class DiarySeedData {
       ],
     );
   }
+
+  /// 造一篇任意日期的**非空稿**（`diary.seed` 用）：段落按 [variant]
+  /// 轮换取自 [_variants]，与 [build] 同源（同一 [_seedDoc] 构造、
+  /// 同一标题规则）。这些段落不匹配模板骨架，故 [DiaryComposer
+  /// .isUserEmpty] 判为非空——正是 prune 要保留的那类。
+  static DiaryDocument buildNonEmpty({
+    required SyIdGenerator idGenerator,
+    required DateTime day,
+    required int variant,
+  }) => _seedDoc(idGenerator, day, _variants[variant % _variants.length]);
+
+  /// 非空稿段落池（轮换取用，保证内容可辨识、块数有差异）。
+  static const List<List<String>> _variants = [
+    ['随手记一笔。'],
+    ['今天的两行。', '第二段用来测分块之间的留白。'],
+    ['晨间备忘：待办三项。', '下午补充一句。', '夜里再补一行。'],
+  ];
 }

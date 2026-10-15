@@ -154,12 +154,13 @@ release 构建不包含 `src/debug/` 源集，物理无 receiver；Dart 侧通�
 - 受控动词表：`list/get/status`（读）、
   `goto/open/create/set/send/refresh/ensure`（写）、
   `notify/exception/view/resolve`（信号）、
-  `prune/delete/reset`（生命周期）、
+  `prune/delete/reset/seed`（生命周期；`seed` 为 P4 debug 灌数）、
   `job.get`（P4：异步作业轮询）、`events`（P4：事件游标/长轮询）、
   `delay`（P4：仅 debug 验证用）；
   带点复合动词 `clock.set` 等与清单逐字一致；
 - 首批命名空间：`sys` `auth` `nav` `diary` `chat` `console` `badge`；
-- 仅 debug 构建注册：`sys.clock.set`、`diary.seed`、`diary.reset`
+- 仅 debug 构建注册：`sys.clock.set`、`diary.seed`、`diary.reset`、
+  `chat.seed`、`sys.delay`
   （release manifest 中不存在，而非"存在但拒绝"）。
 
 首批完整命令、参数、示例见 [ecp-commands.md](./ecp-commands.md)。

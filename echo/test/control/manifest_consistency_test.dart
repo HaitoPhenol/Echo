@@ -27,19 +27,8 @@ void main() {
       multiLine: true,
     ).allMatches(text);
 
-    // 小节文本表（标题 → 正文），debug 标注与「起始」分期都在正文里。
-    final sections = <String, String>{};
-    final names = <String>[];
-    for (var i = 0; i < headingMatches.length; i++) {
-      final m = headingMatches.elementAt(i);
-      final start = m.start;
-      final end = i + 1 < headingMatches.length
-          ? headingMatches.elementAt(i + 1).start
-          : text.length;
-      sections[m.group(1)!] = text.substring(start, end);
-      names.add(m.group(1)!);
-    }
-    final headings = names.toSet();
+    // 小节标题集合（仅标题名，正文按需即时切取）。
+    final headings = <String>{for (final m in headingMatches) m.group(1)!};
 
     for (final spec in specs) {
       expect(headings, contains(spec.name), reason: '${spec.name} 已注册但手册缺小节');
@@ -77,14 +66,16 @@ void main() {
       }
     }
 
-    // 反向：手册标注「起始 P1」的小节必须都在 manifest；
-    // P2/P3/P4 命令（chat/console/badge/diary.seed）不在本批。
-    for (final entry in sections.entries) {
-      if (!entry.value.contains('起始 P1')) continue;
+    // 反向：手册每个小节都必须对应 manifest 已注册命令——手册即契约，
+    // 正向「注册缺小节」与反向「有节未注册」都判红；不再按分期
+    // （P1/P4）写死豁免名单，一律按**实际注册**断言（debug 风味已含
+    // DebugOnly 命令）。
+    final registered = specs.map((s) => s.name).toSet();
+    for (final name in headings) {
       expect(
-        specs.map((s) => s.name),
-        contains(entry.key),
-        reason: '手册把 ${entry.key} 标为 P1，但 manifest 未注册',
+        registered,
+        contains(name),
+        reason: '手册有 $name 小节，但 manifest 未注册（或名称拼写不一致）',
       );
     }
   });

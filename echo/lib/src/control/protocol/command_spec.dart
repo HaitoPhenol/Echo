@@ -240,7 +240,7 @@ class CommandSpec {
     // 信号
     'notify', 'exception', 'view', 'resolve',
     // 生命周期
-    'prune', 'delete', 'reset', 'export',
+    'prune', 'delete', 'reset', 'export', 'seed',
     // 协议自身
     'ping', 'help', 'info', 'audit',
     // P4：异步作业轮询（复合动词）/ 事件游标长轮询 / debug 验证用挂起

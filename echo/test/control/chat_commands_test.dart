@@ -284,7 +284,7 @@ void main() {
       expectRedacted(entries[2].paramSummary, '12', 'secret-alpha');
     });
 
-    test('清单标注：chat.send 3 级非破坏（免 confirm）、唯一非幂等', () async {
+    test('清单标注：chat.send/chat.seed 3 级非破坏（免 confirm）、非幂等', () async {
       final specs = {for (final s in h.bus.visibleSpecs) s.name: s};
       final send = specs['chat.send']!;
       expect(send.idempotent, isFalse);
@@ -292,6 +292,13 @@ void main() {
       expect(send.level, ControlLevel.admin);
       expect(send.destructive, isFalse);
       expect(send.requiresConfirm, isFalse);
+      // P4 chat.seed 同款：3 级非破坏、非幂等，且仅 debug 注册。
+      final seed = specs['chat.seed']!;
+      expect(seed.idempotent, isFalse);
+      expect(seed.level, ControlLevel.admin);
+      expect(seed.destructive, isFalse);
+      expect(seed.requiresConfirm, isFalse);
+      expect(seed.debugOnly, isTrue);
       for (final name in [
         'chat.list',
         'chat.get',
@@ -316,6 +323,75 @@ void main() {
       expect(writeDenied.error!.code, ControlErrorCode.authRequired);
       // 被裁决拦截的写操作不落库。
       expect(h.chatStore.messagesOf('incoming-1').items, hasLength(1));
+    });
+  });
+
+  group('chat.seed（debug-only，P4 灌数）', () {
+    test('release 物理不注册；debug 3 级解锁后 seed→chat.send 端到端', () async {
+      final rel = await ControlHarness.create(
+        buildMode: ControlBuildMode.release,
+      );
+      addTearDown(rel.dispose);
+      expect(
+        (await rel.exec('chat.seed')).error!.code,
+        ControlErrorCode.unknownCommand,
+      );
+      expect(
+        rel.bus.visibleSpecs.map((s) => s.name),
+        isNot(contains('chat.seed')),
+      );
+
+      // debug：admin 3 级非破坏——未解锁 AUTH_REQUIRED，解锁即放行。
+      expect(
+        (await h.exec('chat.seed')).error!.code,
+        ControlErrorCode.authRequired,
+      );
+      await h.execResult(
+        'auth.set-pin',
+        args: {'newPin': 'echo1', 'newPinConfirm': 'echo1'},
+      );
+      await h.execResult('auth.unlock', args: {'pin': 'echo1'});
+
+      final seeded = await h.execResult('chat.seed');
+      expect(seeded['ids'], ['incoming-1']);
+      // 端到端：seed 出的会话可直接 chat.send（debug 补齐成功路径）。
+      final sent = await h.execResult(
+        'chat.send',
+        args: {'id': 'incoming-1', 'text': '端到端'},
+      );
+      expect(sent['conversationId'], 'incoming-1');
+      expect(h.chatStore.messagesOf('incoming-1').items, hasLength(2));
+    });
+
+    test('--count 多条 + 自定义文本；越界 USAGE、正文审计脱敏', () async {
+      await h.execResult(
+        'auth.set-pin',
+        args: {'newPin': 'echo1', 'newPinConfirm': 'echo1'},
+      );
+      await h.execResult('auth.unlock', args: {'pin': 'echo1'});
+
+      for (final bad in [0, 21]) {
+        expect(
+          (await h.exec('chat.seed', args: {'count': bad})).error!.code,
+          ControlErrorCode.usage,
+          reason: 'count=$bad',
+        );
+      }
+
+      final seeded = await h.execResult(
+        'chat.seed',
+        args: {'count': 3, 'text': '灌入正文'},
+      );
+      // 新会话逐个插到最前，返回其稳定 id。
+      expect(seeded['ids'], ['incoming-1', 'incoming-2', 'incoming-3']);
+      expect(h.chatStore.conversationOf('incoming-1')!.preview, '灌入正文');
+
+      // 审计脱敏：正文只记 <redacted:N>（N=trim 后长度 4）。
+      final entry = h.audit
+          .list(limit: 20)
+          .firstWhere((e) => e.cmd == 'chat.seed' && e.ok);
+      expect(entry.paramSummary['text'], '<redacted:4>');
+      expect(entry.paramSummary.toString(), isNot(contains('灌入正文')));
     });
   });
 }

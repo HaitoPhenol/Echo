@@ -338,11 +338,28 @@
 - 返回：`{"removedDocs": n, "removedFiles": n}`。
 
 ### `diary.seed`
-- 类 写 · 级 **3** · 非幂等 · **仅 debug** · 起始 P4
-- 参数：`--count N`（默认 7）、`--from YYYY-MM-DD`（默认回推）、
-  `--with-exported`（布尔，混入 exported/archived 三态）
-- 作用：批量灌构造好的假日记（标题/段落/状态），用于列表与三态 UI
-  压测。返回生成清单。
+- 类 写 · 级 **3**（破坏性，需解锁+`--confirm`）· 非幂等 · **仅 debug** ·
+  起始 P4
+- 参数：
+  - `--days N`（1..60，缺省 7）：自 `--end` 向前回推的天数（含 end 当天）；
+  - `--end YYYY-MM-DD`（缺省＝日记日时钟昨天；**今天不自动种**，
+    显式给 `--end` 可种当天；未来日期拒绝——`USAGE`）；
+  - `--empty-every K`（0..days，缺省 0＝全部非空；K>0 时自 `--end`
+    起每 K 天（含 `--end` 当天）造一篇空稿）。
+- 作用：批量灌入**成稿形状**的草稿，专补跨天清理（`diary.prune`）的
+  R3 实证缺口：`--empty-every` 造的空稿与 composer 空稿判定
+  （`isUserEmpty`）**同一构造**，保证 prune 认得；其余非空稿沿用
+  `DiarySeedData` 同源段落构造。已存在日期跳过不覆盖（要干净重灌用
+  既有 `diary.reset --keep-seeds`）；全程走 `repo.upsertDraft`。
+- 返回：`{"created":[date…],"empty":[date…],"skipped":[date…]}`，
+  三个日期列表（升序，ISO `YYYY-MM-DD`）。
+- 示例：
+  ```bash
+  # 造 10 天（截至 09-20），每 3 天一篇空稿
+  scripts/echo-cmd diary.seed --days 10 --empty-every 3 --end 2026-09-20
+  # 随后 prune dry-run 的 deleted 应恰为空稿日期（有字稿保留）
+  scripts/echo-cmd diary.prune --confirm --dry-run
+  ```
 
 ### `diary.export`
 - 类 写 · 级 **2**（2026-10-13 修订：导出是需要工具辅助的正常操作，
@@ -395,6 +412,23 @@
 - 参数：`--id`（必填）
 - 直接调 ChatStore.markRead，返回操作后的会话行。
 - 错误：`NOT_FOUND`（5）。
+
+### `chat.seed`
+- 类 写 · 级 **3** · 非幂等 · **仅 debug** · 起始 P4
+- 参数：`--count N`（1..20，缺省 1）、`--text`（缺省模拟文案；正文
+  与 `chat.send` 同源，清单标 `auditRedact`——审计只记 `<redacted:N>`）
+- 作用：经 `ChatStore.addIncoming(text:)` **同源入口**批量造 incoming
+  会话，补齐 chat 链路的真机实证缺口（debug 下跑通 `chat.seed` →
+  `chat.send` 成功路径）。**非破坏性**（只造不删）：解锁即执行，
+  不弹确认卡、不要 `--confirm`（参照 `chat.send` 语义）。
+  release 物理不注册。
+- 返回：`{"ids":["incoming-1", …]}`（新建会话 id 列表，即 addIncoming
+  落库的稳定 id）。
+- 示例：
+  ```bash
+  scripts/echo-cmd chat.seed --count 1
+  scripts/echo-cmd chat.send --id incoming-1 --text-stdin   # 端到端
+  ```
 
 ---
 

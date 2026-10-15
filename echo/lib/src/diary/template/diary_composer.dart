@@ -100,6 +100,16 @@ class DiaryComposer {
   //  取数与快照渲染
   // ================================================================
 
+  /// 构造一篇「骨架态空稿」：与 [ensureDay] 走**同一**模板实例化
+  /// （只差未拉 data 快照），故 [isUserEmpty] 必判为空。
+  ///
+  /// `diary.seed` 造空稿专用——保证「空稿形状」与 prune 判定同源，
+  /// 命令层不得自创「空」定义（否则 prune 认不得，端到端验证失效）。
+  DiaryDocument buildEmptyDraft(DateTime date) {
+    final day = DateTime(date.year, date.month, date.day);
+    return template.instantiate(day, _ids);
+  }
+
   /// 拉取三个数据源（互不连坐）并渲染快照行；供成稿与 ↻ 复用。
   Future<DataSnapshotResult> fetchSnapshot(DateTime diaryDate) async {
     final day = DateTime(diaryDate.year, diaryDate.month, diaryDate.day);

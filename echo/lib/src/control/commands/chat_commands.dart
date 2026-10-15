@@ -5,17 +5,19 @@ import '../protocol/control_error.dart';
 import 'control_json.dart';
 
 /// `chat` 命名空间：会话列表 / 消息分页 / 进入会话 / 外发 / 已读
-/// （手册 §6，P2）。
+/// /（debug）灌数（手册 §6）。
 ///
 /// 同路原则：`chat.open` 与 UI 点按行都只调
 /// [ChatSessionController.open]；`chat.mark-read` 直接调
-/// [ChatStore.markRead]；`chat.send` 与未来输入框共用 [ChatStore.send]。
+/// [ChatStore.markRead]；`chat.send` 与未来输入框共用 [ChatStore.send]；
+/// `chat.seed` 与 UI「模拟：聊天新消息」共用 [ChatStore.addIncoming]。
 List<CommandSpec> buildChatCommands() => [
   chatList,
   chatGet,
   chatOpen,
   chatSend,
   chatMarkRead,
+  chatSeed,
 ];
 
 /// `chat.list`：会话摘要列表（不含正文）。
@@ -155,5 +157,56 @@ final CommandSpec chatMarkRead = CommandSpec(
     }
     store.markRead(id);
     return chatConversationJson(store.conversationOf(id)!);
+  },
+);
+
+/// `chat.seed`（debug-only，P4）：经 [ChatStore.addIncoming] **同源入口**
+/// 批量造 incoming 会话，补 chat 链路的真机实证缺口（debug 下跑通
+/// `chat.seed` → `chat.send` 成功路径）。
+///
+/// 非破坏性（只造不删）：与 `chat.send` 同为 3 级但**解锁即执行**，
+/// 显式 `confirmRequired:false` 不弹确认卡/不要 --confirm；release
+/// manifest 物理不存在。
+final CommandSpec chatSeed = CommandSpec(
+  namespace: 'chat',
+  verb: 'seed',
+  summary: '【仅 debug】造 incoming 会话（补 chat.send 成功路径实证）',
+  kind: CommandKind.write,
+  level: ControlLevel.admin,
+  idempotent: false,
+  // 3 级但非破坏性：解锁会话即可，不弹确认卡/不要 --confirm。
+  confirmRequired: false,
+  debugOnly: true,
+  params: [
+    ParamSpec(
+      'count',
+      type: ArgType.integer,
+      defaults: 1,
+      summary: '造几条 incoming 会话，1..20（默认 1）',
+    ),
+    ParamSpec(
+      'text',
+      type: ArgType.string,
+      summary: '首条正文（缺省模拟文案）；与 chat.send 同源，审计脱敏',
+      auditRedact: true,
+    ),
+  ],
+  handler: (ctx) async {
+    final store = ctx.requireService<ChatStore>('聊天服务');
+    final count = ctx.arg<int>('count');
+    if (count < 1 || count > 20) {
+      throw const ControlException(
+        ControlErrorCode.usage,
+        '--count 允许范围 1..20',
+      );
+    }
+    final text = ctx.optionalArg<String>('text');
+    final ids = <String>[];
+    for (var i = 0; i < count; i++) {
+      store.addIncoming(text: text);
+      // addIncoming 把新会话插到列表最前，其 id 即本次创建的稳定 id。
+      ids.add(store.conversations.first.id);
+    }
+    return {'ids': ids};
   },
 );

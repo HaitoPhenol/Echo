@@ -323,6 +323,182 @@ void main() {
       expect(mcpDenied.error!.code, ControlErrorCode.authRequired);
     });
   });
+
+  group('diary.seed（debug-only，P4 灌数）', () {
+    test('release 构建物理不注册；debug 下 3 级先鉴权、破坏性需 --confirm', () async {
+      final rel = await ControlHarness.create(
+        buildMode: ControlBuildMode.release,
+      );
+      addTearDown(rel.dispose);
+      expect(
+        (await rel.exec('diary.seed')).error!.code,
+        ControlErrorCode.unknownCommand,
+      );
+      expect(
+        rel.bus.visibleSpecs.map((s) => s.name),
+        isNot(contains('diary.seed')),
+      );
+
+      // debug：admin 3 级且 destructive —— 未解锁 AUTH_REQUIRED；
+      // 解锁后缺 --confirm 则 CONFIRM_REQUIRED。
+      expect(
+        (await h.exec('diary.seed')).error!.code,
+        ControlErrorCode.authRequired,
+      );
+      await _unlockSeed(h);
+      expect(
+        (await h.exec('diary.seed', args: {'days': 1})).error!.code,
+        ControlErrorCode.confirmRequired,
+      );
+    });
+
+    test('日期回推：跨月/跨年/缺省=昨天；今天可显式种、未来拒绝', () async {
+      await _unlockSeed(h);
+      final crossYear = await h.execResult(
+        'diary.seed',
+        args: {'days': 3, 'end': '2026-01-01'},
+        confirmed: true,
+      );
+      expect(crossYear['created'], ['2025-12-30', '2025-12-31', '2026-01-01']);
+
+      // 跨月：2026 非闰年，2 月 28 天。
+      final crossMonth = await h.execResult(
+        'diary.seed',
+        args: {'days': 2, 'end': '2026-03-01'},
+        confirmed: true,
+      );
+      expect(crossMonth['created'], ['2026-02-28', '2026-03-01']);
+
+      // 缺省 end＝日记日昨天（10-11），今天（10-12）不自动种。
+      final dflt = await h.execResult(
+        'diary.seed',
+        args: {'days': 2},
+        confirmed: true,
+      );
+      expect(dflt['created'], ['2026-10-10', '2026-10-11']);
+      expect(await h.repo.dayExists(DateTime(2026, 10, 12)), isFalse);
+
+      // 显式 --end 今天可种。
+      final today = await h.execResult(
+        'diary.seed',
+        args: {'days': 1, 'end': '2026-10-12'},
+        confirmed: true,
+      );
+      expect(today['created'], ['2026-10-12']);
+
+      // 未来日期拒绝（M4 不提供未来入口）。
+      expect(
+        (await h.exec(
+          'diary.seed',
+          args: {'end': '2026-10-13'},
+          confirmed: true,
+        )).error!.code,
+        ControlErrorCode.usage,
+      );
+    });
+
+    test('空稿与 prune 端到端：seed→dryRun 列出→真删→list 复核', () async {
+      await _unlockSeed(h);
+      // 10 天（截至 09-20），每 3 天一篇空稿：
+      // 距 end 0/3/6/9 天 → 09-20/17/14/11 为空稿。
+      final seeded = await h.execResult(
+        'diary.seed',
+        args: {'days': 10, 'end': '2026-09-20', 'emptyEvery': 3},
+        confirmed: true,
+      );
+      expect(seeded['empty'], [
+        '2026-09-11',
+        '2026-09-14',
+        '2026-09-17',
+        '2026-09-20',
+      ]);
+      expect((seeded['created'] as List), hasLength(6));
+
+      // dry-run：deleted 恰为空稿日期（有字稿保留，reason=non-empty）。
+      final dry = await h.execResult(
+        'diary.prune',
+        args: {'before': '2026-09-21', 'dryRun': true},
+        confirmed: true,
+      );
+      expect(dry['deleted'], seeded['empty']);
+      expect(
+        (dry['kept'] as List).every((e) => (e as Map)['reason'] == 'non-empty'),
+        isTrue,
+      );
+      // dry-run 后空稿仍在。
+      expect(await h.repo.stateOfDay(DateTime(2026, 9, 11)), isNotNull);
+
+      final run = await h.execResult(
+        'diary.prune',
+        args: {'before': '2026-09-21', 'dryRun': false},
+        confirmed: true,
+      );
+      expect(run['deleted'], seeded['empty']);
+
+      // list 复核：空稿消失、有字稿仍在。
+      final list = await h.execResult('diary.list', args: {'month': '2026-09'});
+      final dates = (list['items'] as List)
+          .map((e) => (e as Map)['date'] as String)
+          .toSet();
+      for (final d in seeded['empty'] as List) {
+        expect(dates, isNot(contains(d)), reason: '空稿 $d 应已删除');
+      }
+      for (final d in seeded['created'] as List) {
+        expect(dates, contains(d), reason: '有字稿 $d 应保留');
+      }
+    });
+
+    test('已存在日期跳过不覆盖', () async {
+      await _unlockSeed(h);
+      await h.execResult('diary.ensure', args: {'date': '2026-10-10'});
+      // 给已有稿补一行用户文字，验证 seed 不覆盖。
+      final doc = (await h.repo.findDay(DateTime(2026, 10, 10)))!;
+      doc.blocks.add(DiaryBlock(id: h.repo.idGenerator.next(), text: '原有内容'));
+      await h.repo.upsertDraft(doc);
+
+      final seeded = await h.execResult(
+        'diary.seed',
+        args: {'days': 2, 'end': '2026-10-11', 'emptyEvery': 1},
+        confirmed: true,
+      );
+      expect(seeded['skipped'], ['2026-10-10']);
+      expect(seeded['empty'], ['2026-10-11']);
+      final after = (await h.repo.findDay(DateTime(2026, 10, 10)))!;
+      expect(after.blocks.any((b) => b.text == '原有内容'), isTrue);
+    });
+
+    test('参数越界 USAGE：days / empty-every', () async {
+      await _unlockSeed(h);
+      for (final bad in [0, 61]) {
+        expect(
+          (await h.exec(
+            'diary.seed',
+            args: {'days': bad},
+            confirmed: true,
+          )).error!.code,
+          ControlErrorCode.usage,
+          reason: 'days=$bad',
+        );
+      }
+      expect(
+        (await h.exec(
+          'diary.seed',
+          args: {'days': 3, 'emptyEvery': 4},
+          confirmed: true,
+        )).error!.code,
+        ControlErrorCode.usage,
+      );
+    });
+  });
+}
+
+/// 首装 PIN 并解锁当前 adb 会话（`diary.seed`/`chat.seed` 等 3 级前置）。
+Future<void> _unlockSeed(ControlHarness h) async {
+  await h.execResult(
+    'auth.set-pin',
+    args: {'newPin': 'echo1', 'newPinConfirm': 'echo1'},
+  );
+  await h.execResult('auth.unlock', args: {'pin': 'echo1'});
 }
 
 /// 测试用恒定时钟源（导航控制器需要 TickerProvider；命令只触发

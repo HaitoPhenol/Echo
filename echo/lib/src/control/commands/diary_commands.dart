@@ -9,8 +9,8 @@ import '../protocol/command_spec.dart';
 import '../protocol/control_error.dart';
 import 'control_json.dart';
 
-/// `diary` 命名空间：列表/读取/成稿/跨天清理/清空重置/打包导出
-/// （手册 §5）。`diary.seed` 起始 P4，本批不注册。
+/// `diary` 命名空间：列表/读取/成稿/跨天清理/清空重置/灌数/打包导出
+/// （手册 §5）。`diary.seed` 为 P4 引入的 debug-only 灌数命令。
 ///
 /// 全部走 UI 同源的仓储/composer/导出服务实例（DiaryPage bootstrap
 /// 后注册），命令层不直连 sqflite / 文件序列化器。
@@ -20,6 +20,7 @@ List<CommandSpec> buildDiaryCommands() => [
   diaryEnsure,
   diaryPrune,
   diaryReset,
+  diarySeed,
   diaryExport,
 ];
 
@@ -272,6 +273,109 @@ final CommandSpec diaryReset = CommandSpec(
       'removedDocs': wiped.removedDocs,
       'removedFiles': wiped.removedFiles,
       'reseeded': reseeded,
+    };
+  },
+);
+
+/// `diary.seed`（debug-only，P4）：批量灌入**成稿形状**的草稿，专补
+/// 跨天清理（`diary.prune`）的 R3 实证缺口——造出「有字稿保留、空稿
+/// 被删」的可复现现场。
+///
+/// - 空稿与 composer 空稿判定（[DiaryComposer.isUserEmpty]）**同一构造**
+///   （[DiaryComposer.buildEmptyDraft] 即模板实例化），保证 prune 认得；
+///   命令层不得自创「空」定义；
+/// - 非空稿走 [DiarySeedData.buildNonEmpty] 同源段落构造；
+/// - 已存在日期跳过不覆盖（三态一律跳过；干净重灌用 diary.reset
+///   --keep-seeds）；全程走 [DiaryRepository.upsertDraft]，不直连 sqflite。
+///
+/// 破坏性 3 级（与设计 §5.1 prune/reset/seed 集合一致）需 --confirm；
+/// release manifest 物理不存在。
+final CommandSpec diarySeed = CommandSpec(
+  namespace: 'diary',
+  verb: 'seed',
+  summary: '【仅 debug】批量灌入成稿形状草稿（可穿插空稿验证 prune）',
+  kind: CommandKind.lifecycle,
+  level: ControlLevel.admin,
+  destructive: true,
+  debugOnly: true,
+  idempotent: false,
+  params: [
+    ParamSpec(
+      'days',
+      type: ArgType.integer,
+      defaults: 7,
+      summary: '自 --end 向前回推的天数（含 end 当天），1..60',
+    ),
+    ParamSpec(
+      'end',
+      type: ArgType.date,
+      summary: '截止日期 YYYY-MM-DD，缺省=日记日昨天（今天不自动种）',
+    ),
+    ParamSpec(
+      'emptyEvery',
+      type: ArgType.integer,
+      defaults: 0,
+      summary: '每 K 天造一篇空稿，0..days（0=全部非空）',
+    ),
+  ],
+  handler: (ctx) async {
+    final repo = ctx.requireService<DiaryRepository>('日记仓储');
+    final composer = ctx.requireService<DiaryComposer>('日记成稿器');
+    final clock = ctx.requireService<DiaryClock>('日记日时钟');
+
+    final days = ctx.arg<int>('days');
+    if (days < 1 || days > 60) {
+      throw const ControlException(ControlErrorCode.usage, '--days 允许范围 1..60');
+    }
+    // 缺省＝昨天：今天不自动种（M4 起今天由进模块 composer.ensureDay
+    // 接管）；显式给 --end 可种当天，但仍不许落到未来日记日。
+    final today = clock.today();
+    final end = _dayOnly(
+      ctx.optionalArg<DateTime>('end') ??
+          today.subtract(const Duration(days: 1)),
+    );
+    if (end.isAfter(today)) {
+      throw const ControlException(
+        ControlErrorCode.usage,
+        '--end 不得晚于日记日今天（模块不提供未来日期入口）',
+      );
+    }
+    final emptyEvery = ctx.arg<int>('emptyEvery');
+    if (emptyEvery < 0 || emptyEvery > days) {
+      throw const ControlException(
+        ControlErrorCode.usage,
+        '--empty-every 允许范围 0..days',
+      );
+    }
+
+    final created = <DateTime>[];
+    final empty = <DateTime>[];
+    final skipped = <DateTime>[];
+    // 自 end 向前回推 days 天（含 end 当天），升序落盘。
+    for (var i = days - 1; i >= 0; i--) {
+      final day = DateTime(end.year, end.month, end.day - i);
+      if (await repo.dayExists(day)) {
+        skipped.add(day);
+        continue;
+      }
+      // 「距 end 天数」定义空稿节奏：--end 当天为 0，每 K 天（含当天）
+      // 一篇空稿。用日期差分而非循环下标，保证与回推顺序无关。
+      final offsetFromEnd = end.difference(day).inDays;
+      final isBlank = emptyEvery > 0 && offsetFromEnd % emptyEvery == 0;
+      final doc = isBlank
+          ? composer.buildEmptyDraft(day)
+          : DiarySeedData.buildNonEmpty(
+              idGenerator: repo.idGenerator,
+              day: day,
+              variant: offsetFromEnd,
+            );
+      await repo.upsertDraft(doc);
+      (isBlank ? empty : created).add(day);
+    }
+    return {
+      'created': created.map(isoDate).toList(),
+      'empty': empty.map(isoDate).toList(),
+      'skipped': skipped.map(isoDate).toList(),
     };
   },
 );
