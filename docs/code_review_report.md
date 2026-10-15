@@ -1251,6 +1251,47 @@ testDebugUnitTest（本期预期零 android 改动）；语义 diff 交维护者
 
 </details>
 
+**维护者 G3 复审结论（2026-10-15，提交 c752588）：G3 通过，
+R3 两个实证缺口在单测层已关闭。**
+
+- 协议先行：受控动词表扩 `seed`（生命周期类）；设计 §5.1
+  destructive 集合同步 seed；手册重写 diary.seed 小节（原
+  P3 设想的 --count/--from/--with-exported 压测形态改为
+  prune 实证形态，避免僵尸契约）并新增 chat.seed。
+- diary.seed 亲核：debugOnly/admin/destructive:true（解锁+
+  --confirm 双门，测试钉 AUTH_REQUIRED→CONFIRM_REQUIRED
+  两级）；release 物理 UNKNOWN_COMMAND。空稿命门达标——
+  `composer.buildEmptyDraft` 与 ensureDay 同一
+  `template.instantiate`，非空稿走 DiarySeedData 同源段落，
+  命令层无自创「空」定义；**seed→prune dryRun→真删→
+  diary.list 复核端到端测试**断言 deleted 恰为 09-11/14/
+  17/20 四个空稿、6 篇有字稿全留（reason=non-empty），
+  R3「deleted 永远为空」缺口实证关闭。三态跳过不覆盖有专
+  测（给已有稿塞字后 seed，原文仍在、落 skipped）。日期
+  边界齐：跨月/跨年回推、缺省 end=昨天且今天不自动种、
+  显式可种当天、未来拒绝 USAGE、days 1..60、empty-every
+  0..days。
+- chat.seed 亲核：debugOnly/admin/**confirmRequired:false**
+  （3 级解锁即执行、不弹卡，与 chat.send 同款，非破坏）；
+  走 addIncoming({text}) 同一入口，--count 1..20，text 标
+  auditRedact 且有审计 `<redacted:4>` 断言；release 物理不
+  注册。**seed→chat.send 端到端测试**（incoming-1 两条
+  消息）关闭 R3 第二个挂账；ids 取 conversations.first 与
+  addIncoming 头插语义一致。
+- G1 挂账 nit 已收：job.get/delay 显式 idempotent:true
+  （CommandSpec 默认即 true，写明消除手册↔清单歧义，手册
+  表述不动）；seed 两命令显式 false 且 chat_commands 清单
+  标注测试同步扩到 seed。
+- manifest 一致性测试反向断言升级：删掉 P1/P4 分期豁免名
+  单，改为「手册每个小节必须对应实际注册命令」双向严判
+  （debug 风味含 DebugOnly）——契约更硬，批准。
+- 门禁独立复跑：analyze 0、flutter test **437** 全绿
+  （+7）、format exit 0；android/ 零 diff；SKILL.md 工作区
+  改动确认未混入提交。
+- 待 G5 真机复现：seed/prune 与 seed→send 两条链路真机走
+  一遍（派单 §G5 第 4/5 项参数已与单测对齐：
+  `--days 10 --empty-every 3 --end 2026-09-20`）。
+
 ### G3｜播种增强（debug-only，关掉 R3 两个实证缺口）
 
 1. 受控动词表加 `seed`（手册先改）。
