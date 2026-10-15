@@ -138,6 +138,11 @@ PY
 # 点路径取信封字段（async/jobId/result.status/result.envelope）。
 # dict/list 重新序列化为紧凑 JSON 单行；标量打印字面；路径不存在/
 # JSON 非法以非零退出（调用方按需 || true 兜底）。
+#
+# 【G5-P2 回归钉】布尔必须按 JSON 字面量打印小写 true/false：主流程
+# 判定 async 时按 `== "true"` 比较，而 Python `print(True)` 输出大写
+# `True`，曾使 async 分支整体短路（自动轮询从未生效）。bool 分支必须
+# 先于其它分支判断。
 json_query() {
   local json="$1" query="$2"
   ENVELOPE_JSON="$json" QUERY="$query" python3 - <<'PY'
@@ -147,7 +152,9 @@ try:
     for part in os.environ["QUERY"].split("."):
         if part:
             v = v[part]
-    if isinstance(v, (dict, list)):
+    if isinstance(v, bool):
+        print("true" if v else "false")
+    elif isinstance(v, (dict, list)):
         print(json.dumps(v, ensure_ascii=False))
     elif v is None:
         print("")
@@ -223,6 +230,12 @@ read_secret() {
 }
 
 # ---- 参数解析 ---------------------------------------------------------
+
+# 库模式：被测试脚本 source 时只加载上面的函数定义，不执行主流程
+#（scripts/tests/echo_cmd_test.sh 直接调 json_query 等做标量/点路径断言）。
+if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
+  return 0
+fi
 
 [[ $# -ge 1 ]] || die "用法：echo-cmd <命令> [--参数 值|--开关]…"
 
