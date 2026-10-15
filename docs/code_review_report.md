@@ -1437,9 +1437,24 @@ bash 脚本，G1 复审仅 bash -n + 真机只验了手工轮询路径。
 不带 --no-wait 应墙钟≈12s、打印内层信封、退出码 0；
 --no-wait 仍立即返 running。
 
+> **P2 复核通过（2026-10-15，提交 639a6c1），P4 全部收口。**
+> 修复：json_query bool 分支前置输出小写 true/false；
+> echo-cmd 加 BASH_SOURCE 库模式缝（source 时只载函数不
+> 跑主流程）。新增 scripts/tests/echo_cmd_test.sh：A 组 9
+> 条 json_query 标量/点路径/缺失路径快照（以修复前
+> `print(v)` 逻辑实证旧码输出大写 `True`、首条断言必红，
+> 测试有效性已独立证伪验证，非假绿）；B 组 fake-adb 端到端
+> 自动轮询至 done 出内层信封退出 0 + stderr 轮询提示；
+> C 组 --no-wait 立即 running 不轮询。共 15 断言，维护者
+> 独立执行全绿、bash -n 双脚本通过。真机复验（重装 debug
+> 包）：delay 12s 不带 --no-wait **墙钟 12.58s**、打印内层
+> 信封 ms=12007/sleptMs=12000、退出码 0、stderr 有轮询
+> 提示；--no-wait 墙钟 0.45s 返 running、无轮询。改动仅
+> scripts/，Dart/android 零 diff，门禁基线维持 441。
+
 执行者真机自验未做（本组由维护者独立完成全程）；门禁
-441 全绿为代码侧最终基线。设备留 release 0.12.0 包
-（P4 未排号），合 main 排 0.13.0+38 待发话。
+441 全绿 + 脚本 15 断言为最终基线。P2 复验后设备留 P4
+debug 包（PIN=1234 已设），合 main 排 0.13.0+38 待发话。
 
 ### G5｜门禁与 MIX 2S 真机终审（维护者主导，执行者先自验）
 
