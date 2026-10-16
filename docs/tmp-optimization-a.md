@@ -35,7 +35,8 @@
 | # | 问题 | 提交 | 处理方法 | 门禁 | 审查结论 |
 |---|---|---|---|---|---|
 | 1 | D2 空稿预览标注丢失 | 227f75e | 确认回归成立（M4 `4235d06` 对空预览显「周X（空稿）」，M5 `66a3c24` 一律退化星期小字、注释理由只覆盖 exported）；`day_list_page.dart` 按 state 区分：draft 空稿恢复「周X（空稿）」，exported/archived 维持退化；修正注释；`diary_m5_test.dart` 补回归用例（441→442） | analyze 0 / test 442 全绿 | 待审 |
-| 2 | G13 触感 invokeMethod 无 catchError | （本行随提交回填） | `Haptics` 收口 `_invoke()`，Android 通道统一 catchError 静默降级（规范 1.11）；新建 `test/services/haptics_test.dart`（首个 services 测试目录），mock 通道抛 PlatformException 验证不逃逸（442→443） | analyze 0 / test 443 全绿 | 待审 |
+| 2 | G13 触感 invokeMethod 无 catchError | 20c0ed4 | `Haptics` 收口 `_invoke()`，Android 通道统一 catchError 静默降级（规范 1.11）；新建 `test/services/haptics_test.dart`（首个 services 测试目录），mock 通道抛 PlatformException 验证不逃逸（442→443） | analyze 0 / test 443 全绿 | 待审 |
+| 3 | G12 涟漪节点无 Key | 3881f55 | 确认回归成立：涟漪可同屏并存，无 key 时框架按位置配对，先结束者被移除后存留项继承其已完成的动画 State（冻结在透明、onEnded 不再触发、永不移除）。给 `RippleSpec` 加自增稳定 id，挂载节点 `key: ValueKey<int>(spec.id)`；`widget_test.dart` 补并发双涟漪回归用例（443→444） | analyze 0 / test 444 全绿 | 待审 |
 
 ## 执行模式偏差记录
 
@@ -44,6 +45,13 @@
   activity，含最小调用）。Explore 类型可用。调整后模式：
   **调度者本人承担执行施工，每个问题完成后派独立 Explore 智能体
   复审**（可读代码、跑门禁、给结论），保持"执行与审查分离"。
+- 2026-10-16 追加：D2/G13 两个后台复审智能体先后因**平台配额耗尽**
+  （exceed quota limit）失败，审查未完成。处置：流水表两行审查结论
+  维持「待审」，轮次收尾时统一重试派发独立复审；若配额仍不可用，
+  由调度者做一轮自审并在汇报中明确标注「独立审查未跑成」。
+- 2026-10-16 追加：原调度者（GLM）配额耗尽，本分支现场由**新调度者
+  接手续作**。G12 的在途未提交改动经核对（意图自洽、门禁 444 全绿）
+  后提交为 `3881f55`；流程保持不变。
 
 ## 挂账 / 待负责人知晓
 
