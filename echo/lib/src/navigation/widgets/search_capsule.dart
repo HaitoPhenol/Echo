@@ -401,7 +401,7 @@ class SearchCapsule extends StatelessWidget {
             bottom: 2,
             width: 2,
             child: _NavAnchor(
-              key: ValueKey<String>('nav-anchor-$i'),
+              key: ValueKey<String>('nav-anchor-${pageIds[i]}'),
               level: badges?.levelOf(pageIds[i]) ?? NavBadgeLevel.normal,
             ),
           ),

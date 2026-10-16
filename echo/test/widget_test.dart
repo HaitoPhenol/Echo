@@ -205,9 +205,11 @@ void main() {
 
     // 读取第 i 页锚点的当前逻辑状态。锚点始终全部挂载（被滑块
     // 物理遮挡时组件仍在），直接读 widget 即可。
+    // 锚点身份键按目的地稳定 id（顺序同 nav_destination_specs.dart）。
+    const anchorIds = <String>['console', 'chat', 'notes', 'me'];
     NavBadgeLevel anchorLevel(int i) {
       final widget = tester.widget(
-        find.byKey(ValueKey<String>('nav-anchor-$i')),
+        find.byKey(ValueKey<String>('nav-anchor-${anchorIds[i]}')),
       );
       return (widget as dynamic).level as NavBadgeLevel;
     }
@@ -217,7 +219,7 @@ void main() {
       final box = tester.widget<DecoratedBox>(
         find
             .descendant(
-              of: find.byKey(ValueKey<String>('nav-anchor-$i')),
+              of: find.byKey(ValueKey<String>('nav-anchor-${anchorIds[i]}')),
               matching: find.byType(DecoratedBox),
             )
             .first,
@@ -228,7 +230,10 @@ void main() {
     // 初始：4 个锚点全部挂载（首页锚点在滑块下方被物理遮挡），
     // 逻辑状态均为正常。
     for (var i = 0; i < 4; i++) {
-      expect(find.byKey(ValueKey<String>('nav-anchor-$i')), findsOneWidget);
+      expect(
+        find.byKey(ValueKey<String>('nav-anchor-${anchorIds[i]}')),
+        findsOneWidget,
+      );
       expect(anchorLevel(i), NavBadgeLevel.normal);
     }
 
@@ -338,7 +343,10 @@ void main() {
     await settlePage(pageMarker(1));
     expect(anchorLevel(1), NavBadgeLevel.notification, reason: '刚落位仍未读');
     // 当前页锚点仍挂载，只是被不透明滑块物理遮挡（无显隐逻辑）
-    expect(find.byKey(const ValueKey<String>('nav-anchor-1')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey<String>('nav-anchor-chat')),
+      findsOneWidget,
+    );
     await tester.pump(const Duration(milliseconds: 750));
     expect(
       anchorLevel(1),
@@ -364,7 +372,10 @@ void main() {
     await tester.tapAt(const Offset(391, 560));
     await settlePage(pageMarker(0));
     // 离开聊天页：锚点始终在树上（覆盖/揭示都靠物理遮挡）
-    expect(find.byKey(const ValueKey<String>('nav-anchor-1')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey<String>('nav-anchor-chat')),
+      findsOneWidget,
+    );
     await tester.pump(const Duration(milliseconds: 750));
     expect(
       anchorLevel(0),
