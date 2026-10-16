@@ -38,6 +38,8 @@
 | 2 | G13 触感 invokeMethod 无 catchError | 20c0ed4 | `Haptics` 收口 `_invoke()`，Android 通道统一 catchError 静默降级（规范 1.11）；新建 `test/services/haptics_test.dart`（首个 services 测试目录），mock 通道抛 PlatformException 验证不逃逸（442→443） | analyze 0 / test 443 全绿 | 待审 |
 | 3 | G12 涟漪节点无 Key | 3881f55 | 确认回归成立：涟漪可同屏并存，无 key 时框架按位置配对，先结束者被移除后存留项继承其已完成的动画 State（冻结在透明、onEnded 不再触发、永不移除）。给 `RippleSpec` 加自增稳定 id，挂载节点 `key: ValueKey<int>(spec.id)`；`widget_test.dart` 补并发双涟漪回归用例（443→444） | analyze 0 / test 444 全绿 | 待审 |
 | 4 | G11 多指触控竞态 | 9c6654f | 复核成立：`_handleRootPointerDown` 收到新 PointerDown 时不检查已有手势在途——第二指按下会覆盖 `_gesture`（劫持孤立前指），或把手 `_handleGesture` 与导航条 `_gesture` 两套记录同帧并驱（穿越手势，抽屉/翻页并发）。改法：按下入口最前面加单指独占守卫（`_gesture`/`_handleGesture`/`_aiHold` 任一非空即忽略新指针）；`widget_test.dart` 补多指回归用例（第二指按下不改变页面位置、第一指仍持续驱动）；已核验该用例在未加守卫时失败（444→445） | analyze 0 / test 445 全绿 | 待审 |
+| 5 | Q2 锁竖屏落地 | f0e8382 | 按评审 §C 指定方式：Manifest 无法按设备区分，改在 `MainActivity.onCreate` 按 `resources.configuration.smallestScreenWidthDp >= 600` 判定——手机 `requestedOrientation = SCREEN_ORIENTATION_PORTRAIT`、平板 `SCREEN_ORIENTATION_UNSPECIFIED`；纯 Kotlin 14 行，不涉及 Dart/布局；**无 Dart 单测**（原生系统行为），以真机冒烟核验 | analyze 0 / test 445 不变 | 待审 |
+| 6 | G6 Semantics 无障碍最小集 | 2a1a888 | 10 文件，只加语义不改视觉/布局/手势：导航条本体 `label/value` + `onIncrease/onDecrease`（复用 `NavPhysicsController.stepPage`，等价两端圆点翻页）；两端圆点、把手条、AI 条、快捷弧操作项、会话行（未读追加「未读」）及左滑两按钮各加按钮语义；机能风 `background/coords_bar/page_drum/page_name_plate/page_number` 五个纯装饰层包 `ExcludeSemantics`。**挂账**：圆点/快捷弧/把手/AI 目前仅只读 label，未挂激活动作，TalkBack 可读但双击不直接触发——页面导航已可由导航条 adjustable 动作完成，其余触发留待后续按需接线 | analyze 0 / test 445 不变 | 待审 |
 
 ## 执行模式偏差记录
 
@@ -56,4 +58,10 @@
 
 ## 挂账 / 待负责人知晓
 
-（随执行追加）
+- **G6 无障碍最小集是"可读优先"**：底栏圆点 / 快捷弧 / 把手 / AI 条目前只
+  暴露只读 label，未挂 TalkBack 激活动作（双击不直接触发）；页面导航已可
+  由导航条 adjustable 动作完成。若要求"完全可操作"，需把 State 内的开竖单 /
+  开 AI / 触发快捷弧回调下沉进各 widget（会引入耦合），建议单独安排。
+- **Q2 无自动化验证**：锁竖屏为原生系统行为，只能真机走查，见文末真机记录。
+- **G8 release 加固**：keystore 涉及密钥/口令（用户决策项），R8 开启需
+  proguard 规则并真机回归；见后续施工行与收尾汇报。
