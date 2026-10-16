@@ -18,10 +18,16 @@ class HandleBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const DecoratedBox(
-      decoration: BoxDecoration(
-        color: AppColors.tone1,
-        borderRadius: BorderRadius.all(Radius.circular(999)),
+    // 无障碍：把手条是「本页操作」菜单的手势入口（G6 最小集，只加语义）。
+    return Semantics(
+      button: true,
+      label: '本页操作',
+      hint: '点按展开本页操作菜单',
+      child: const DecoratedBox(
+        decoration: BoxDecoration(
+          color: AppColors.tone1,
+          borderRadius: BorderRadius.all(Radius.circular(999)),
+        ),
       ),
     );
   }

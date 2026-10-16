@@ -5,6 +5,7 @@ import '../../services/nav_badge_service.dart';
 import '../../services/search_service.dart';
 import '../../theme/app_colors.dart';
 import '../dock_geometry.dart';
+import '../nav_destination_specs.dart';
 import '../nav_physics.dart';
 import 'fuse_border_painter.dart';
 import 'search_panel_content.dart';
@@ -155,28 +156,64 @@ class SearchCapsule extends StatelessWidget {
   Widget _navAssembly(BuildContext context) {
     return Row(
       children: [
-        _NavDot(pressed: pressedDot == -1),
+        // 无障碍：左圆点 = 上一页（G6 最小集，只加语义不改外观/命中）。
+        Semantics(
+          button: true,
+          label: '上一页',
+          child: _NavDot(pressed: pressedDot == -1),
+        ),
         const SizedBox(width: DockGeometry.dotGap),
         Expanded(child: _navBar(context)),
         const SizedBox(width: DockGeometry.dotGap),
-        _NavDot(pressed: pressedDot == 1),
+        Semantics(
+          button: true,
+          label: '下一页',
+          child: _NavDot(pressed: pressedDot == 1),
+        ),
       ],
     );
   }
 
   /// 静止导航条本体：tone1 底色，内部铺滑块与锚点。
   Widget _navBar(BuildContext context) {
-    return Container(
-      clipBehavior: Clip.antiAlias,
-      decoration: const BoxDecoration(
-        color: AppColors.tone1,
-        borderRadius: BorderRadius.all(Radius.circular(999)),
+    final index = controller.activePage;
+    final total = controller.pageCount;
+    final prev = index > 0 ? index - 1 : index;
+    final next = index < total - 1 ? index + 1 : index;
+    // onIncrease/onDecrease 要求 value 与相应增减值配套（Flutter 语义断言）。
+    String pageValue(int i) => '第 ${i + 1} 页，共 $total 页：${_pageLabelAt(i)}';
+    return Semantics(
+      container: true,
+      label: '导航条',
+      value: pageValue(index),
+      increasedValue: pageValue(next),
+      decreasedValue: pageValue(prev),
+      // 翻页动作用控制器既有路径，等价于点右/左圆点翻一页。
+      onIncrease: () => controller.stepPage(1),
+      onDecrease: () => controller.stepPage(-1),
+      child: Container(
+        clipBehavior: Clip.antiAlias,
+        decoration: const BoxDecoration(
+          color: AppColors.tone1,
+          borderRadius: BorderRadius.all(Radius.circular(999)),
+        ),
+        // 锚点画在滑块**之下**、始终全部挂载；滑块不透明，物理遮挡
+        // 当前位置的锚点——无显隐逻辑，翻页途中也就没有边缘弹出。
+        // 容器已开裁剪，锚点发光不会超出导航条。
+        child: Stack(children: [_anchors(context), _thumb()]),
       ),
-      // 锚点画在滑块**之下**、始终全部挂载；滑块不透明，物理遮挡
-      // 当前位置的锚点——无显隐逻辑，翻页途中也就没有边缘弹出。
-      // 容器已开裁剪，锚点发光不会超出导航条。
-      child: Stack(children: [_anchors(context), _thumb()]),
     );
+  }
+
+  /// 当前页名（无障碍播报用）：[pageIds] 与 [kNavDestinationSpecs]
+  /// 以稳定 id 对齐；缺配或越界返回空串。
+  String _pageLabelAt(int index) {
+    if (index < 0 || index >= pageIds.length) return '';
+    final id = pageIds[index];
+    for (final spec in kNavDestinationSpecs) {
+      if (spec.id == id) return spec.label;
+    }
+    return '';
   }
 
   /// 独立搜索 pill 的内容（与真实导航条组件解耦：真实组件在搜索期间

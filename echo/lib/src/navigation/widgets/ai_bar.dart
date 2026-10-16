@@ -43,20 +43,24 @@ class _AiBarState extends State<AiBar> with SingleTickerProviderStateMixin {
 
   @override
   Widget build(BuildContext context) {
-    // 光晕上下各外溢 4px：用 OverflowBox 给画师 18px 高的画布，
-    // 视觉本体仍占 10px，命中区域由父级隐形热区决定。
-    return RepaintBoundary(
-      child: OverflowBox(
-        minHeight: DockGeometry.barHeight + 8,
-        maxHeight: DockGeometry.barHeight + 8,
-        alignment: Alignment.center,
-        child: AnimatedBuilder(
-          animation: _flow,
-          builder: (context, _) => CustomPaint(
-            size: Size.infinite,
-            painter: _AiFlowPainter(
-              phase: _flow.value,
-              pressed: widget.pressed,
+    // 无障碍：AI 条长按呼出对话框（G6 最小集，只加语义）。
+    return Semantics(
+      button: true,
+      label: 'AI 助手',
+      hint: '长按开启',
+      child: RepaintBoundary(
+        child: OverflowBox(
+          minHeight: DockGeometry.barHeight + 8,
+          maxHeight: DockGeometry.barHeight + 8,
+          alignment: Alignment.center,
+          child: AnimatedBuilder(
+            animation: _flow,
+            builder: (context, _) => CustomPaint(
+              size: Size.infinite,
+              painter: _AiFlowPainter(
+                phase: _flow.value,
+                pressed: widget.pressed,
+              ),
             ),
           ),
         ),

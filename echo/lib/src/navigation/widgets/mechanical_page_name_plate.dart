@@ -113,16 +113,19 @@ class _MechanicalPageNamePlateState extends State<MechanicalPageNamePlate>
   Widget build(BuildContext context) {
     // 显隐/硬切页名必须逐帧跟随 controller（与转鼓同一监听源）；
     // 故障切片的高频重建由各自的 AnimatedBuilder 承担。
-    return AnimatedBuilder(
-      animation: widget.controller,
-      builder: (context, _) {
-        final visible = widget.controller.rollerVisible;
-        final index = widget.controller.activePage.clamp(
-          0,
-          widget.labels.length - 1,
-        );
-        return _buildPlate(context, visible, index);
-      },
+    // 纯装饰视觉层，无障碍树中排除播报（G6）。
+    return ExcludeSemantics(
+      child: AnimatedBuilder(
+        animation: widget.controller,
+        builder: (context, _) {
+          final visible = widget.controller.rollerVisible;
+          final index = widget.controller.activePage.clamp(
+            0,
+            widget.labels.length - 1,
+          );
+          return _buildPlate(context, visible, index);
+        },
+      ),
     );
   }
 

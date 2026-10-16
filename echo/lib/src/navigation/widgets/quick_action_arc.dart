@@ -96,38 +96,45 @@ class QuickActionArcState extends State<QuickActionArc>
             top: widget.positions[i].dy - QuickActionArc.buttonDiameter / 2,
             width: QuickActionArc.buttonDiameter,
             height: QuickActionArc.buttonDiameter,
-            child: FadeTransition(
-              opacity: _itemAnimation(i, Curves.easeOut),
-              child: ScaleTransition(
-                scale: _itemAnimation(
-                  i,
-                  const Cubic(0.3, 1.5, 0.4, 1),
-                ).drive(Tween(begin: 0.55, end: 1.0)),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 220),
-                  decoration: BoxDecoration(
-                    color: selected
-                        ? AppColors.tone4
-                        : AppColors.searchBackground,
-                    shape: BoxShape.circle,
-                    border: selected
-                        ? null
-                        : Border.all(color: AppColors.tone1),
-                    boxShadow: selected
-                        ? const [
-                            BoxShadow(color: AppColors.tone2, blurRadius: 18),
-                            BoxShadow(
-                              color: Color(0x80000000),
-                              blurRadius: 24,
-                              offset: Offset(0, 10),
-                            ),
-                          ]
-                        : null,
-                  ),
-                  child: Icon(
-                    widget.actions[i].icon,
-                    size: 19,
-                    color: selected ? AppColors.inverse : AppColors.textMuted,
+            // 无障碍：每个操作项一个按钮语义（G6 最小集，只加语义）。
+            child: Semantics(
+              button: true,
+              label: widget.actions[i].label,
+              child: FadeTransition(
+                opacity: _itemAnimation(i, Curves.easeOut),
+                child: ScaleTransition(
+                  scale: _itemAnimation(
+                    i,
+                    const Cubic(0.3, 1.5, 0.4, 1),
+                  ).drive(Tween(begin: 0.55, end: 1.0)),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 220),
+                    decoration: BoxDecoration(
+                      color: selected
+                          ? AppColors.tone4
+                          : AppColors.searchBackground,
+                      shape: BoxShape.circle,
+                      border: selected
+                          ? null
+                          : Border.all(color: AppColors.tone1),
+                      boxShadow: selected
+                          ? const [
+                              BoxShadow(color: AppColors.tone2, blurRadius: 18),
+                              BoxShadow(
+                                color: Color(0x80000000),
+                                blurRadius: 24,
+                                offset: Offset(0, 10),
+                              ),
+                            ]
+                          : null,
+                    ),
+                    child: Icon(
+                      widget.actions[i].icon,
+                      size: 19,
+                      color: selected
+                          ? AppColors.inverse
+                          : AppColors.textMuted,
+                    ),
                   ),
                 ),
               ),

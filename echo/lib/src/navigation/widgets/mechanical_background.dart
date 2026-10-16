@@ -27,12 +27,15 @@ class MechanicalBackground extends StatelessWidget {
         ? MediaQuery.viewPaddingOf(context).top + 8
         : MechanicalStyle.frameInset;
 
-    return RepaintBoundary(
-      child: ColoredBox(
-        color: AppColors.mechBackground,
-        child: CustomPaint(
-          painter: _MechanicalGridPainter(topBoundary: topBoundary),
-          size: Size.infinite,
+    // 纯装饰视觉层，无障碍树中排除播报（G6）。
+    return ExcludeSemantics(
+      child: RepaintBoundary(
+        child: ColoredBox(
+          color: AppColors.mechBackground,
+          child: CustomPaint(
+            painter: _MechanicalGridPainter(topBoundary: topBoundary),
+            size: Size.infinite,
+          ),
         ),
       ),
     );

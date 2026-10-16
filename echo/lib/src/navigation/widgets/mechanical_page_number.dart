@@ -24,20 +24,23 @@ class MechanicalPageNumber extends StatelessWidget {
     return Positioned(
       top: screenSize.height * MechanicalStyle.pageNumberTopFactor,
       right: rightInset,
-      child: IgnorePointer(
-        child: Text(
-          (index + 1).toString().padLeft(2, '0'),
-          style: TextStyle(
-            fontSize: MechanicalStyle.pageNumberFontSize,
-            fontWeight: FontWeight.w700,
-            height: 1,
-            letterSpacing: 0,
-            // 只描边不填充（稿 -webkit-text-stroke；不能再给 color，
-            // TextStyle 不允许 color 与 foreground 并存）。
-            foreground: Paint()
-              ..style = PaintingStyle.stroke
-              ..strokeWidth = MechanicalStyle.pageNumberStrokeWidth
-              ..color = AppColors.mechPageNumberStroke,
+      // 纯装饰视觉层，无障碍树中排除播报（G6）。
+      child: ExcludeSemantics(
+        child: IgnorePointer(
+          child: Text(
+            (index + 1).toString().padLeft(2, '0'),
+            style: TextStyle(
+              fontSize: MechanicalStyle.pageNumberFontSize,
+              fontWeight: FontWeight.w700,
+              height: 1,
+              letterSpacing: 0,
+              // 只描边不填充（稿 -webkit-text-stroke；不能再给 color，
+              // TextStyle 不允许 color 与 foreground 并存）。
+              foreground: Paint()
+                ..style = PaintingStyle.stroke
+                ..strokeWidth = MechanicalStyle.pageNumberStrokeWidth
+                ..color = AppColors.mechPageNumberStroke,
+            ),
           ),
         ),
       ),

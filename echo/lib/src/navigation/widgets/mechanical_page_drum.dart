@@ -40,70 +40,78 @@ class MechanicalPageDrum extends StatelessWidget {
     final panelWidth =
         MechanicalStyle.drumPadH * 2 + MechanicalStyle.drumViewWidth;
 
-    return AnimatedBuilder(
-      animation: controller,
-      builder: (context, _) {
-        return MechanicalIndicatorLifecycle(
-          visible: controller.rollerVisible,
-          instant: controller.rollerInstantHide,
-          child: SizedBox(
-            width: panelWidth,
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                color: AppColors.mechDrumPanel,
-                border: Border.all(color: AppColors.mechDrumLine),
-              ),
-              child: Stack(
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.only(
-                      left: MechanicalStyle.drumPadH,
-                      top: MechanicalStyle.drumPadTop,
-                      right: MechanicalStyle.drumPadH,
-                      bottom: MechanicalStyle.drumPadBottom,
+    // 纯装饰视觉层，无障碍树中排除播报（G6）。
+    return ExcludeSemantics(
+      child: AnimatedBuilder(
+        animation: controller,
+        builder: (context, _) {
+          return MechanicalIndicatorLifecycle(
+            visible: controller.rollerVisible,
+            instant: controller.rollerInstantHide,
+            child: SizedBox(
+              width: panelWidth,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: AppColors.mechDrumPanel,
+                  border: Border.all(color: AppColors.mechDrumLine),
+                ),
+                child: Stack(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.only(
+                        left: MechanicalStyle.drumPadH,
+                        top: MechanicalStyle.drumPadTop,
+                        right: MechanicalStyle.drumPadH,
+                        bottom: MechanicalStyle.drumPadBottom,
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          const _DrumHead(),
+                          const SizedBox(height: MechanicalStyle.drumHeadGap),
+                          _DrumView(
+                            controller: controller,
+                            pageCount: pageCount,
+                          ),
+                        ],
+                      ),
                     ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        const _DrumHead(),
-                        const SizedBox(height: MechanicalStyle.drumHeadGap),
-                        _DrumView(controller: controller, pageCount: pageCount),
-                      ],
+                    // 底部进度条：暗轨 + 跟手填充，贴面板最底边（稿 .pbar）。
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      child: SizedBox(
+                        height: MechanicalStyle.drumProgressHeight,
+                        child: ColoredBox(
+                          color: AppColors.mechDrumProgressTrack,
+                        ),
+                      ),
                     ),
-                  ),
-                  // 底部进度条：暗轨 + 跟手填充，贴面板最底边（稿 .pbar）。
-                  Positioned(
-                    left: 0,
-                    right: 0,
-                    bottom: 0,
-                    child: SizedBox(
+                    Positioned(
+                      left: 0,
+                      bottom: 0,
                       height: MechanicalStyle.drumProgressHeight,
-                      child: ColoredBox(color: AppColors.mechDrumProgressTrack),
+                      child: _DrumProgressFill(
+                        controller: controller,
+                        trackWidth: panelWidth,
+                        pageCount: pageCount,
+                      ),
                     ),
-                  ),
-                  Positioned(
-                    left: 0,
-                    bottom: 0,
-                    height: MechanicalStyle.drumProgressHeight,
-                    child: _DrumProgressFill(
-                      controller: controller,
-                      trackWidth: panelWidth,
-                      pageCount: pageCount,
+                    // 左上/右下直角亮线。
+                    const Positioned.fill(
+                      child: IgnorePointer(
+                        child: CustomPaint(painter: _CornerPainter()),
+                      ),
                     ),
-                  ),
-                  // 左上/右下直角亮线。
-                  const Positioned.fill(
-                    child: IgnorePointer(
-                      child: CustomPaint(painter: _CornerPainter()),
-                    ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
-          ),
-        );
-      },
+          );
+        },
+      ),
     );
   }
 }

@@ -60,28 +60,31 @@ class _MechanicalCoordsBarState extends State<MechanicalCoordsBar> {
 
   @override
   Widget build(BuildContext context) {
-    return IgnorePointer(
-      child: ListenableBuilder(
-        listenable: _stats,
-        builder: (context, _) {
-          final s = _stats.snapshot;
-          return FittedBox(
-            fit: BoxFit.scaleDown,
-            child: Text.rich(
-              TextSpan(
-                children: [
-                  _span('DEV ', highlighted: false),
-                  _span(s.model, highlighted: true),
-                  _span('  ·  T ', highlighted: false),
-                  _span(_format1(s.tempC, '°C') ?? '—', highlighted: true),
-                  _span('  ·  P ', highlighted: false),
-                  _span(_format1(s.powerW, 'W') ?? '—', highlighted: true),
-                ],
+    // 纯装饰视觉层，无障碍树中排除播报（G6）。
+    return ExcludeSemantics(
+      child: IgnorePointer(
+        child: ListenableBuilder(
+          listenable: _stats,
+          builder: (context, _) {
+            final s = _stats.snapshot;
+            return FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text.rich(
+                TextSpan(
+                  children: [
+                    _span('DEV ', highlighted: false),
+                    _span(s.model, highlighted: true),
+                    _span('  ·  T ', highlighted: false),
+                    _span(_format1(s.tempC, '°C') ?? '—', highlighted: true),
+                    _span('  ·  P ', highlighted: false),
+                    _span(_format1(s.powerW, 'W') ?? '—', highlighted: true),
+                  ],
+                ),
+                maxLines: 1,
               ),
-              maxLines: 1,
-            ),
-          );
-        },
+            );
+          },
+        ),
       ),
     );
   }

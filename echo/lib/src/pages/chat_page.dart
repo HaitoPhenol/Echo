@@ -165,6 +165,11 @@ class ChatListRow extends StatelessWidget {
     // 操作区恒为「读状态切换 + 删除」两按钮、恒宽，读状态变化不引发布局跳动。
     const actionWidth = ChatPage.actionButtonWidth * 2;
 
+    // 无障碍：整行播报「昵称，消息预览」，未读追加「未读」（G6 最小集）。
+    final rowLabel = conversation.unread
+        ? '${conversation.nickname}，${conversation.preview}，未读'
+        : '${conversation.nickname}，${conversation.preview}';
+
     return _SwipeToReveal(
       open: open,
       actionWidth: actionWidth.toDouble(),
@@ -208,7 +213,13 @@ class ChatListRow extends StatelessWidget {
           store.markRead(conversation.id);
         }
       },
-      child: _RowForeground(conversation: conversation),
+      // 整行一个按钮语义；行内昵称/预览文字不再单独播报，避免重复。
+      child: Semantics(
+        button: true,
+        label: rowLabel,
+        excludeSemantics: true,
+        child: _RowForeground(conversation: conversation),
+      ),
     );
   }
 }
@@ -316,14 +327,20 @@ class _RowAction extends StatelessWidget {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
-      child: ColoredBox(
-        color: color,
-        child: SizedBox(
-          width: ChatPage.actionButtonWidth,
-          child: Center(
-            child: Text(
-              label,
-              style: TextStyle(fontSize: 14, color: foregroundColor),
+      // 无障碍：操作按钮各自的 label；视觉文字不再单独播报，避免重复。
+      child: Semantics(
+        button: true,
+        label: label,
+        excludeSemantics: true,
+        child: ColoredBox(
+          color: color,
+          child: SizedBox(
+            width: ChatPage.actionButtonWidth,
+            child: Center(
+              child: Text(
+                label,
+                style: TextStyle(fontSize: 14, color: foregroundColor),
+              ),
             ),
           ),
         ),
