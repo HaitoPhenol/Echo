@@ -34,13 +34,13 @@
 
 | # | 问题 | 提交 | 处理方法 | 门禁 | 审查结论 |
 |---|---|---|---|---|---|
-| 1 | D2 空稿预览标注丢失 | 227f75e | 确认回归成立（M4 `4235d06` 对空预览显「周X（空稿）」，M5 `66a3c24` 一律退化星期小字、注释理由只覆盖 exported）；`day_list_page.dart` 按 state 区分：draft 空稿恢复「周X（空稿）」，exported/archived 维持退化；修正注释；`diary_m5_test.dart` 补回归用例（441→442） | analyze 0 / test 442 全绿 | 待审 |
-| 2 | G13 触感 invokeMethod 无 catchError | 20c0ed4 | `Haptics` 收口 `_invoke()`，Android 通道统一 catchError 静默降级（规范 1.11）；新建 `test/services/haptics_test.dart`（首个 services 测试目录），mock 通道抛 PlatformException 验证不逃逸（442→443） | analyze 0 / test 443 全绿 | 待审 |
-| 3 | G12 涟漪节点无 Key | 3881f55 | 确认回归成立：涟漪可同屏并存，无 key 时框架按位置配对，先结束者被移除后存留项继承其已完成的动画 State（冻结在透明、onEnded 不再触发、永不移除）。给 `RippleSpec` 加自增稳定 id，挂载节点 `key: ValueKey<int>(spec.id)`；`widget_test.dart` 补并发双涟漪回归用例（443→444） | analyze 0 / test 444 全绿 | 待审 |
-| 4 | G11 多指触控竞态 | 9c6654f | 复核成立：`_handleRootPointerDown` 收到新 PointerDown 时不检查已有手势在途——第二指按下会覆盖 `_gesture`（劫持孤立前指），或把手 `_handleGesture` 与导航条 `_gesture` 两套记录同帧并驱（穿越手势，抽屉/翻页并发）。改法：按下入口最前面加单指独占守卫（`_gesture`/`_handleGesture`/`_aiHold` 任一非空即忽略新指针）；`widget_test.dart` 补多指回归用例（第二指按下不改变页面位置、第一指仍持续驱动）；已核验该用例在未加守卫时失败（444→445） | analyze 0 / test 445 全绿 | 待审 |
-| 5 | Q2 锁竖屏落地 | f0e8382 | 按评审 §C 指定方式：Manifest 无法按设备区分，改在 `MainActivity.onCreate` 按 `resources.configuration.smallestScreenWidthDp >= 600` 判定——手机 `requestedOrientation = SCREEN_ORIENTATION_PORTRAIT`、平板 `SCREEN_ORIENTATION_UNSPECIFIED`；纯 Kotlin 14 行，不涉及 Dart/布局；**无 Dart 单测**（原生系统行为），以真机冒烟核验 | analyze 0 / test 445 不变 | 待审 |
-| 6 | G6 Semantics 无障碍最小集 | 2a1a888 | 10 文件，只加语义不改视觉/布局/手势：导航条本体 `label/value` + `onIncrease/onDecrease`（复用 `NavPhysicsController.stepPage`，等价两端圆点翻页）；两端圆点、把手条、AI 条、快捷弧操作项、会话行（未读追加「未读」）及左滑两按钮各加按钮语义；机能风 `background/coords_bar/page_drum/page_name_plate/page_number` 五个纯装饰层包 `ExcludeSemantics`。**挂账**：圆点/快捷弧/把手/AI 目前仅只读 label，未挂激活动作，TalkBack 可读但双击不直接触发——页面导航已可由导航条 adjustable 动作完成，其余触发留待后续按需接线 | analyze 0 / test 445 不变 | 待审 |
-| 7 | G8 release 加固 | d780650 / 4460fa8 | 负责人裁定范围＝**崩溃钩子 + R8**，keystore 挂起。① 崩溃钩子：`main.dart` 启动包进 `runZonedGuarded` 并接管 `FlutterError.onError`（保留 `previousOnError`，zone 内未捕获异步错误统一 `debugPrint`）；启动顺序 `ensureInitialized → 钩子 → ControlBootstrap.init → runApp` 不变，无远端上报后端（留注入口）。② R8：`build.gradle.kts` 的 release 段加 `isMinifyEnabled/isShrinkResources` 与默认优化规则 + `proguard-rules.pro`，**签名配置未动**；新建 `proguard-rules.pro` 仅保底 `-keep class com.everse.echo.**`（Flutter embedding keep 随 AAR 提供）；已核实 Kotlin 反射仅存在 debug 源集，release 无裁剪风险 | analyze 0 / test 445 全绿 / `build apk --release` 成功（53.3MB，无 R8 missing class、无新增 dontwarn） | 待审 |
+| 1 | D2 空稿预览标注丢失 | 227f75e | 确认回归成立（M4 `4235d06` 对空预览显「周X（空稿）」，M5 `66a3c24` 一律退化星期小字、注释理由只覆盖 exported）；`day_list_page.dart` 按 state 区分：draft 空稿恢复「周X（空稿）」，exported/archived 维持退化；修正注释；`diary_m5_test.dart` 补回归用例（441→442） | analyze 0 / test 442 全绿 | 通过 |
+| 2 | G13 触感 invokeMethod 无 catchError | 20c0ed4 | `Haptics` 收口 `_invoke()`，Android 通道统一 catchError 静默降级（规范 1.11）；新建 `test/services/haptics_test.dart`（首个 services 测试目录），mock 通道抛 PlatformException 验证不逃逸（442→443） | analyze 0 / test 443 全绿 | 通过 |
+| 3 | G12 涟漪节点无 Key | 3881f55 | 确认回归成立：涟漪可同屏并存，无 key 时框架按位置配对，先结束者被移除后存留项继承其已完成的动画 State（冻结在透明、onEnded 不再触发、永不移除）。给 `RippleSpec` 加自增稳定 id，挂载节点 `key: ValueKey<int>(spec.id)`；`widget_test.dart` 补并发双涟漪回归用例（443→444） | analyze 0 / test 444 全绿 | 通过 |
+| 4 | G11 多指触控竞态 | 9c6654f | 复核成立：`_handleRootPointerDown` 收到新 PointerDown 时不检查已有手势在途——第二指按下会覆盖 `_gesture`（劫持孤立前指），或把手 `_handleGesture` 与导航条 `_gesture` 两套记录同帧并驱（穿越手势，抽屉/翻页并发）。改法：按下入口最前面加单指独占守卫（`_gesture`/`_handleGesture`/`_aiHold` 任一非空即忽略新指针）；`widget_test.dart` 补多指回归用例（第二指按下不改变页面位置、第一指仍持续驱动）；已核验该用例在未加守卫时失败（444→445） | analyze 0 / test 445 全绿 | 通过 |
+| 5 | Q2 锁竖屏落地 | f0e8382 | 按评审 §C 指定方式：Manifest 无法按设备区分，改在 `MainActivity.onCreate` 按 `resources.configuration.smallestScreenWidthDp >= 600` 判定——手机 `requestedOrientation = SCREEN_ORIENTATION_PORTRAIT`、平板 `SCREEN_ORIENTATION_UNSPECIFIED`；纯 Kotlin 14 行，不涉及 Dart/布局；**无 Dart 单测**（原生系统行为），以真机冒烟核验 | analyze 0 / test 445 不变 | 通过 |
+| 6 | G6 Semantics 无障碍最小集 | 2a1a888 | 10 文件，只加语义不改视觉/布局/手势：导航条本体 `label/value` + `onIncrease/onDecrease`（复用 `NavPhysicsController.stepPage`，等价两端圆点翻页）；两端圆点、把手条、AI 条、快捷弧操作项、会话行（未读追加「未读」）及左滑两按钮各加按钮语义；机能风 `background/coords_bar/page_drum/page_name_plate/page_number` 五个纯装饰层包 `ExcludeSemantics`。**挂账**：圆点/快捷弧/把手/AI 目前仅只读 label，未挂激活动作，TalkBack 可读但双击不直接触发——页面导航已可由导航条 adjustable 动作完成，其余触发留待后续按需接线 | analyze 0 / test 445 不变 | 通过 |
+| 7 | G8 release 加固 | d780650 / 4460fa8 | 负责人裁定范围＝**崩溃钩子 + R8**，keystore 挂起。① 崩溃钩子：`main.dart` 启动包进 `runZonedGuarded` 并接管 `FlutterError.onError`（保留 `previousOnError`，zone 内未捕获异步错误统一 `debugPrint`）；启动顺序 `ensureInitialized → 钩子 → ControlBootstrap.init → runApp` 不变，无远端上报后端（留注入口）。② R8：`build.gradle.kts` 的 release 段加 `isMinifyEnabled/isShrinkResources` 与默认优化规则 + `proguard-rules.pro`，**签名配置未动**；新建 `proguard-rules.pro` 仅保底 `-keep class com.everse.echo.**`（Flutter embedding keep 随 AAR 提供）；已核实 Kotlin 反射仅存在 debug 源集，release 无裁剪风险 | analyze 0 / test 445 全绿 / `build apk --release` 成功（53.3MB，无 R8 missing class、无新增 dontwarn） | 通过 |
 
 ## 执行模式偏差记录
 
@@ -60,9 +60,32 @@
 ## 挂账 / 待负责人知晓
 
 - **G6 无障碍最小集是"可读优先"**：底栏圆点 / 快捷弧 / 把手 / AI 条目前只
-  暴露只读 label，未挂 TalkBack 激活动作（双击不直接触发）；页面导航已可
+  暴露只读 label + `button:true`、未挂 TalkBack 激活动作（双击不直接触发，
+  独立复审亦指出「播报为按钮却不可点」的角色误导）；页面导航已可
   由导航条 adjustable 动作完成。若要求"完全可操作"，需把 State 内的开竖单 /
   开 AI / 触发快捷弧回调下沉进各 widget（会引入耦合），建议单独安排。
 - **Q2 无自动化验证**：锁竖屏为原生系统行为，只能真机走查，见文末真机记录。
 - **G8 release 加固**：keystore 涉及密钥/口令（用户决策项），R8 开启需
   proguard 规则并真机回归；见后续施工行与收尾汇报。
+
+## 轮次收尾独立复审（2026-10-16，独立子智能体）
+
+对全分支 diff（`66b3b4a..c2f8d2a`）做只读独立复核，结论：
+
+- **七项全部判定「正确」**，无 P0/P1。逐项要点：D2 按 `state` 分流且仅改 sub；
+  G13 收口 `_invoke().catchError` 且测试确会走到 android 分支；G12 key 落在
+  Stack 子列表、身份真稳；G11 守卫在函数最顶部、覆盖 `_gesture/_handleGesture/
+  _aiHold`，被忽略的第二指在 `_releaseGesture` 因 pointer 不匹配直接 return；
+  Q2 仅 `onCreate` 新增、无 Manifest 冲突；G6 聊天行 `excludeSemantics` 只排子
+  节点、真正的 tap 在祖先 `_SwipeToReveal`、左滑按钮为兄弟未被吞，导航条
+  value/increasedValue/decreasedValue 配套完整；G8 启动顺序完好、仅动 release
+  块、签名未变、keep 规则最小。
+- **门禁复跑**：`flutter analyze` No issues found；`flutter test` **+445 全绿**。
+- **P2（保留为挂账）**：G6 端点圆点/把手/AI/快捷弧仅「button:true + label」但无
+  激活动作，读屏会播报为「按钮」却双击无效，角色具误导性；与「最小集」意图相符，
+  已并入下方挂账，不本轮扩大改动。
+- **P3（不改）**：G8a 崩溃钩子保留默认转储后又 `debugPrint` 一遍（有意保留标记行）；
+  G6 若页名为空 value 尾巴会留「：」（当前 4 页 id 齐全，不触发）；
+  `haptics_test.dart` 的 `ensureInitialized()` 可省。
+- **残余不确定性**：G8b 的 R8 出包由施工阶段的 `build apk --release` 成功（53.3MB、
+  无 missing class）覆盖；Q2 为原生行为，无 Kotlin 单测，靠真机冒烟核验（见下）。
