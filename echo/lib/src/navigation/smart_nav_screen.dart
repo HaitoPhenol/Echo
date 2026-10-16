@@ -15,10 +15,10 @@ import '../services/haptics.dart';
 import '../services/nav_badge_service.dart';
 import '../services/search_service.dart';
 import '../services/window_inset_refresher.dart';
-import '../theme/app_colors.dart';
 import '../theme/mechanical_style.dart';
 import 'dock_geometry.dart';
 import 'nav_destination.dart';
+import 'nav_gesture_records.dart';
 import 'nav_physics.dart';
 import 'page_action.dart';
 import 'quick_action.dart';
@@ -34,6 +34,7 @@ import 'widgets/mechanical_page_number.dart';
 import 'widgets/quick_action_arc.dart';
 import 'widgets/search_capsule.dart';
 import 'widgets/side_drawer.dart';
+import 'widgets/trigger_ripple.dart';
 
 /// 智能导航实验主屏。
 ///
@@ -150,10 +151,10 @@ class _SmartNavScreenState extends State<SmartNavScreen>
   final GlobalKey<AiDialogState> _aiDialogKey = GlobalKey();
 
   /// 进行中的把手手势（点按竖单 / 横向拖抽屉）。
-  _HandleGesture? _handleGesture;
+  HandleGesture? _handleGesture;
 
   /// 进行中的 AI 条长按。
-  _AiHold? _aiHold;
+  AiHold? _aiHold;
 
   /// AI 条长按 450ms 呼出对话框的计时器。
   Timer? _aiHoldTimer;
@@ -170,7 +171,7 @@ class _SmartNavScreenState extends State<SmartNavScreen>
   List<SearchResult> _searchResults = const [];
 
   /// 当前进行中的手势（无则为 null）。
-  _DragGesture? _gesture;
+  DragGesture? _gesture;
 
   /// 长按 450ms 展开搜索的计时器。
   Timer? _holdTimer;
@@ -188,7 +189,7 @@ class _SmartNavScreenState extends State<SmartNavScreen>
       DockGeometry.quickArcButtonDiameter / 2 + DockGeometry.quickArcHotMargin;
 
   /// 当前正在播放的涟漪列表。
-  final List<_RippleSpec> _ripples = [];
+  final List<RippleSpec> _ripples = [];
 
   /// 上一次监听到的搜索态标记：搜索态翻转时需重建根树，
   /// 使 PopScope 的 canPop 及时更新（fuse 自动关闭等路径
@@ -573,7 +574,7 @@ class _SmartNavScreenState extends State<SmartNavScreen>
     _lastTapTime = null;
 
     _nav.beginGrab();
-    _gesture = _DragGesture(
+    _gesture = DragGesture(
       pointer: event.pointer,
       x0: event.position.dx,
       y0: event.position.dy,
@@ -599,7 +600,7 @@ class _SmartNavScreenState extends State<SmartNavScreen>
 
   /// 把手条按下：开始一次手势（点竖单还是拖抽屉要等移动主方向）。
   void _beginHandleGrab(PointerDownEvent event) {
-    _handleGesture = _HandleGesture(
+    _handleGesture = HandleGesture(
       pointer: event.pointer,
       x0: event.position.dx,
       y0: event.position.dy,
@@ -609,7 +610,7 @@ class _SmartNavScreenState extends State<SmartNavScreen>
 
   /// 把手手势移动：横向超 6px 且占优 → 拖抽屉；竖直上移占优 →
   /// 进入死区（把手竖直方向无动作，也不再转成单击）。
-  void _updateHandleGesture(_HandleGesture gesture, PointerMoveEvent event) {
+  void _updateHandleGesture(HandleGesture gesture, PointerMoveEvent event) {
     final dx = event.position.dx - gesture.x0;
     final dy = event.position.dy - gesture.y0;
     final absDx = dx.abs();
@@ -645,7 +646,7 @@ class _SmartNavScreenState extends State<SmartNavScreen>
   /// 把手手势结束：横向拖 → 就近/按速吸附；未移动点按 → 开竖单，
   /// 抽屉开着时点按 → 关抽屉；竖直死区不做任何事。
   void _releaseHandleGesture(
-    _HandleGesture gesture, {
+    HandleGesture gesture, {
     required bool cancelled,
   }) {
     if (gesture.horizontal) {
@@ -664,7 +665,7 @@ class _SmartNavScreenState extends State<SmartNavScreen>
   /// AI 条按下：记录起点、进入按压外观，450ms 未移动则呼出对话框。
   void _beginAiHold(PointerDownEvent event) {
     setState(() => _aiPressed = true);
-    _aiHold = _AiHold(
+    _aiHold = AiHold(
       pointer: event.pointer,
       x0: event.position.dx,
       y0: event.position.dy,
@@ -679,7 +680,7 @@ class _SmartNavScreenState extends State<SmartNavScreen>
   }
 
   /// AI 条移动：位移超过 8px 取消本次长按（外观松手时再复位）。
-  void _updateAiHold(_AiHold hold, PointerMoveEvent event) {
+  void _updateAiHold(AiHold hold, PointerMoveEvent event) {
     if (hold.cancelled || hold.fired) return;
     final dx = event.position.dx - hold.x0;
     final dy = event.position.dy - hold.y0;
@@ -729,7 +730,7 @@ class _SmartNavScreenState extends State<SmartNavScreen>
       _pageActions[index].onSelect(bodyContext);
     }
     setState(() {
-      _ripples.add(_RippleSpec(center: _pageMenuPositions()[index]));
+      _ripples.add(RippleSpec(center: _pageMenuPositions()[index]));
     });
     _handleMenuKey.currentState?.dismiss();
   }
@@ -834,7 +835,7 @@ class _SmartNavScreenState extends State<SmartNavScreen>
   }
 
   /// 锁定为横向翻页拖动。
-  void _lockPageDrag(_DragGesture gesture, PointerMoveEvent event) {
+  void _lockPageDrag(DragGesture gesture, PointerMoveEvent event) {
     gesture.moved = true;
     gesture.isQuick = false;
     _holdTimer?.cancel();
@@ -843,7 +844,7 @@ class _SmartNavScreenState extends State<SmartNavScreen>
   }
 
   /// 锁定为竖直上甩：打开快捷操作弧。
-  void _lockQuickArc(_DragGesture gesture, PointerMoveEvent event) {
+  void _lockQuickArc(DragGesture gesture, PointerMoveEvent event) {
     gesture.moved = true;
     gesture.isQuick = true;
     _holdTimer?.cancel();
@@ -972,7 +973,7 @@ class _SmartNavScreenState extends State<SmartNavScreen>
     // 执行配置中该快捷操作的真实行为（当前为「开发中」占位反馈）。
     _quickActions[index].onSelect(context);
     setState(() {
-      _ripples.add(_RippleSpec(center: _quickPositions[index]));
+      _ripples.add(RippleSpec(center: _quickPositions[index]));
     });
   }
 
@@ -1290,7 +1291,7 @@ class _SmartNavScreenState extends State<SmartNavScreen>
                   Positioned(
                     left: spec.center.dx - 30,
                     top: spec.center.dy - 30,
-                    child: _Ripple(
+                    child: TriggerRipple(
                       onEnded: () {
                         setState(() => _ripples.remove(spec));
                       },
@@ -1480,152 +1481,6 @@ class _SmartNavScreenState extends State<SmartNavScreen>
                 _drawerAnim.value == 0,
             onPopInvokedWithResult: _handlePopInvoked,
             child: scaffold,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// 一次手势生命周期的记录。
-class _DragGesture {
-  _DragGesture({
-    required this.pointer,
-    required this.x0,
-    required this.y0,
-    required this.doubleTap,
-  });
-
-  /// 指针 id（多指情况下区分）。
-  final int pointer;
-
-  /// 按下位置
-  final double x0;
-  final double y0;
-
-  /// 本次按下是否构成双击的第二击。
-  final bool doubleTap;
-
-  /// 是否已完成方向锁定。
-  bool moved = false;
-
-  /// 是否为竖直上甩（快捷弧）手势。
-  bool isQuick = false;
-}
-
-/// 把手条上的一次手势：方向锁定后要么横拖抽屉，要么因竖直占优
-/// 进入死区；都不是则松手按点按处理（开竖单 / 关抽屉）。
-class _HandleGesture {
-  _HandleGesture({
-    required this.pointer,
-    required this.x0,
-    required this.y0,
-    required this.startK,
-  });
-
-  final int pointer;
-  final double x0;
-  final double y0;
-
-  /// 手势开始时的抽屉进度（跟手位移在此基础上增减）。
-  final double startK;
-
-  /// 是否已锁定主方向。
-  bool locked = false;
-
-  /// 锁定为横向：跟手拖动抽屉。
-  bool horizontal = false;
-
-  /// 锁定为竖直方向：把手无竖直动作，本次手势作废。
-  bool dead = false;
-}
-
-/// AI 条上的一次长按。
-class _AiHold {
-  _AiHold({required this.pointer, required this.x0, required this.y0});
-
-  final int pointer;
-  final double x0;
-  final double y0;
-
-  /// 移动超 8px：取消长按。
-  bool cancelled = false;
-
-  /// 已满 450ms 呼出对话框（保留记录直到松手，以复位按压外观）。
-  bool fired = false;
-}
-
-/// 一个涟漪的位置描述。
-class _RippleSpec {
-  _RippleSpec({required this.center});
-
-  /// 涟漪圆心。
-  final Offset center;
-}
-
-/// 快捷操作触发处的扩散涟漪。
-///
-/// 60px 的亮白圆环从 0.45 倍扩散到 2.5 倍并淡出，时长 650ms。
-class _Ripple extends StatefulWidget {
-  const _Ripple({required this.onEnded});
-
-  /// 动画结束后回调（父级将其移除）。
-  final VoidCallback onEnded;
-
-  @override
-  State<_Ripple> createState() => _RippleState();
-}
-
-class _RippleState extends State<_Ripple> with SingleTickerProviderStateMixin {
-  late final AnimationController _controller =
-      AnimationController(
-        vsync: this,
-        duration: const Duration(milliseconds: 650),
-      )..addStatusListener((status) {
-        if (status == AnimationStatus.completed) {
-          widget.onEnded();
-        }
-      });
-
-  late final Animation<double> _scale = CurvedAnimation(
-    parent: _controller,
-    curve: const Cubic(0.2, 0.7, 0.3, 1),
-  ).drive(Tween(begin: 0.45, end: 2.5));
-
-  late final Animation<double> _opacity = Tween(
-    begin: 1.0,
-    end: 0.0,
-  ).animate(_controller);
-
-  @override
-  void initState() {
-    super.initState();
-    _controller.forward();
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return IgnorePointer(
-      child: FadeTransition(
-        opacity: _opacity,
-        child: ScaleTransition(
-          scale: _scale,
-          child: Container(
-            width: 60,
-            height: 60,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(color: AppColors.tone4, width: 2),
-              boxShadow: const [
-                BoxShadow(color: AppColors.tone2, blurRadius: 16),
-              ],
-            ),
           ),
         ),
       ),
