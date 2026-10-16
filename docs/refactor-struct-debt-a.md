@@ -20,9 +20,9 @@
 
 | 项 | 具体改法 | 状态 | 提交 |
 |---|---|---|---|
-| G3 | 把 `NavDestinationSearchProvider` 从 `services/search_service.dart` 移到 `navigation/nav_destination.dart`（与它搜索的模型同址），删除 services 对 navigation 的 import | 待做 | |
-| G2 | `search_capsule.dart` 按职责拆为 3 个文件：静态胶囊本体 / 开合 morph（`_CapsuleMorph`+`_PanelEntrance`）/ 建议区内容（`_ResultsView`+`_ResultTile`+`_HistoryChips`+`_HistoryChip`）；跨文件的私有类提升为公共名，文件内辅助仍私有 | 待做 | |
-| G5 | `NavBadgeService` 由 `int page` 改为 `String destinationId`；内存实现构造参数 `pageCount`→`destinationIds`；调用方（smart_nav_screen / search_capsule / debug_badge_controls / badge_commands）改用稳定 id；`badge` 命令对外入参（名/下标）与出参（index+name）**不变** | 待做 | |
+| G3 | 把 `NavDestinationSearchProvider` 从 `services/search_service.dart` 移到 `navigation/nav_destination.dart`（与它搜索的模型同址），删除 services 对 navigation 的 import | 已完成 | `a2f99f0` |
+| G2 | `search_capsule.dart` 按职责拆为 3 个文件：静态胶囊本体 / 开合 morph（`CapsuleMorph`+`PanelEntrance`）/ 建议区内容（`ResultsView`+`ResultTile`+`HistoryChips`+`HistoryChip`）；跨文件的私有类提升为公共名，文件内辅助仍私有 | 已完成 | `117794a` |
+| G5 | `NavBadgeService` 由 `int page` 改为 `String destinationId`；内存实现构造参数 `pageCount`→`destinationIds`；调用方（smart_nav_screen / search_capsule / debug_badge_controls / badge_commands）改用稳定 id；`badge` 命令对外入参（名/下标）与出参（index+name）**不变** | 已完成 | `f9d8f73` |
 | G1 | ① 文件尾部自包含类（`_DragGesture`/`_HandleGesture`/`_AiHold`/`_RippleSpec`/`_Ripple`）移出为独立文件；② 几何纯函数（`_dockTop`/各 hit rect/`_pageAtX`/`_quickArcOrigin`/`_computeQuickPositions`/`_pageMenuPositions`）收敛为 `dock_layout` 帮助类；③ `build()` 内联子树抽成 State 私有构建方法。**不改**任何时长/阈值/色值/手势判定 | 待做 | |
 
 ## 3. 决策与方法记录
@@ -31,10 +31,24 @@
 - **G2 拆分方式**：真实独立文件（拒绝 `part` 的物理拆分），跨文件共享的私有类提升为公共组件名，减少 API 暴露面。
 - **门禁**：每项提交后执行 `cd echo && flutter analyze`（零问题）与 `flutter test`（全绿）。
 - **子智能体编排**：执行 agent 按项原子提交；审查 agent 对分支全量 diff 复核；调度（主助手）逐项验收门禁与实际 diff。
+- **G3 实际改法**：整类（含文档注释）原样搬入 `navigation/nav_destination.dart`（与 `NavDestination` 模型同址），navigation→services 向内依赖；`search_service.dart` 删除 navigation import。类名/构造签名/`id`（`'destinations'`）一字未改，唯一调用点 `smart_nav_screen.dart` 零改动。
+- **G2 实际拆分边界**：`search_capsule.dart`（592 行）留公共 `SearchCapsule` + 其专属私有件 `_NavAnchor`/`_NavDot`；`search_pill_morph.dart`（325 行）承载 `CapsuleMorph`+`PanelEntrance`（各自 State）；`search_panel_content.dart`（252 行）承载 `ResultsView`+`ResultTile`+`HistoryChips`+`HistoryChip`。跨文件被引用的 6 个类提升为公共名（`CapsuleMorph`/`PanelEntrance`/`ResultsView`/`ResultTile`/`HistoryChips`/`HistoryChip`）；因 `flutter_lints` 的 `use_key_in_widget_constructors` 约束公共 widget，为它们补 `super.key`（各调用处均不传 key，行为零变化）。仅文件内使用的 `_NavAnchor`/`_NavDot` 及 SearchCapsule 私有构建方法保持私有。
+- **G5 未知 id 语义**：`InMemoryNavBadgeService` 由 `List` 改 `Map<String, NavBadgeLevel>`；读 `levelOf(未知)` 返回 `normal`，写 `postNotification/reportException/markViewed/resolveException(未知)` 静默忽略（不抛异常、不 notify），替代原 `List` 越界 `RangeError`。
+- **偏离计划（需负责人裁定）**：G5 计划要求把锚点 `ValueKey('nav-anchor-$i')` 改为以 id 为键 `ValueKey('nav-anchor-${pageIds[i]}')`。此改与本次硬约束「不改任何 Key」冲突，且会破坏 `test/widget_test.dart`（按 `nav-anchor-$i` 索引键读取锚点 level，共 3 处）——G5 允许改动的测试清单不含该文件，任务亦禁止改测试断言。为同时保住「行为零变化／门禁全绿」，本轮**保留 `nav-anchor-$i` 索引键不变**，仅把 `_anchors` 的 `levelOf` 取值改为 `pageIds[i]`（id）。待裁定：是否接受随之调整 `widget_test.dart` 的键查找。
 
 ## 4. 门禁与验证记录
 
-（执行 agent 逐项填写：命令、结果、提交 hash）
+门禁命令：`cd echo && flutter analyze`（要求零问题）、`flutter test`（要求全绿）。
+
+| 提交 | 项 | hash | flutter analyze | flutter test |
+|---|---|---|---|---|
+| 0 | 计划文档纳入版本控制 | `d722317` | —（纯文档，不涉代码） | — |
+| 1 | G3 services→navigation 解耦 | `a2f99f0` | No issues found | All tests passed（441） |
+| 2 | G2 search_capsule 三文件拆分 | `117794a` | No issues found | All tests passed（441） |
+| 3 | G5 锚点改 destinationId 索引 | `f9d8f73` | No issues found | All tests passed（441） |
+| 4 | 本记录的文档更新 | 见 git log | —（纯文档） | — |
+
+测试基线：本轮全为**行为保持**重构，测试总数恒为 **441**，全部通过。
 
 ## 5. 风险与待汇报
 
