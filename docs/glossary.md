@@ -45,15 +45,15 @@
 |---|---|---|
 | **快捷操作弧 / 快捷弧** | 从导航条向上甩后弹出的弧形菜单，当前含 3 个操作 | `widgets/quick_action_arc.dart` |
 | **操作项** | 快捷弧上的单个圆形按钮（当前：应用 / 新建 / 语音，均为占位）；热区 = 按钮直径的 2 倍 | `navigation/quick_action.dart` |
-| **涟漪** | 松手触发时，操作项处向外扩散的圆形动画 | `smart_nav_screen.dart`（`_RippleSpec` + 扩散涟漪） |
+| **涟漪** | 松手触发时，操作项处向外扩散的圆形动画 | `navigation/nav_gesture_records.dart` 的 `RippleSpec` + `widgets/trigger_ripple.dart` 的 `TriggerRipple` |
 
 ## 四、搜索
 
 | 称呼 | 说明 | 代码位置 |
 |---|---|---|
-| **搜索态 / 搜索框** | 长按导航条后，由独立的搜索 pill（与真实导航条解耦、切换帧交接）展开的全宽输入框 | `widgets/search_capsule.dart` |
-| **历史胶囊** | 搜索框为空时，上方显示的「最近搜索」小标签：无底色，仅细描边 | `search_capsule.dart` 的 `_HistoryChip` |
-| **搜索结果行** | 输入关键词后显示的单条结果（图标 + 标题 + 来源） | `search_capsule.dart` 的 `_ResultTile` |
+| **搜索态 / 搜索框** | 长按导航条后，由独立的搜索 pill（与真实导航条解耦、切换帧交接）展开的全宽输入框 | `widgets/search_capsule.dart`（开合 morph 在 `widgets/search_pill_morph.dart`） |
+| **历史胶囊** | 搜索框为空时，上方显示的「最近搜索」小标签：无底色，仅细描边 | `widgets/search_panel_content.dart` 的 `HistoryChip` |
+| **搜索结果行** | 输入关键词后显示的单条结果（图标 + 标题 + 来源） | `widgets/search_panel_content.dart` 的 `ResultTile` |
 | **倒计时边框 / 烧蚀边框** | 搜索框外围的细蓝线，2 秒内逐渐消失，烧完自动收起 | `widgets/fuse_border_painter.dart` |
 
 ## 五、聊天页

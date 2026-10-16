@@ -49,7 +49,10 @@
 | 2 | notes | **笔记** | **真实日记模块**（见下节；2026-10-10 起替换纯模板页） |
 | 3 | me | **主页** | TemplatePage |
 
-- 主屏 `SmartNavScreen`（1525 行）一次性常驻构建全部页面（Row + Stack），
+- 主屏 `SmartNavScreen`（1353 行；2026-10-16 结构债务 A 项 G1 后：
+  几何纯函数收敛至 `navigation/dock_layout.dart`，手势记录类/涟漪移出
+  为独立文件，`build()` 子树抽为私有构建方法）一次性常驻构建全部页面
+  （Row + Stack），
   **日记页 State 常驻**：进模块自动成稿、防抖 flush 等生命周期挂在该
   常驻 State 上——改懒加载前必须先迁移这些假设。
 - 导航物理为自研 `NavPhysicsController`（position 线性物理 +
@@ -155,8 +158,9 @@
 - `ChatStore`（services/，ChangeNotifier + Scope）：内存会话列表，
   新消息/删除/已读/未读，`hasUnread` 聚合；重启清空。聊天锚点数据
   驱动（全部会话已读才恢复），其余页停留 700ms 已读。
-- `InMemoryNavBadgeService`：锚点三态（正常/通知/异常），**按页序
-  int 索引**（已知债务，改持久化前须先换稳定 id）。
+- `InMemoryNavBadgeService`：锚点三态（正常/通知/异常），**按目的地
+  稳定 id（`NavDestination.id`）索引**（2026-10-16 结构债务 A 项 G5
+  已替换原页序 int 索引，为持久化铺路；未知 id 读返 normal、写忽略）。
 - `SearchService`：多 Provider 聚合搜索；当前仅"页面搜索"一个源，
   同步接口；历史为内存实现。
 - 日记仓储单例在 `DiaryPage` bootstrap 打开（debug 自动成稿+种子），

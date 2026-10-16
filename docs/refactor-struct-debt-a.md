@@ -87,10 +87,10 @@
   5 处按键查找同步换成稳定 id（仅改查找键，断言/期望值未动），
   与 G5 的状态索引对齐（提交 `47c5956`）。
 - **P2-2 文档失真（architecture / current_state / glossary）** →
-  **挂到合入步骤**：这三个文件描述的是 main 的现状，按
-  engineering_standards 1.2「合并后立即更新」的时序，随本轮合入
-  main 的提交一并修正（清单见审查报告：architecture.md 75/83/195-202/
-  308/323-324、glossary.md 47/54-55、current_state.md 52/158-159）。
+  **已随合入修正**：架构目录树补 3 个新文件、§3.3 数据源改址
+  navigation、§3.7 锚点方法签名改 `destinationId` 并标注稳定 id 索引、
+  debug 面板文案；glossary 涟漪/历史胶囊/结果行归属；current_state
+  行数与锚点索引描述——均对齐 0.13.1 现状（提交见 §7）。
 
 ## 6. 待负责人裁定
 
@@ -98,3 +98,14 @@
   落地前必须迁移日记页挂在常驻 State 上的生命周期假设（自动成稿
   `ensureDay`、防抖 flush）。本轮未触碰，`_buildPageTrack` 仍全页常驻。
 - **本临时文档的去留**：按约定由负责人审阅后删除，内容保留于本轮 tag。
+
+## 7. 合入与交付（2026-10-16）
+
+- 负责人审阅通过（对话内确认），G4 维持挂起。
+- **ff-only 合入 main**：main `c506979` → `refactor/struct-debt-a` 分支
+  顶（13 提交），无分叉。
+- **排号**：`0.13.0+38` → **`0.13.1+39`**（PATCH 递增；构建号永不回退）。
+- **文档对齐**：architecture.md / current_state.md / glossary.md 三处
+  随合入一次提交修正（P2-2 收口）。
+- **tag**：`v0.13.1`（PATCH tag 按铁律**留本地**，不推远程）。
+- **临时文档**：本文件在 tag 后单独提交删除，内容保留于 `v0.13.1` tag。

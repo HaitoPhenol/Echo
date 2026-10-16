@@ -71,6 +71,8 @@ echo/
 │           ├── quick_action.dart          # ★ 快捷操作配置（全局快捷弧）
 │           ├── page_action.dart           # ★ 本页操作配置（把手竖单）
 │           ├── dock_geometry.dart         # 底部三条几何单一事实来源
+│           ├── dock_layout.dart           # 底部三条/页面轨道的几何纯计算容器
+│           ├── nav_gesture_records.dart   # 手势生命周期记录（拖动/把手/AI 长按/涟漪）
 │           ├── nav_physics.dart           # 滚动/吸附物理引擎
 │           ├── smart_nav_screen.dart      # 主屏：手势识别 + 组装
 │           └── widgets/
@@ -80,7 +82,10 @@ echo/
 │               ├── mechanical_page_drum.dart   # 3D 页码转鼓指示器
 │               ├── mechanical_page_name_plate.dart # 横滑时左下浮现的衬线页名牌（赛博故障入场）
 │               ├── quick_action_arc.dart  # 快捷操作弧
-│               ├── search_capsule.dart    # 导航条 + 翻页圆点 + 搜索面板
+│               ├── trigger_ripple.dart    # 快捷弧触发处的扩散涟漪
+│               ├── search_capsule.dart    # 导航条 + 翻页圆点 + 锚点
+│               ├── search_pill_morph.dart # 搜索胶囊开合 morph（CapsuleMorph/PanelEntrance）
+│               ├── search_panel_content.dart # 搜索建议区（结果行/历史胶囊）
 │               ├── fuse_border_painter.dart # 倒计时边框
 │               ├── handle_bar.dart        # 把手条（常态小条）
 │               ├── handle_menu.dart       # 本页操作竖单（生长动画）
@@ -193,14 +198,16 @@ AGENT.md                                   # 给开发 agent 的工作提示（�
 
 ### 3.3 搜索体系
 
-文件：`lib/src/services/search_service.dart`
+文件：`lib/src/services/search_service.dart`（服务/接口/历史存储）·
+`lib/src/navigation/nav_destination.dart`（页面搜索数据源）
 
 - **`SearchResult`**：一条搜索结果（`title` 标题、`subtitle` 来源分类、
   `icon` 图标、`onSelect` 点击行为）。
 - **`SearchProvider`**（抽象接口）：一类搜索数据源，实现
   `List<SearchResult> search(String query)`。
 - **`NavDestinationSearchProvider`**：已实现的「页面搜索」数据源，
-  在页面名称中匹配，点击结果直接跳转。
+  在页面名称中匹配，点击结果直接跳转。**与 `NavDestination` 模型同址
+  放在 navigation 层**，使 services 不反向依赖 navigation（1.4 铁律）。
 - **`SearchService`**：聚合入口，持有全部 provider 与历史存储，
   `searchAll(query)` 跨数据源汇总结果。
 - **`SearchHistoryStore`**（抽象接口）：历史存储，含
@@ -283,17 +290,20 @@ GlobalKey 重挂载曾触发框架断言），而是由 `DockGeometry`（底部�
 
   | 方法 | 含义 |
   |---|---|
-  | `levelOf(page)` | 读取某页当前锚点状态 |
-  | `postNotification(page)` | 置为通知态（绿色呼吸） |
-  | `reportException(page)` | 置为异常态（红色急闪） |
-  | `markViewed(page)` | 仅 `notification → normal`：默认在该页连续停留 700ms 才已读；聊天页例外（见下） |
-  | `resolveException(page)` | 仅 `exception → normal`：显式处理完成才恢复 |
+  | `levelOf(destinationId)` | 读取某页当前锚点状态 |
+  | `postNotification(destinationId)` | 置为通知态（绿色呼吸） |
+  | `reportException(destinationId)` | 置为异常态（红色急闪） |
+  | `markViewed(destinationId)` | 仅 `notification → normal`：默认在该页连续停留 700ms 才已读；聊天页例外（见下） |
+  | `resolveException(destinationId)` | 仅 `exception → normal`：显式处理完成才恢复 |
 
+  所有方法的入参是目的地的**稳定 id**（`NavDestination.id`），而非页序
+  下标——页面调序不会错配状态；构造时给定 id 列表，未知 id 读返
+  `normal`、写静默忽略。
   异常优先级高于通知：异常未处理时查看页面不会改变状态。
 - **已读判定：停留而非经过**。`SmartNavScreen` 以独立监听器观察
   `NavPhysicsController`：激活页每次变化都取消旧计时并重新启动
   `Timer(_readDwell = 700ms)`，只有连续停留满 700ms 才调
-  `markViewed(page)`。快速扫过（按住圆点连续翻页）、双击导航条
+  `markViewed(destinationId)`。快速扫过（按住圆点连续翻页）、双击导航条
   直达末页时途经的中转页不会被标为已读。
 - **聊天页例外：锚点由会话未读数据驱动**。聊天页锚点不走停留计时
   （激活到该页时不启动 700ms 计时器），而由装配层监听 `ChatStore`
@@ -305,8 +315,9 @@ GlobalKey 重挂载曾触发框架断言），而是由 `DockGeometry`（底部�
   真实时间一致；测试中随 `pump` 推进，停留/倒计时逻辑可确定性验证。
   搜索倒计时边框的烧蚀基准同样惰性记录于展开后的首个物理帧，避免
   帧外的过期时间戳（首帧前为 0）导致倒计时瞬间烧完。
-- **`InMemoryNavBadgeService`**：当前实现，内存保存每页状态，
-  变化时 `notifyListeners()`。
+- **`InMemoryNavBadgeService`**：当前实现，**按目的地稳定 id
+  （`NavDestination.id`）索引**每页状态（构造时给定 id 列表；未知 id
+  读返 `normal`、写静默忽略），变化时 `notifyListeners()`。
 - **`NavBadgeScope`**（`InheritedNotifier`）：向子树提供服务，
   锚点通过 `NavBadgeScope.of(context)` 获取并随通知自动重建；
   `SmartNavScreen` 创建实例并包在最外层。
@@ -320,9 +331,9 @@ GlobalKey 重挂载曾触发框架断言），而是由 `DockGeometry`（底部�
   终端页：「模拟：聊天新消息」（调 `ChatStore.addIncoming()`，
   不直接操作锚点）、「模拟：异常」（终端页锚点进入红闪）、「处理异常」
   （无异常时禁用并显示「当前无待处理异常」）；笔记页不挂任何调试按钮。
-  终端页下标由 `buildDefaultDestinations()` 按稳定 id
-  （`indexWhere((d) => d.id == 'console')`）解析后经构造参数传入，
-  脚手架内不写死页序。接入真实通知/异常源后此脚手架应移除。
+  终端页稳定 id（`'console'`）由 `buildDefaultDestinations()` 解析后经
+  构造参数 `ConsoleBadgeControls.consolePageId` 传入，脚手架内不写死
+  页序/页号。接入真实通知/异常源后此脚手架应移除。
   脚手架由 `kDebugMode` 守卫：仅 debug 构建挂入页面，release/profile
   构建 footer 为 null、组件随树摇移除，不会出现在发布包中。
 
