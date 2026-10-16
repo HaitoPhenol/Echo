@@ -44,7 +44,11 @@ final CommandSpec badgeStatus = CommandSpec(
     return {
       'items': [
         for (var i = 0; i < kNavDestinationSpecs.length; i++)
-          {'index': i, 'name': navPageName(i), 'level': badges.levelOf(i).name},
+          {
+            'index': i,
+            'name': navPageName(i),
+            'level': badges.levelOf(kNavDestinationSpecs[i].id).name,
+          },
       ],
     };
   },
@@ -56,7 +60,7 @@ final CommandSpec badgeStatus = CommandSpec(
 CommandSpec _badgeWrite({
   required String verb,
   required String summary,
-  required void Function(NavBadgeService service, int page) apply,
+  required void Function(NavBadgeService service, String destinationId) apply,
 }) => CommandSpec(
   namespace: 'badge',
   verb: verb,
@@ -82,10 +86,12 @@ CommandSpec _badgeWrite({
         '${kNavDestinationSpecs.map((s) => s.id).join('/')}）',
       );
     }
-    apply(badges, page);
+    // 入参仍接受稳定页名或下标；服务层按稳定 id 索引。
+    final destinationId = kNavDestinationSpecs[page].id;
+    apply(badges, destinationId);
     return {
       'page': {'index': page, 'name': navPageName(page)},
-      'level': badges.levelOf(page).name,
+      'level': badges.levelOf(destinationId).name,
     };
   },
 );

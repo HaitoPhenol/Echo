@@ -230,7 +230,9 @@ class _SmartNavScreenState extends State<SmartNavScreen>
       ],
     );
 
-    _badges = InMemoryNavBadgeService(pageCount: _destinations.length);
+    _badges = InMemoryNavBadgeService(
+      destinationIds: [for (final d in _destinations) d.id],
+    );
 
     _chatStore = ChatStore();
     _chatSession = ChatSessionController(_chatStore);
@@ -267,7 +269,10 @@ class _SmartNavScreenState extends State<SmartNavScreen>
         // 聊天页的通知态由会话已读数据驱动（见 _syncChatBadge），
         // 停留计时不再清除它；其余页面维持「停留即已读」。
         if (page != _chatPageIndex) {
-          _readTimer = Timer(_readDwell, () => _badges.markViewed(page));
+          _readTimer = Timer(
+            _readDwell,
+            () => _badges.markViewed(_destinations[page].id),
+          );
         }
       }
     });
@@ -335,12 +340,14 @@ class _SmartNavScreenState extends State<SmartNavScreen>
   /// 存在任意未读会话：锚点进入通知态（绿呼吸）；全部已读：
   /// 通知态直接恢复默认（不经过停留计时）。异常态不受本同步影响。
   void _syncChatBadge() {
-    final page = _chatPageIndex;
-    if (page < 0) return;
+    final index = _chatPageIndex;
+    if (index < 0) return;
+    // 锚点服务按目的地稳定 id 索引（页序可调而不失真）。
+    final chatId = _destinations[index].id;
     if (_chatStore.hasUnread) {
-      _badges.postNotification(page);
-    } else if (_badges.levelOf(page) == NavBadgeLevel.notification) {
-      _badges.markViewed(page);
+      _badges.postNotification(chatId);
+    } else if (_badges.levelOf(chatId) == NavBadgeLevel.notification) {
+      _badges.markViewed(chatId);
     }
   }
 
@@ -1352,6 +1359,7 @@ class _SmartNavScreenState extends State<SmartNavScreen>
                   bottom: 16 + safeBottom,
                   child: SearchCapsule(
                     controller: _nav,
+                    pageIds: [for (final d in _destinations) d.id],
                     screenWidth: screenSize.width,
                     pressedDot: _pressedDot,
                     focusNode: _searchFocusNode,

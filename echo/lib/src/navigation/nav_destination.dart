@@ -92,9 +92,6 @@ List<NavDestination> buildDefaultDestinations({
   /// (id, 标题) 列表：唯一来源在 [kNavDestinationSpecs]（控制层共用）。
   const specs = kNavDestinationSpecs;
 
-  // 终端页调试面板的作用下标：按稳定 id 从配置解析，不写死序号。
-  final consoleIndex = specs.indexWhere((s) => s.id == 'console');
-
   return [
     for (final spec in specs)
       NavDestination(
@@ -126,7 +123,7 @@ List<NavDestination> buildDefaultDestinations({
               _ => null,
             },
             footer: kDebugMode && spec.id == 'console'
-                ? ConsoleBadgeControls(consolePageIndex: consoleIndex)
+                ? ConsoleBadgeControls(consolePageId: spec.id)
                 : null,
           ),
         },

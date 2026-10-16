@@ -156,7 +156,9 @@ class ControlHarness {
     );
     final chatStore = ChatStore(now: () => h.wallTime);
     final chatSession = ChatSessionController(chatStore);
-    final badges = InMemoryNavBadgeService(pageCount: 4);
+    final badges = InMemoryNavBadgeService(
+      destinationIds: ['console', 'chat', 'notes', 'me'],
+    );
 
     registry
       ..set(paths)

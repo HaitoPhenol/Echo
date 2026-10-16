@@ -17,9 +17,7 @@ void main() {
   tearDown(() => h.dispose());
 
   Map<String, Object?> levelOf(String name) {
-    final status = h.badges.levelOf(
-      const ['console', 'chat', 'notes', 'me'].indexOf(name),
-    );
+    final status = h.badges.levelOf(name);
     return {'level': status.name};
   }
 
@@ -90,6 +88,6 @@ void main() {
       args: {'page': 'chat'},
     );
     expect(writeDenied.error!.code, ControlErrorCode.authRequired);
-    expect(h.badges.levelOf(1), NavBadgeLevel.normal);
+    expect(h.badges.levelOf('chat'), NavBadgeLevel.normal);
   });
 }

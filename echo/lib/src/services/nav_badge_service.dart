@@ -19,59 +19,69 @@ enum NavBadgeLevel {
 /// UI 不关心状态由谁产生、何时清除。继承 [ChangeNotifier]，
 /// 通过 [NavBadgeScope] 向子树提供实例并驱动刷新。
 abstract class NavBadgeService extends ChangeNotifier {
-  /// 第 [page] 页当前的锚点状态。
-  NavBadgeLevel levelOf(int page);
+  /// [destinationId] 对应页当前的锚点状态。
+  NavBadgeLevel levelOf(String destinationId);
 
   /// 上报一条通知（锚点变绿、呼吸闪烁）。
-  void postNotification(int page);
+  void postNotification(String destinationId);
 
   /// 上报一个异常（锚点变红、闪烁）。
-  void reportException(int page);
+  void reportException(String destinationId);
 
   /// 页面被查看：通知态视为已读、恢复正常；异常态不受影响。
-  void markViewed(int page);
+  void markViewed(String destinationId);
 
   /// 异常处理完成：恢复正常。
-  void resolveException(int page);
+  void resolveException(String destinationId);
 }
 
 /// 内存实现：状态仅保存在进程内，重启清空（开发阶段使用）。
 ///
+/// 按目的地**稳定 id** 索引（不按页序号），为后续持久化铺路；
+/// 未知目的地 id 的语义：读操作返回 [NavBadgeLevel.normal]、
+/// 写操作静默忽略（不抛异常、不通知），避免页面调序后越界崩溃。
+///
 /// 后续接入真实模块时，各业务模块直接调用本实例的方法即可；
 /// 如需跨重启保留，另写一个 [NavBadgeService] 实现替换。
 class InMemoryNavBadgeService extends NavBadgeService {
-  InMemoryNavBadgeService({required int pageCount})
-    : _levels = List<NavBadgeLevel>.filled(pageCount, NavBadgeLevel.normal);
+  InMemoryNavBadgeService({required List<String> destinationIds})
+    : _levels = {for (final id in destinationIds) id: NavBadgeLevel.normal};
 
-  final List<NavBadgeLevel> _levels;
-
-  @override
-  NavBadgeLevel levelOf(int page) => _levels[page];
+  /// 各目的地的锚点级别（初始全 normal），按稳定 id 索引。
+  final Map<String, NavBadgeLevel> _levels;
 
   @override
-  void postNotification(int page) => _set(page, NavBadgeLevel.notification);
+  NavBadgeLevel levelOf(String destinationId) =>
+      _levels[destinationId] ?? NavBadgeLevel.normal;
 
   @override
-  void reportException(int page) => _set(page, NavBadgeLevel.exception);
+  void postNotification(String destinationId) =>
+      _set(destinationId, NavBadgeLevel.notification);
 
   @override
-  void markViewed(int page) {
+  void reportException(String destinationId) =>
+      _set(destinationId, NavBadgeLevel.exception);
+
+  @override
+  void markViewed(String destinationId) {
     // 仅通知态会被「查看」清除；异常必须显式处理完成。
-    if (_levels[page] == NavBadgeLevel.notification) {
-      _set(page, NavBadgeLevel.normal);
+    if (_levels[destinationId] == NavBadgeLevel.notification) {
+      _set(destinationId, NavBadgeLevel.normal);
     }
   }
 
   @override
-  void resolveException(int page) {
-    if (_levels[page] == NavBadgeLevel.exception) {
-      _set(page, NavBadgeLevel.normal);
+  void resolveException(String destinationId) {
+    if (_levels[destinationId] == NavBadgeLevel.exception) {
+      _set(destinationId, NavBadgeLevel.normal);
     }
   }
 
-  void _set(int page, NavBadgeLevel level) {
-    if (_levels[page] == level) return;
-    _levels[page] = level;
+  void _set(String destinationId, NavBadgeLevel level) {
+    // 写操作仅作用于已知目的地；未知 id 静默忽略。
+    if (!_levels.containsKey(destinationId)) return;
+    if (_levels[destinationId] == level) return;
+    _levels[destinationId] = level;
     notifyListeners();
   }
 }

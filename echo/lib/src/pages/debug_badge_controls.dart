@@ -13,14 +13,14 @@ import '../theme/app_colors.dart';
 /// - 「处理异常」：显式解除终端页异常态；无待处理异常时按钮禁用，
 ///   文案变为「当前无待处理异常」。
 ///
-/// 异常模拟/处理都作用于终端页自身。[consolePageIndex] 是终端页在导航
-/// 配置中的下标，由接线处（nav_destination.dart）按稳定 id 解析后
-/// 传入，组件内不写死页序号（页面调序后不会作用到错误的页）。
+/// 异常模拟/处理都作用于终端页自身。[consolePageId] 是终端页的稳定 id
+/// （如 'console'），由接线处（nav_destination.dart）传入；组件内不写死
+/// 页序号（页面调序后不会作用到错误的页）。
 class ConsoleBadgeControls extends StatelessWidget {
-  const ConsoleBadgeControls({super.key, required this.consolePageIndex});
+  const ConsoleBadgeControls({super.key, required this.consolePageId});
 
-  /// 终端页下标（异常模拟/处理的作用页）。
-  final int consolePageIndex;
+  /// 终端页稳定 id（异常模拟/处理的作用页）。
+  final String consolePageId;
 
   @override
   Widget build(BuildContext context) {
@@ -29,7 +29,7 @@ class ConsoleBadgeControls extends StatelessWidget {
     // 依赖 NavBadgeScope：异常态变化时本面板自动重建，按钮随之
     // 在「处理异常」与禁用文案之间切换。
     final hasError =
-        badges.levelOf(consolePageIndex) == NavBadgeLevel.exception;
+        badges.levelOf(consolePageId) == NavBadgeLevel.exception;
     return _DebugButtonRow(
       buttons: [
         _DebugAction(
@@ -42,7 +42,7 @@ class ConsoleBadgeControls extends StatelessWidget {
         _DebugAction(
           label: '模拟：异常',
           onTap: () {
-            badges.reportException(consolePageIndex);
+            badges.reportException(consolePageId);
             _toast(context, '已模拟：异常');
           },
         ),
@@ -50,7 +50,7 @@ class ConsoleBadgeControls extends StatelessWidget {
           label: hasError ? '处理异常' : '当前无待处理异常',
           enabled: hasError,
           onTap: () {
-            badges.resolveException(consolePageIndex);
+            badges.resolveException(consolePageId);
             _toast(context, '异常已处理');
           },
         ),

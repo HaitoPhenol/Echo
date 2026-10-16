@@ -30,6 +30,7 @@ class SearchCapsule extends StatelessWidget {
   const SearchCapsule({
     super.key,
     required this.controller,
+    required this.pageIds,
     required this.screenWidth,
     required this.pressedDot,
     required this.focusNode,
@@ -46,6 +47,9 @@ class SearchCapsule extends StatelessWidget {
   });
 
   final NavPhysicsController controller;
+
+  /// 各页目的地的稳定 id（与页面轨道顺序一致），锚点状态按 id 查询。
+  final List<String> pageIds;
 
   /// 屏幕宽度（搜索态宽度 = screenWidth - 28）。
   final double screenWidth;
@@ -398,7 +402,7 @@ class SearchCapsule extends StatelessWidget {
             width: 2,
             child: _NavAnchor(
               key: ValueKey<String>('nav-anchor-$i'),
-              level: badges?.levelOf(i) ?? NavBadgeLevel.normal,
+              level: badges?.levelOf(pageIds[i]) ?? NavBadgeLevel.normal,
             ),
           ),
       ],
