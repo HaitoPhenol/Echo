@@ -1014,18 +1014,6 @@ class _SmartNavScreenState extends State<SmartNavScreen>
     final screenSize = MediaQuery.sizeOf(context);
     final safeBottom = MediaQuery.paddingOf(context).bottom;
 
-    // 底部三条几何（全部来自 DockGeometry，不靠运行时测量）。
-    final handleWidth = DockGeometry.handleWidthFor(screenSize.width);
-    final handleRestLeft = DockGeometry.handleLeftFor(screenSize.width);
-    final handleDockedLeft = DockGeometry.dockedHandleLeftFor(screenSize.width);
-    final drawerK = _drawerAnim.value;
-    final handleLeft =
-        handleRestLeft + (handleDockedLeft - handleRestLeft) * drawerK;
-    final aiLeft = DockGeometry.aiLeftFor(screenSize.width);
-    final aiWidth = DockGeometry.aiWidthFor(screenSize.width);
-    final aiDialogHeight = math.min(screenSize.height * 0.52, 360.0);
-    final bool barsHiddenBySearch = _nav.isSearching;
-
     final scaffold = Scaffold(
       // Builder 让本页操作配置能拿到 Scaffold 之下的 context
       // （ScaffoldMessenger/SnackBar）。
@@ -1040,281 +1028,9 @@ class _SmartNavScreenState extends State<SmartNavScreen>
             onPointerCancel: _handleRootPointerCancel,
             child: Stack(
               children: [
-                // -------- 机能风固定背景（纹理不随翻页移动）--------
-                const Positioned.fill(
-                  key: ValueKey<String>('mech-bg'),
-                  child: MechanicalBackground(),
-                ),
-
-                // -------- 机能风设备状态读数条（固定顶部）--------
-                Positioned(
-                  key: const ValueKey<String>('mech-coords'),
-                  top:
-                      MediaQuery.paddingOf(context).top +
-                      MechanicalStyle.coordsTop,
-                  left: 0,
-                  right: 0,
-                  child: Center(
-                    child: MechanicalCoordsBar(
-                      stats: ControlBootstrap.instance?.registry
-                          .get<ConsoleStatsService>(),
-                    ),
-                  ),
-                ),
-
-                // -------- 横向页面轨道 --------
-                Positioned.fill(
-                  key: const ValueKey<String>('pages'),
-                  child: ClipRect(
-                    child: AnimatedBuilder(
-                      animation: _nav,
-                      builder: (context, _) {
-                        // 显示位置含橡胶带与磁力吸附曲线。
-                        final renderedPosition = _nav.displayPosition;
-                        return Stack(
-                          children: [
-                            Positioned(
-                              left: -renderedPosition * screenSize.width,
-                              top: 0,
-                              bottom: 0,
-                              width: screenSize.width * _destinations.length,
-                              child: Stack(
-                                children: [
-                                  // 机能风大页码：每页一格、页面之下，随轨道横滑。
-                                  Row(
-                                    children: [
-                                      for (
-                                        var i = 0;
-                                        i < _destinations.length;
-                                        i++
-                                      )
-                                        Expanded(
-                                          child: Stack(
-                                            children: [
-                                              MechanicalPageNumber(index: i),
-                                            ],
-                                          ),
-                                        ),
-                                    ],
-                                  ),
-                                  Row(
-                                    // 页面由导航配置驱动：每个目的地的 pageBuilder
-                                    // 经 Builder 注入上下文，全部 Expanded 等宽。
-                                    children: [
-                                      for (final destination in _destinations)
-                                        Expanded(
-                                          child: Builder(
-                                            builder: destination.pageBuilder,
-                                          ),
-                                        ),
-                                    ],
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        );
-                      },
-                    ),
-                  ),
-                ),
-
-                // -------- 搜索态：全屏隐形 scrim（点外部关闭搜索）--------
-                // 位于胶囊/结果/历史之下：点空白区命中 scrim 即关闭；
-                // 点结果等上层组件时事件不会落到 scrim。
-                if (_nav.isSearching)
-                  Positioned.fill(
-                    key: const ValueKey<String>('scrim'),
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: _exitSearch,
-                    ),
-                  ),
-
-                // -------- 快捷操作弧 --------
-                if (_quickArcShown)
-                  QuickActionArc(
-                    key: _quickArcKey,
-                    actions: _quickActions,
-                    positions: List.of(_quickPositions),
-                    selection: _quickSelection,
-                    onFire: _handleQuickFire,
-                    onDismissed: () {
-                      setState(() => _quickArcShown = false);
-                    },
-                  ),
-
-                // -------- 触发涟漪 --------
-                for (final spec in _ripples)
-                  Positioned(
-                    left: spec.center.dx - 30,
-                    top: spec.center.dy - 30,
-                    child: TriggerRipple(
-                      onEnded: () {
-                        setState(() => _ripples.remove(spec));
-                      },
-                    ),
-                  ),
-
-                // -------- 页码指示器：左下页名牌 + 右下 3D 转鼓（仅横滑唤醒）--------
-                Positioned(
-                  key: const ValueKey<String>('page-name-plate'),
-                  // 左边距与右下转鼓右边距同为 DockGeometry.sideMargin，
-                  // 两侧视觉对称（原 5vw 在 393dp 宽屏约 19.6dp，不对齐）。
-                  left: DockGeometry.sideMargin,
-                  // 色块底边与右下转鼓面板底边对齐（同为 52+safeBottom）。
-                  bottom: 52 + safeBottom,
-                  child: MechanicalPageNamePlate(
-                    controller: _nav,
-                    labels: [for (final d in _destinations) d.label],
-                  ),
-                ),
-                Positioned(
-                  key: const ValueKey<String>('roller'),
-                  right: DockGeometry.sideMargin,
-                  bottom: 52 + safeBottom,
-                  child: MechanicalPageDrum(
-                    controller: _nav,
-                    pageCount: _destinations.length,
-                  ),
-                ),
-
-                // -------- AI 虹彩条（常驻；搜索态由胶囊生长覆盖，先卸载） --------
-                if (!barsHiddenBySearch)
-                  Positioned(
-                    key: const ValueKey<String>('ai-bar'),
-                    left: aiLeft,
-                    bottom:
-                        DockGeometry.bottomMargin +
-                        safeBottom -
-                        4, // 光晕上下各溢 4px
-                    width: aiWidth,
-                    height: DockGeometry.barHeight + 8,
-                    child: AiBar(pressed: _aiPressed),
-                  ),
-
-                // -------- 把手条（常态位：在胶囊之下，搜索生长时被覆盖） --------
-                // 抽屉打开期间改由本 Stack 末尾的「停靠位把手」承载，二者
-                // 不同时挂载（无状态外观组件，挂载切换无跳变）。
-                if (!barsHiddenBySearch && !_menuShown && drawerK <= 0.001)
-                  Positioned(
-                    key: const ValueKey<String>('handle-bar'),
-                    left: handleLeft,
-                    bottom: DockGeometry.bottomMargin + safeBottom,
-                    width: handleWidth,
-                    height: DockGeometry.barHeight,
-                    child: const HandleBar(),
-                  ),
-
-                // -------- 底部胶囊簇（历史 + 胶囊 + 倒计时边框） --------
-                //
-                // 键盘弹出时安卓端 adjustResize 会自动压缩窗口高度，
-                // 胶囊随之自然停在键盘上方，这里不再手动加键盘高度，
-                // 否则会双重补偿导致搜索框飞到过高位置。
-                Positioned(
-                  key: const ValueKey<String>('capsule'),
-                  left: 14,
-                  right: 14,
-                  bottom: 16 + safeBottom,
-                  child: SearchCapsule(
-                    controller: _nav,
-                    pageIds: [for (final d in _destinations) d.id],
-                    screenWidth: screenSize.width,
-                    pressedDot: _pressedDot,
-                    focusNode: _searchFocusNode,
-                    textController: _searchTextController,
-                    historyItems: _searchHistory.items.toSet().toList(
-                      growable: false,
-                    ),
-                    results: _searchResults,
-                    query: _searchQuery,
-                    onHistoryTap: _handleHistoryTap,
-                    onResultTap: _handleResultTap,
-                    onQueryChanged: _handleQueryChanged,
-                    onSubmitted: _handleSubmitted,
-                    slashMode: (_slash?.active ?? false) && _nav.isSearching,
-                    slashController: _slash,
-                  ),
-                ),
-
-                // -------- slash 指令态浮层（补全/结果/模态卡） --------
-                // 叠在胶囊之上、抽屉与竖单之下；指令态退出时零占位。
-                if (_slash != null && _nav.isSearching)
-                  Positioned(
-                    key: const ValueKey<String>('slash-layer'),
-                    left: 14,
-                    right: 14,
-                    bottom: 16 + safeBottom + DockGeometry.searchHeight + 8,
-                    child: SlashCommandLayer(controller: _slash!),
-                  ),
-
-                // -------- 侧边抽屉（空壳面板 + 遮罩，在胶囊/AI 条之上） --------
-                if (drawerK > 0.001)
-                  Positioned.fill(
-                    key: const ValueKey<String>('side-drawer'),
-                    child: SideDrawer(
-                      progress: _drawerAnim,
-                      onScrimTap: () => _settleDrawer(open: false),
-                    ),
-                  ),
-
-                // -------- 停靠位把手：抽屉打开期间浮在遮罩之上，
-                // 保证把手始终明亮可拖（与常态位把手不同时挂载）。 --------
-                if (!barsHiddenBySearch && !_menuShown && drawerK > 0.001)
-                  Positioned(
-                    key: const ValueKey<String>('handle-bar-docked'),
-                    left: handleLeft,
-                    bottom: DockGeometry.bottomMargin + safeBottom,
-                    width: handleWidth,
-                    height: DockGeometry.barHeight,
-                    child: const HandleBar(),
-                  ),
-
-                // -------- 本页操作竖单（点按遮罩任意处收起） --------
-                if (_menuShown) ...[
-                  Positioned.fill(
-                    key: const ValueKey<String>('menu-scrim'),
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: () => _handleMenuKey.currentState?.dismiss(),
-                    ),
-                  ),
-                  Positioned(
-                    key: const ValueKey<String>('handle-menu'),
-                    left: handleRestLeft,
-                    bottom: DockGeometry.bottomMargin + safeBottom,
-                    width: handleWidth,
-                    child: HandleMenu(
-                      key: _handleMenuKey,
-                      actions: _pageActions,
-                      handleWidth: handleWidth,
-                      onFire: _handlePageActionFire,
-                      onDismissed: _handleMenuDismissed,
-                    ),
-                  ),
-                ],
-
-                // -------- AI 对话框（点按遮罩任意处收起） --------
-                if (_aiShown) ...[
-                  Positioned.fill(
-                    key: const ValueKey<String>('ai-scrim'),
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: () => _aiDialogKey.currentState?.dismiss(),
-                    ),
-                  ),
-                  Positioned(
-                    key: const ValueKey<String>('ai-dialog'),
-                    left: DockGeometry.sideMargin,
-                    right: DockGeometry.sideMargin,
-                    bottom: 38 + safeBottom,
-                    height: aiDialogHeight,
-                    child: AiDialog(
-                      key: _aiDialogKey,
-                      onDismissed: _handleAiDismissed,
-                    ),
-                  ),
-                ],
+                ..._buildStaticBackdrop(context),
+                _buildPageTrack(context, screenSize),
+                ..._buildOverlays(context, screenSize, safeBottom),
               ],
             ),
           );
@@ -1343,5 +1059,295 @@ class _SmartNavScreenState extends State<SmartNavScreen>
         ),
       ),
     );
+  }
+
+  /// 固定背景层：机能风纹理 + 顶部设备状态读数条（不随翻页移动）。
+  List<Widget> _buildStaticBackdrop(BuildContext context) => [
+    // -------- 机能风固定背景（纹理不随翻页移动）--------
+    const Positioned.fill(
+      key: ValueKey<String>('mech-bg'),
+      child: MechanicalBackground(),
+    ),
+
+    // -------- 机能风设备状态读数条（固定顶部）--------
+    Positioned(
+      key: const ValueKey<String>('mech-coords'),
+      top: MediaQuery.paddingOf(context).top + MechanicalStyle.coordsTop,
+      left: 0,
+      right: 0,
+      child: Center(
+        child: MechanicalCoordsBar(
+          stats: ControlBootstrap.instance?.registry.get<ConsoleStatsService>(),
+        ),
+      ),
+    ),
+  ];
+
+  /// 横向页面轨道：大页码 + 各目的地页面，随导航显示位置横滑。
+  Widget _buildPageTrack(BuildContext context, Size screenSize) =>
+      Positioned.fill(
+        key: const ValueKey<String>('pages'),
+        child: ClipRect(
+          child: AnimatedBuilder(
+            animation: _nav,
+            builder: (context, _) {
+              // 显示位置含橡胶带与磁力吸附曲线。
+              final renderedPosition = _nav.displayPosition;
+              return Stack(
+                children: [
+                  Positioned(
+                    left: -renderedPosition * screenSize.width,
+                    top: 0,
+                    bottom: 0,
+                    width: screenSize.width * _destinations.length,
+                    child: Stack(
+                      children: [
+                        // 机能风大页码：每页一格、页面之下，随轨道横滑。
+                        Row(
+                          children: [
+                            for (var i = 0; i < _destinations.length; i++)
+                              Expanded(
+                                child: Stack(
+                                  children: [MechanicalPageNumber(index: i)],
+                                ),
+                              ),
+                          ],
+                        ),
+                        Row(
+                          // 页面由导航配置驱动：每个目的地的 pageBuilder
+                          // 经 Builder 注入上下文，全部 Expanded 等宽。
+                          children: [
+                            for (final destination in _destinations)
+                              Expanded(
+                                child: Builder(
+                                  builder: destination.pageBuilder,
+                                ),
+                              ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
+        ),
+      );
+
+  /// 浮层与底部三条：scrim / 快捷弧 / 涟漪 / 页码指示器 / AI 条 /
+  /// 把手条 / 胶囊簇 / slash 层 / 抽屉 / 竖单 / AI 对话框。
+  ///
+  /// 子项顺序与原 Stack 逐字一致（含各 Key 与条件挂载位置）。
+  List<Widget> _buildOverlays(
+    BuildContext context,
+    Size screenSize,
+    double safeBottom,
+  ) {
+    // 底部三条几何（全部来自 DockGeometry，不靠运行时测量）。
+    final handleWidth = DockGeometry.handleWidthFor(screenSize.width);
+    final handleRestLeft = DockGeometry.handleLeftFor(screenSize.width);
+    final handleDockedLeft = DockGeometry.dockedHandleLeftFor(screenSize.width);
+    final drawerK = _drawerAnim.value;
+    final handleLeft =
+        handleRestLeft + (handleDockedLeft - handleRestLeft) * drawerK;
+    final aiLeft = DockGeometry.aiLeftFor(screenSize.width);
+    final aiWidth = DockGeometry.aiWidthFor(screenSize.width);
+    final aiDialogHeight = math.min(screenSize.height * 0.52, 360.0);
+    final bool barsHiddenBySearch = _nav.isSearching;
+
+    return [
+      // -------- 搜索态：全屏隐形 scrim（点外部关闭搜索）--------
+      // 位于胶囊/结果/历史之下：点空白区命中 scrim 即关闭；
+      // 点结果等上层组件时事件不会落到 scrim。
+      if (_nav.isSearching)
+        Positioned.fill(
+          key: const ValueKey<String>('scrim'),
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: _exitSearch,
+          ),
+        ),
+
+      // -------- 快捷操作弧 --------
+      if (_quickArcShown)
+        QuickActionArc(
+          key: _quickArcKey,
+          actions: _quickActions,
+          positions: List.of(_quickPositions),
+          selection: _quickSelection,
+          onFire: _handleQuickFire,
+          onDismissed: () {
+            setState(() => _quickArcShown = false);
+          },
+        ),
+
+      // -------- 触发涟漪 --------
+      for (final spec in _ripples)
+        Positioned(
+          left: spec.center.dx - 30,
+          top: spec.center.dy - 30,
+          child: TriggerRipple(
+            onEnded: () {
+              setState(() => _ripples.remove(spec));
+            },
+          ),
+        ),
+
+      // -------- 页码指示器：左下页名牌 + 右下 3D 转鼓（仅横滑唤醒）--------
+      Positioned(
+        key: const ValueKey<String>('page-name-plate'),
+        // 左边距与右下转鼓右边距同为 DockGeometry.sideMargin，
+        // 两侧视觉对称（原 5vw 在 393dp 宽屏约 19.6dp，不对齐）。
+        left: DockGeometry.sideMargin,
+        // 色块底边与右下转鼓面板底边对齐（同为 52+safeBottom）。
+        bottom: 52 + safeBottom,
+        child: MechanicalPageNamePlate(
+          controller: _nav,
+          labels: [for (final d in _destinations) d.label],
+        ),
+      ),
+      Positioned(
+        key: const ValueKey<String>('roller'),
+        right: DockGeometry.sideMargin,
+        bottom: 52 + safeBottom,
+        child: MechanicalPageDrum(
+          controller: _nav,
+          pageCount: _destinations.length,
+        ),
+      ),
+
+      // -------- AI 虹彩条（常驻；搜索态由胶囊生长覆盖，先卸载） --------
+      if (!barsHiddenBySearch)
+        Positioned(
+          key: const ValueKey<String>('ai-bar'),
+          left: aiLeft,
+          bottom:
+              DockGeometry.bottomMargin +
+              safeBottom -
+              4, // 光晕上下各溢 4px
+          width: aiWidth,
+          height: DockGeometry.barHeight + 8,
+          child: AiBar(pressed: _aiPressed),
+        ),
+
+      // -------- 把手条（常态位：在胶囊之下，搜索生长时被覆盖） --------
+      // 抽屉打开期间改由本 Stack 末尾的「停靠位把手」承载，二者
+      // 不同时挂载（无状态外观组件，挂载切换无跳变）。
+      if (!barsHiddenBySearch && !_menuShown && drawerK <= 0.001)
+        Positioned(
+          key: const ValueKey<String>('handle-bar'),
+          left: handleLeft,
+          bottom: DockGeometry.bottomMargin + safeBottom,
+          width: handleWidth,
+          height: DockGeometry.barHeight,
+          child: const HandleBar(),
+        ),
+
+      // -------- 底部胶囊簇（历史 + 胶囊 + 倒计时边框） --------
+      //
+      // 键盘弹出时安卓端 adjustResize 会自动压缩窗口高度，
+      // 胶囊随之自然停在键盘上方，这里不再手动加键盘高度，
+      // 否则会双重补偿导致搜索框飞到过高位置。
+      Positioned(
+        key: const ValueKey<String>('capsule'),
+        left: 14,
+        right: 14,
+        bottom: 16 + safeBottom,
+        child: SearchCapsule(
+          controller: _nav,
+          pageIds: [for (final d in _destinations) d.id],
+          screenWidth: screenSize.width,
+          pressedDot: _pressedDot,
+          focusNode: _searchFocusNode,
+          textController: _searchTextController,
+          historyItems: _searchHistory.items.toSet().toList(growable: false),
+          results: _searchResults,
+          query: _searchQuery,
+          onHistoryTap: _handleHistoryTap,
+          onResultTap: _handleResultTap,
+          onQueryChanged: _handleQueryChanged,
+          onSubmitted: _handleSubmitted,
+          slashMode: (_slash?.active ?? false) && _nav.isSearching,
+          slashController: _slash,
+        ),
+      ),
+
+      // -------- slash 指令态浮层（补全/结果/模态卡） --------
+      // 叠在胶囊之上、抽屉与竖单之下；指令态退出时零占位。
+      if (_slash != null && _nav.isSearching)
+        Positioned(
+          key: const ValueKey<String>('slash-layer'),
+          left: 14,
+          right: 14,
+          bottom: 16 + safeBottom + DockGeometry.searchHeight + 8,
+          child: SlashCommandLayer(controller: _slash!),
+        ),
+
+      // -------- 侧边抽屉（空壳面板 + 遮罩，在胶囊/AI 条之上） --------
+      if (drawerK > 0.001)
+        Positioned.fill(
+          key: const ValueKey<String>('side-drawer'),
+          child: SideDrawer(
+            progress: _drawerAnim,
+            onScrimTap: () => _settleDrawer(open: false),
+          ),
+        ),
+
+      // -------- 停靠位把手：抽屉打开期间浮在遮罩之上，
+      // 保证把手始终明亮可拖（与常态位把手不同时挂载）。 --------
+      if (!barsHiddenBySearch && !_menuShown && drawerK > 0.001)
+        Positioned(
+          key: const ValueKey<String>('handle-bar-docked'),
+          left: handleLeft,
+          bottom: DockGeometry.bottomMargin + safeBottom,
+          width: handleWidth,
+          height: DockGeometry.barHeight,
+          child: const HandleBar(),
+        ),
+
+      // -------- 本页操作竖单（点按遮罩任意处收起） --------
+      if (_menuShown) ...[
+        Positioned.fill(
+          key: const ValueKey<String>('menu-scrim'),
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => _handleMenuKey.currentState?.dismiss(),
+          ),
+        ),
+        Positioned(
+          key: const ValueKey<String>('handle-menu'),
+          left: handleRestLeft,
+          bottom: DockGeometry.bottomMargin + safeBottom,
+          width: handleWidth,
+          child: HandleMenu(
+            key: _handleMenuKey,
+            actions: _pageActions,
+            handleWidth: handleWidth,
+            onFire: _handlePageActionFire,
+            onDismissed: _handleMenuDismissed,
+          ),
+        ),
+      ],
+
+      // -------- AI 对话框（点按遮罩任意处收起） --------
+      if (_aiShown) ...[
+        Positioned.fill(
+          key: const ValueKey<String>('ai-scrim'),
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => _aiDialogKey.currentState?.dismiss(),
+          ),
+        ),
+        Positioned(
+          key: const ValueKey<String>('ai-dialog'),
+          left: DockGeometry.sideMargin,
+          right: DockGeometry.sideMargin,
+          bottom: 38 + safeBottom,
+          height: aiDialogHeight,
+          child: AiDialog(key: _aiDialogKey, onDismissed: _handleAiDismissed),
+        ),
+      ],
+    ];
   }
 }
