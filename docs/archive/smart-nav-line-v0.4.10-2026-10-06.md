@@ -222,4 +222,4 @@
 
 ---
 
-*本汇报归档于 `docs/component-reports/`，后续各组件的阶段总结同放此目录。*
+*本汇报原归档于 `docs/component-reports/`（2026-10-15 随归档目录统一并入 `docs/archive/`）。*

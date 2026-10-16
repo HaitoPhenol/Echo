@@ -1,8 +1,12 @@
-# ECP（Echo Control Protocol）改造开发方案
+# ECP（Echo Control Protocol）设计说明
 
-状态：待开发 · 基底：main（≥ 0.9.0+34，M5 持久仓储已合入）
-最后更新：2026-10-11
-配套手册：[ecp-commands.md](./ecp-commands.md)
+状态：**P1–P4 已全部交付**（v0.13.0+38，tag `v0.13.0`，2026-10-15）。
+本文档保留为**现行协议架构说明**——原则、权限矩阵、审计、安全边界
+仍是生效规则；标注「未来/另立专项」的部分（MCP 真实传输、内置
+agent 通道、终端页 UI）尚未立项。四期施工与复审的历史流水见
+[../archive/ecp-p1-p4-review-log.md](../archive/ecp-p1-p4-review-log.md)。
+最后更新：2026-10-15
+配套手册（冻结契约，与 manifest 双向测试一致）：[ecp-commands.md](./ecp-commands.md)
 
 ---
 
@@ -283,9 +287,9 @@ release 构建不包含 `src/debug/` 源集，物理无 receiver；Dart 侧通�
 | 124 | 超时 |
 | 127 | 未知命令 |
 
-## 9. 前置重构（同路原则要求）
+## 9. 前置重构（同路原则要求，P1/P2 已完成）
 
-下列能力当前埋在 Widget State 内，P1/P2 需先提升为正式控制器，
+下列能力原埋在 Widget State 内，已在 P1/P2 提升为正式控制器，
 UI 改为消费控制器：
 
 1. **NavController**：从 `SmartNavScreen` 抽出 PageController 的
@@ -298,18 +302,23 @@ UI 改为消费控制器：
 4. 写命令统一经控制器/仓储入口，禁止命令适配器直接碰私有字段
    （code review 检查项）。
 
-## 10. 分期实施
+## 10. 分期实施（P1–P4 已全部交付）
 
-| 阶段 | 内容 | 验收 |
-|---|---|---|
-| **P1** | 协议核心（spec/envelope/bus/错误码）+ PIN/会话/审计 + adb 通道（receiver+MethodChannel）+ `scripts/echo-cmd` + `sys`/`auth`/`nav`/`diary` 命名空间（含 `sys.clock.set`，04:00 边界真机直测；`diary.prune` 立即触发） | 总线/鉴权/参数校验单测；真机广播逐命令实测；analyze 0、全测试绿 |
-| **P2** | §9 控制器提升重构 + `chat`/`console`/`badge` 命名空间 | 重构后既有 widget 测试全绿；新域命令逐真机实测 |
-| **P3** | §5 权限模型 2026-10-13 修订（`chat.send`→3 级、`diary.export`→2 级、本地通道放开 PIN 首装）+ slash 指令台 UI（指令态、三段补全、卡片、PIN 引导/解锁面板、确认卡、历史）+ `ControlConsoleCore` 终端页接缝（不建页面） | 权限矩阵/解析/补全单测 + widget 测试；MIX 2S debug+release 双包真机走查（release 首装 PIN→发消息/导出/删除全链路）；release 包无 adb 入口残留 |
-| **P4** | 事件流（结构化订阅：五种冻结事件 `audit.entry`/`command.finished`/`diary.export.completed`/`chat.incoming`/`nav.changed`，详见命令手册 §1.5；敏感度分级 + `sys.events` 游标/长轮询；装配层适配器转发，services 层禁反向 import control）、**E4 的 adb 9s 预算根治——作业化结果轮询**、播种增强；MCP 通道接入（只读，§5.2 铁律）另立专项评审；内置 agent 通道（§5.2 愿景）更后 | 事件流单测；MCP 只读边界有负向测试；services→control 零反向依赖源码断言 |
+| 阶段 | 内容 | 验收 | 交付 |
+|---|---|---|---|
+| **P1** | 协议核心（spec/envelope/bus/错误码）+ PIN/会话/审计 + adb 通道（receiver+MethodChannel）+ `scripts/echo-cmd` + `sys`/`auth`/`nav`/`diary` 命名空间（含 `sys.clock.set`，04:00 边界真机直测；`diary.prune` 立即触发） | 总线/鉴权/参数校验单测；真机广播逐命令实测；analyze 0、全测试绿 | ✅ v0.10.0 |
+| **P2** | §9 控制器提升重构 + `chat`/`console`/`badge` 命名空间 | 重构后既有 widget 测试全绿；新域命令逐真机实测 | ✅ v0.11.0 |
+| **P3** | §5 权限模型 2026-10-13 修订（`chat.send`→3 级、`diary.export`→2 级、本地通道放开 PIN 首装）+ slash 指令台 UI（指令态、三段补全、卡片、PIN 引导/解锁面板、确认卡、历史）+ `ControlConsoleCore` 终端页接缝（不建页面） | 权限矩阵/解析/补全单测 + widget 测试；MIX 2S debug+release 双包真机走查（release 首装 PIN→发消息/导出/删除全链路）；release 包无 adb 入口残留 | ✅ v0.12.0 |
+| **P4** | 事件流（结构化订阅：五种冻结事件 `audit.entry`/`command.finished`/`diary.export.completed`/`chat.incoming`/`nav.changed`，详见命令手册 §1.5；敏感度分级 + `sys.events` 游标/长轮询；装配层适配器转发，services 层禁反向 import control）、**E4 的 adb 9s 预算根治——作业化结果轮询**、播种增强；MCP 通道接入（只读，§5.2 铁律）另立专项评审；内置 agent 通道（§5.2 愿景）更后 | 事件流单测；MCP 只读边界有负向测试；services→control 零反向依赖源码断言 | ✅ v0.13.0 |
+
+P4 之后原计划到此为止。**尚未立项的后续专项**（原设计点名）：
+MCP 真实通道接入（只读，现仅有假通道边界测试）、内置 agent 通道
+（§5.2）、终端页完整 UI（§7，接缝已备）、审计 sqflite 落盘（§6）。
+立项时另起文档与分支，不沿用 P 编号。
 
 每阶段独立分支 `feat/ecp-pN-*`，从 main 拉出，完成后按项目版本规则
-排 MINOR；P1 是基础设施，建议优先于 M6（7 天连写）——连写期间产生的
-现场核查需求直接用命令完成。
+排 MINOR；各期交接/复审/真机验收原文归档于
+[../archive/ecp-p1-p4-review-log.md](../archive/ecp-p1-p4-review-log.md)。
 
 ## 11. 测试策略
 

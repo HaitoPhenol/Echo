@@ -3,24 +3,6 @@
 你是接手 **Echo** 的开发 agent。本文件只有项目梗概与工作要求；
 动手前按下表读完 `docs/` 中的对应文档。
 
-## 🌙 夜间盲跑协议（2026-10-08 深夜生效，明早由用户撤除）
-
-今晚用户不在设备旁、无法亲自验收，**main 冻结**：
-
-1. **只在分支工作**：从最新 main 切 `night/<任务名>` 分支；禁止合并到 main、
-   禁止 rebase/改写他人提交、禁止 push、禁止改 `echo/pubspec.yaml` 版本号与打 tag
-   （版本号仍按老规矩由明早的合并者分配）。
-2. 一个任务完成 → 先跑 `scripts/nightly/verify.sh`（analyze + 全测试）；
-   **绿了**再跑 `scripts/nightly/pack.sh <标签>` 出包装机，脚本会自动完成
-   构建 → APK 归档 → 按 [docs/usage-guide.md](docs/usage-guide.md) 几何执行
-   手势序列 → 截图 + 录屏 → 写报告。
-3. **唯一一台手机正 USB 插在本机**：严禁绕过脚本直接 `adb install`、手动
-   screencap 或碰 USB/adb 服务；脚本已用文件锁串行占用设备。也禁止清应用数据。
-4. 门禁红、需要产品决策、架构级改动、发现分支分叉：**停下来**，在
-   `artifacts/LEDGER.md` 写一行原因（pack 失败也会自动登记），等明早用户处理。
-5. 明早验收入口：用户先看 `artifacts/LEDGER.md` 总台账，再打开各
-   `artifacts/reports/<时间>-<标签>/index.md` 看截图故事板和录屏。
-
 ## 项目梗概
 
 - Echo 是单人开发、处于 **0.x 实验期**的 Flutter App，核心是一套自研底部手势导航：
@@ -41,13 +23,13 @@
 | [docs/architecture.md](docs/architecture.md) | 了解目录结构、核心接口、扩展操作（加页面/快捷操作/搜索源等） |
 | [docs/engineering_standards.md](docs/engineering_standards.md) | **改动前必读**：工程原则、交付门禁、测试约定、历史事故档案 |
 | [docs/current_state.md](docs/current_state.md) | 了解当前实现手段（会变化，勿当教条）与已知债务 |
-| [docs/code_review_report.md](docs/code_review_report.md) | 当前已知问题的权威清单（日记线 D1–D7、通用工程 G1–G13、待决策 Q2–Q8） |
+| [docs/code_review_report.md](docs/code_review_report.md) | 当前已知问题的权威清单（日记线 D1–D7、通用工程 G1–G13、待决策 Q3–Q8，Q1/Q2/Q7/Q9/Q10 已决） |
 | [docs/diary/](docs/diary/flutter-tech-plan.md) | 日记模块：技术方案（里程碑/裁定/验收）与思源 3.8.6 金标准格式；动日记代码前必读 |
-| [docs/ecp/](docs/ecp/ecp-design.md) | ECP 应用控制协议改造方案与命令手册（待开发，新 agent 接手 P1 的施工依据） |
+| [docs/ecp/](docs/ecp/ecp-design.md) | ECP 应用控制协议现行设计与命令手册（P1–P4 已交付 v0.13.0；改协议/加命令前必读，手册与 manifest 有双向测试） |
 | [docs/glossary.md](docs/glossary.md) | 讨论界面、写注释、写提交信息时统一称呼 |
 | [docs/governance.md](docs/governance.md) | **觉得规则碍事/过时/缺失时读**：规则如何变更（快通道 vs 提案）、谁有权改、多久复审 |
 | [docs/maintainer-charter.md](docs/maintainer-charter.md) | **主助手常设职责**：何时主动审查代码、如何登记问题、如何定期维护 docs（版本节点触发） |
-| docs/component-reports/ | 各组件的阶段开发总结归档（如智能导航线 v0.4.10 总结）；了解模块演进史时查阅，归档内容只增不改 |
+| [docs/archive/](docs/archive/README.md) | 阶段性审查与施工流水归档（v0.5.0 全量审查、ECP P1–P4 交接/复审原文）；了解决策来由时查阅，归档内容只增不改 |
 | docs/proposals/ + docs/templates/ | 规则变更提案（RCR）的登记册与模板 |
 
 ## 工作要求
@@ -79,9 +61,11 @@
      所有分支可同步远程；推送本身仍须用户授权；
    - 纯文档改动（主维护助手）跟随当前最新分支 `docs:` 提交、不升版本号；
    - 任何分支都不删除（本地和远程都不删），除非用户明确要求。
-6. **产品决策问用户**：目标设备形态、页面懒加载策略、持久化时点、
-   快捷弧数量、语言等开放问题见审查报告 Q2~Q9（Q1 按压色已决：圆点按下
-   tone2、滑块按下无变化），禁止替用户做产品决定。
+6. **产品决策问用户**：页面懒加载策略、持久化时点、未读计数、语言等
+   开放问题见审查报告 §C（Q3~Q8）；已决项勿再提问——Q1 按压色
+   （圆点按下 tone2、滑块按下无变化）、Q2 设备形态（**手机锁竖屏、
+   平板不锁方向；大屏适配暂不做，2026-10-16 裁定**）、Q7 快捷弧数量、
+   Q10 ECP 威胁模型。禁止替用户做产品决定。
 7. **文件卫生**：按职责分层归位（services 不得依赖 UI 层），不把文件放得到处都是；
    优先编辑已有文件；同一常量只定义一次；不在组件里散落裸色值 / 魔数。
 8. **发布相关改动**：调试脚手架不得进入 release 包；搜索/快捷弧打开时系统返回键

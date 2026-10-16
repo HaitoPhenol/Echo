@@ -1,13 +1,12 @@
 # Echo 当前实现现状
 
-> 本文件是 **v0.9.0+34（main，tag `v0.9.0`，2026-10-11）+
-> 分支 `feat/ecp-p1-core`（ECP P1，2026-10-13）时点的现状快照**，
-> 记录"今天代码实际是怎么实现的"。ECP 条目为分支新增，合并后并入主线基线。
+> 本文件是 **v0.13.0+38（main，tag `v0.13.0`，2026-10-15，
+> ECP P1–P4 全部交付）时点的现状快照**，记录"今天代码实际是怎么实现的"。
 > 这些不是规定——工具与手段可以换，
 > 但更换时必须满足 [engineering_standards.md](engineering_standards.md)
 > 的原则、通过测试与真机验收，并更新本文件。历史 patch 级变更叙述不进
 > 本文件（查 git 历史与
-> [component-reports/](component-reports/) 归档）。
+> [archive/](archive/) 归档）。
 >
 > 相关：[架构与接口说明](architecture.md) ·
 > [工程规范](engineering_standards.md) · [规则演进机制](governance.md) ·
@@ -34,8 +33,9 @@
 - lint：flutter_lints 默认集；**无 CI**（门禁靠本地 `flutter analyze` +
   `flutter test` 自觉执行）。
 - **发布配置**：release 尚用 debug 签名，无独立 keystore / R8；
-  无全局崩溃钩子（FlutterError.onError / runZonedGuarded）；
-  release 包人工检查尚未执行。
+  无全局崩溃钩子（FlutterError.onError / runZonedGuarded）。
+  release 包人工裁剪检查已随 P3/P4 发布常态化（dex 字符串扫描 +
+  slash 补全计数 + 全新装走查，见问题清单 G8）。
 
 ## 页面与导航
 
@@ -99,33 +99,56 @@
 - debug 包空库灌种子两篇（上月 28 日 + 昨天，今天不种）；
   release 空仓。测试可注入仓储/时钟。
 
-## ECP 控制面（P1 已落地，分支 feat/ecp-p1-core）
+## ECP 控制面（P1–P4 已全部交付，v0.13.0）
 
-设计 [ecp/ecp-design.md](ecp/ecp-design.md)、30 条命令契约手册
+设计 [ecp/ecp-design.md](ecp/ecp-design.md)、命令契约手册
 [ecp/ecp-commands.md](ecp/ecp-commands.md)；代码在 `lib/src/control/`。
+四期施工/复审流水归档于 [archive/ecp-p1-p4-review-log.md](archive/ecp-p1-p4-review-log.md)。
 
-- **协议**：信封（ok/cmd/ms/result|error/nonce）、错误码→进程退出码
-  映射、`CommandSpec` 冻结动词表、`ControlBus`（注册重名检查、
-  参数解析、级别/确认裁决、≥2 级审计、slow 60s 预算标记）。
+- **协议**：信封（ok/cmd/ms/result|error/nonce，P4 起 slow 命令首包
+  可带 `async/jobId`）、错误码→进程退出码映射、`CommandSpec` 冻结
+  动词表、`ControlBus`（注册重名检查、参数解析、级别/确认裁决、
+  ≥2 级审计、slow 60s 预算标记）。
 - **鉴权**：PIN 只存 PBKDF2 加盐哈希（`echo_control/pin.json`）；
-  通道起始级别 mcp=0/adb=2；adb 解锁升 3 级，mcp 永不解锁；
-  连续 5 次错误冷却（30/60/120/240s/5min 退避）；App paused
-  （息屏/切后台）立即销毁全部会话；审计不记 PIN 与正文。
-- **P1 命令域**：`sys.*`（ping/help/info/status/audit + debug-only
-  clock.set）、`auth.*`（status/unlock/lock/set-pin）、`nav.*`
-  （page/goto，稳定 id `console|chat|notes|me`）、`diary.*`
-  （list/get/ensure/prune/reset/export；reset 仅 debug，
-  export 的 --notebook 可选缺省「日记」）。
+  通道起始级别 mcp=0/adb=2、slash=2，adb/slash 解锁升 3 级，
+  mcp 永不解锁（上限 1 只读）；连续 5 次错误冷却
+  （30/60/120/240s/5min 退避）；App paused（息屏/切后台）立即
+  销毁全部会话；审计不记 PIN 与正文（正文命令标 auditRedact，
+  记 `<redacted:N>`）。
+- **命令域（35 条；release 物理裁掉 5 条 debugOnly 后 30 条）**：
+  sys 9（ping/help/info/status/audit/events/job.get +
+  debugOnly clock.set/delay）、auth 4、nav 2、diary 7
+  （list/get/ensure/prune/export + debugOnly reset/seed）、
+  chat 6（list/get/open/send/mark-read + debugOnly seed）、
+  console 2、badge 5。
+- **slash 指令台（P3）**：搜索栏 `/` 进入，三段补全（命名空间→
+  动词→参数）、结果卡片、PIN/确认卡、命令历史；核心
+  `control/slash/ControlConsoleCore` 与入口 Widget 解耦，终端页
+  是未来第二个消费者（接缝未建页）。
+- **事件流（P4）**：`events/` 内存环（256、seq 单调）+
+  `sys.events` 游标/长轮询（wait≤8s，事件即唤醒）；五种冻结
+  事件 audit.entry/command.finished（owner 级）、
+  diary.export.completed（user 级）、chat.incoming（owner 级）、
+  nav.changed（guest 级）；services 层零 control 反向依赖，
+  ChatStore 自有 incoming Stream 经 `ControlEventBridge` 适配转发。
+- **作业化执行（P4，根治接收器 9s 预算）**：slow 命令仅 adb 通道
+  立即回 async running，后台跑（`jobs/` 环 32、跨通道隔离），
+  `sys.job.get` 轮询终态；轮询走普通广播，**Kotlin 零改动**；
+  slash 通道行为不变（进程内直等终态）。
 - **同路装配**：`ControlBootstrap.init()` 在 main() 内 await
-  （建 echo_control 目录、注册常驻服务）；导航屏 initState 注册
+  （建 echo_control 目录、注册常驻服务）；导航屏注册
   NavPhysicsController，日记页 bootstrap 注册与 UI 同源的
   clock/仓储/composer/导出服务；未注册时命令回 CONFLICT。
 - **工作站入口**：`scripts/echo-cmd <命令>`（冷启动轮询 ping、
-  kebab→camel 参数、stdin 收 PIN 不进历史、退出码对齐手册）。
-- **门禁**：`test/control/` 31 用例（含 manifest↔手册双向一致性）；
-  MIX 2S 真机逐命令验收通过：日界 03:59/04:00、PIN 首装/解锁/
-  冷却/后台即焚、prune dry-run、导出落 .sy.zip（1807B 结构正确）、
-  release APK 清单无 ECP 组件。
+  kebab→camel 参数、stdin 收 PIN 不进历史、退出码对齐手册；
+  P4 起 slow 命令默认自动轮询终态最长 65s，`--no-wait` 只取
+  running）。脚本级回归 `scripts/tests/echo_cmd_test.sh`
+  （fake-adb，15 断言，无需设备）。
+- **门禁**：`test/control/` 协议/鉴权/四域/slash/事件/作业/播种/
+  MCP 假通道边界 + manifest↔手册双向一致性；MIX 2S 每期真机
+  验收（P4：delay 12s 首包 11ms、导出落盘、事件提前唤醒、
+  seed→prune/seed→send 端到端、slash 回归），release dex 六串
+  全 0、补全计数 sys7/diary5/chat5。
 
 ## 状态与服务
 
@@ -142,38 +165,43 @@
 ## 平台与适配
 
 - 主验证设备：Android 真机（MIX 2S，1080×2160/440dpi，MIUI）；
-  手机竖屏单手握持设计，平板/折叠/横屏未适配（待 Q2 决策）。
+  **形态裁定（Q2，2026-10-16）：手机锁竖屏、平板不锁方向**。
+  锁向尚未落地（待发话：MainActivity 按 smallestScreenWidthDp≥600
+  区分 requestedOrientation，见问题清单 Q2）；平板/折叠横屏与大屏
+  UI 适配暂不做——当前无 LayoutBuilder/断点/宽度钳制，大屏上是
+  "被拉宽的竖版"，不承诺体验。
 - 文案仅中文硬编码，无 l10n；无 Semantics 标注。
 - Impeller 注记：MIX 2S + Flutter 3.47.6 横向滚筒非当前槽位首帧偶发
   白屏，息屏亮屏重建 surface 恢复，与业务代码无关。
 
 ## 测试现状
 
-- **232 个测试，22 个文件**：
-  - `test/widget_test.dart`（导航/浮层集成 12）、
+- **441 个 Dart 测试，42 个文件** + echo-cmd 脚本级回归 15 断言：
+  - `test/widget_test.dart`（导航/浮层集成）、
     `navigation/`（几何纯函数）、`pages/`（聊天交互）；
   - `test/diary/`：sy 格式层金标准、ID、序列化往返、zip 打包、
     时钟边界、内存/持久仓储、成稿器、编辑器命令/控制器、
     导出服务、年日月浏览 widget、M5 三态/分享流/崩溃恢复；
-  - `test/control/`（33）：总线注册/解析/审计脱敏与**过鉴权后
+  - `test/control/`：总线注册/解析/审计脱敏与**过鉴权后
     失败/超时入审计（E3）**、鉴权矩阵
-    （通道×级别/退避/前后台即焚/PinStore 规则）、四域命令、
-    manifest↔命令手册一致性；
+    （通道×级别/退避/前后台即焚/PinStore 规则）、七域命令、
+    slash 解析/补全/控制台核心、事件环/长轮询/五事件集成、
+    作业轮询/跨通道隔离、播种端到端、MCP 假通道只读边界、
+    manifest↔命令手册双向一致性；
   - 另有 testDebug JVM 单测 3 条（接收器 0/2000 uid 白名单，E1）。
 - 动画用例逐帧 pump、不用 pumpAndSettle（常驻循环动画）；
   持久仓储测试用 FFI 工厂 + 临时目录。
 - 真机回归：M1 格式包思源 3.8.6 导入通过；M2–M5 每个里程碑
-  MIX 2S 真机验收（见 tech-plan 里程碑表）。
-- 已补：ECP P1 的 prune dry-run/03:59-04:00 日界命令化回归
-  已在 MIX 2S 真机通过（2026-10-13）。
-- 待补：ECP P2（chat/console/badge 域 + slash/MCP 通道）、
-  M6 ≥2 台真机连写 7 天。
+  MIX 2S 真机验收（见 tech-plan 里程碑表）；ECP P1–P4 每期
+  debug+release 双包真机终审（见
+  [archive/ecp-p1-p4-review-log.md](archive/ecp-p1-p4-review-log.md)）。
+- 待补：M6 ≥2 台真机连写 7 天。
 
 ## 已知问题与待决策
 
 见 [code_review_report.md](code_review_report.md)：日记线 D1–D7
 （真实数据源、空稿标注回归、Slash 菜单、mood 桥接等）、
-通用工程 G1–G13、待拍板 Q2/Q3/Q4/Q5/Q6/Q8。
+通用工程 G1–G13、待拍板 Q3/Q4/Q5/Q6/Q8（Q2 设备形态已决）。
 
 **本文件的维护规则**：实现手段变化并合并后，立即更新对应条目并在提交
 信息中说明；问题修复后从问题清单移除，不要让本文件描述已经不存在的现状。

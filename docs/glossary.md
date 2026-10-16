@@ -170,8 +170,11 @@
 | **年行导出** | 年列表每行右侧入口：该年全部 draft 打成一个「日记」笔记本 .sy.zip，经系统分享送出，返回后人工确认才置 exported | `export/diary_export_service.dart`、`year_list_page.dart` |
 | **块标浮层** | 编辑器点块左侧块标弹出的工具浮层：转正文/H1–H3、13 色底色、无色 | `editor/block_widget.dart` 等 |
 | **金标准** | 思源 3.8.6 实采的 .sy/.sy.zip 格式对照基准（字段、ID、CSS 变量、conf/sort），格式层测试锁定 | [diary/sy-format-golden-3.8.6.md](diary/sy-format-golden-3.8.6.md) |
-| **ECP（控制面）** | 应用控制协议：命令经总线裁决（级别/确认/审计）后调 UI 同源 API。P1 已落地协议核心 + sys/auth/nav/diary 四域 + adb 通道（仅 debug，`scripts/echo-cmd` 入口）；slash/MCP 通道与 chat/console/badge 域为 P2 | [ecp/ecp-design.md](ecp/ecp-design.md)、[ecp/ecp-commands.md](ecp/ecp-commands.md) |
-| **通道级别** | 命令最小权限 0..3（guest/owner/user/admin）；会话按通道独立：mcp 起始 0 且永不解锁，adb 起始 2、PIN 解锁后升 3；息屏/切后台立即焚会话 | `control/auth/auth_session.dart` |
+| **ECP（控制面）** | 应用控制协议（P1–P4 已交付 v0.13.0）：命令经总线裁决（级别/确认/审计）后调 UI 同源 API。七域 35 条（release 30）；两通道在用——adb（仅 debug，`scripts/echo-cmd` 入口，slow 命令作业化轮询）与 slash 指令台（搜索栏 `/`）；MCP 仅有只读边界假通道，真实传输未立项 | [ecp/ecp-design.md](ecp/ecp-design.md)、[ecp/ecp-commands.md](ecp/ecp-commands.md) |
+| **slash 指令台** | 全局搜索栏输入 `/` 进入的命令模式：三段补全（命名空间→动词→参数）、结果卡片、PIN/确认卡；核心 `ControlConsoleCore` 与搜索栏 Widget 解耦，终端页是未来第二个消费者 | `control/slash/` |
+| **作业化执行** | adb 通道 slow 命令（diary.export、sys.delay）立即回 `async:true` running 信封（避开接收器 9s 预算），后台继续执行，用 `sys.job.get --id` 轮询终态；echo-cmd 默认自动等待，`--no-wait` 只取 running | `control/jobs/job_store.dart` |
+| **事件流** | 256 条内存环 + 单调 seq；`sys.events` 游标/长轮询（≤8s，事件即唤醒）。五冻结事件：audit.entry、command.finished、diary.export.completed、chat.incoming、nav.changed | `control/events/` |
+| **通道级别** | 命令最小权限 0..3（guest/owner/user/admin）；会话按通道独立：mcp 起始 0 且永不解锁（上限 1 只读），adb/slash 起始 2、PIN 解锁后升 3；息屏/切后台立即焚会话 | `control/auth/auth_session.dart` |
 | **稳定页 id** | ECP 导航寻址名，与显示文案解耦：console/chat/notes/me；UI 改名不动协议 | `navigation/nav_destination_specs.dart` |
 
 ---

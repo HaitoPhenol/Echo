@@ -1,7 +1,8 @@
-# ECP 命令手册（首批）
+# ECP 命令手册
 
 配套设计文档：[ecp-design.md](./ecp-design.md)
-版本基线：ECP v0.1（随 P1/P2 落地；"起始"列标注引入阶段）
+版本基线：P1–P4 已全部交付（v0.13.0）；每条命令的"起始"列标注引入阶段，
+历史施工/复审记录见 [../archive/ecp-p1-p4-review-log.md](../archive/ecp-p1-p4-review-log.md)
 
 本手册是命令契约。所有命令在代码 manifest 中声明，测试会校验手册与
 注册清单一致；名称一经发布即冻结，改名只加别名。
