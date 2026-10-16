@@ -230,7 +230,9 @@ AGENT.md                                   # 给开发 agent 的工作提示（�
 
 Android 端走原生 `Vibrator` 服务（通道 `echo/haptics`，见
 `android/app/src/main/kotlin/.../MainActivity.kt`），不受系统
-「触感反馈」开关限制；iOS 走系统触感生成器。
+「触感反馈」开关限制；iOS 走系统触感生成器。通道调用统一
+`catchError` **静默降级**（调用方均为 fire-and-forget），通道异常
+不成为未捕获异步错误、也不向调用方抛出（规范 1.11）。
 
 ### 3.5 导航物理 `NavPhysicsController`
 
@@ -394,7 +396,10 @@ tone2、快捷弧选中按钮 = tone4**；**拇指滑块是特例**：使用不�
 | 抽屉 | 宽 `min(78vw, 340)`；打开时把手停靠在 `抽屉宽 + 14` |
 
 手势全部在 `SmartNavScreen` 的根指针路由中按热区分发（
-`_handleRootPointerDown` / 把手 / AI 两组 move/up）：
+`_handleRootPointerDown` / 把手 / AI 两组 move/up）；**单指独占**：
+已有手势在途（`_gesture`/`_handleGesture`/`_aiHold` 任一非空）时，
+`_handleRootPointerDown` 忽略新 PointerDown——第二指不会劫持前指，
+也不会出现把手与导航条两套记录并驱的「穿越手势」：
 
 - **点按把手条** → 挂载 `HandleMenu`：由 10px 小条用 340ms
   Cubic(0.3,1.2,.4,1) 向上生长成胶囊，三个圆形按钮白圆底 + inverse

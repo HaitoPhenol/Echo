@@ -3,14 +3,18 @@
 > **本文件是当前版本的开放问题权威清单**（不是规则）：缺陷、结构债务、
 > 待决策事项。问题修复后立即移除或标注解决版本；历史论证见归档报告。
 >
-> **基线**：v0.13.0+38（main，tag `v0.13.0`，2026-10-15，
-> ECP P1–P4 全部交付）。条目现状随每次 MINOR 发布顺带复核；
-> 标注「待复核」的条目未做完整真机回归。
+> **基线**：v0.13.1+39（main，2026-10-16；patch tag 留本地）。
+> 条目现状随每次 MINOR 发布顺带复核；标注「待复核」的条目未做完整
+> 真机回归。
 >
-> **2026-10-16 复核**：结构债务 G1/G2/G3/G5 已在分支
+> **2026-10-16 结构债务轮**：G1/G2/G3/G5 已在分支
 > `refactor/struct-debt-a` 解决（行为保持重构，441 测试全绿、analyze
-> 零问题，经独立子智能体复核），随本轮合入 main；G4 仍挂起，待 Q3
-> 拍板。
+> 零问题，经独立子智能体复核），已合入 main；G4 仍挂起，待 Q3 拍板。
+>
+> **2026-10-16 优化轮**：D2/G13/G11/G12/G6/G8 与 Q2 落地已在分支
+> `feat/optimization-a` 处理（445 测试全绿、analyze 零问题，经独立子
+> 智能体复审 + MIX 2S 真机冒烟），随本轮合入 main；G4（懒加载）与
+> G7（CI）仍挂起。
 >
 > 历史审查与施工流水（只读归档）：
 > - [archive/codebase-review-v0.5.0-2026-10-06.md](archive/codebase-review-v0.5.0-2026-10-06.md)
@@ -44,13 +48,13 @@
 | G3 | **分层倒置：services 依赖 navigation** | **已解决**：`NavDestinationSearchProvider` 迁至 `navigation/nav_destination.dart`（与目的地模型同址），`services/search_service.dart` 不再 import navigation，1.4 铁律恢复；navigation→services 为允许的向内依赖 |
 | G4 | **页面全部常驻构建**（旧 P2-08） | 仍如此（Row 一次性 build，日记页 State 常驻已被真机验证依赖此特性——自动成稿/防抖 flush 挂在常驻 State）。窗口化懒加载前必须先迁移这些生命周期假设，见 Q3 |
 | G5 | **锚点按页序号 int 索引**（旧 P2-10） | **已解决**：`NavBadgeService` 改按 `String destinationId` 索引（内存实现用 `Map`），锚点身份键同步用稳定 id；未知 id 读回 `normal`、写静默忽略；对外 ECP `badge` 命令入参（名/下标）与出参（index+name+level）契约不变 |
-| G6 | **无 Semantics 无障碍**（旧 P2-13） | 全库仅一处 `ExcludeSemantics`；TalkBack 不可用。发版前做最小集 |
-| G7 | **无 CI**（旧 P2-14 下半） | 测试已从 24 个增至 **441 个**（日记 + ECP 协议/事件/作业覆盖充分），另有 echo-cmd 脚本级回归 15 断言；但仍无 GitHub Actions，门禁全靠本地自觉 |
-| G8 | **release 加固缺失**（旧 P2-15） | release 仍用 debug 签名、无独立 keystore/R8、无 FlutterError.onError / runZonedGuarded 崩溃钩子。**release 包人工检查已常态化**：P3 R3、P4 G5 各做过全新装走查 + dex 裁剪字符串扫描 + slash 补全计数，未发现 ECP 调试面泄漏 |
+| G6 | **无 Semantics 无障碍**（旧 P2-13） | **已解决（最小集）**（分支 `feat/optimization-a`，2026-10-16）：底栏导航条 `label/value` + `onIncrease/onDecrease` 翻页动作；两端圆点/把手/AI/快捷弧/会话行及左滑两按钮加按钮语义（会话行未读追加「未读」）；机能风五个纯装饰层 `ExcludeSemantics`。**挂账**：圆点/把手/AI/快捷弧仅只读 label（`button:true` 却无激活动作，读屏播报为按钮但不可点），激活动作需把 State 回调下沉进各 widget，建议单独安排 |
+| G7 | **无 CI**（旧 P2-14 下半） | 测试已从 24 个增至 **445 个**（日记 + ECP 协议/事件/作业覆盖充分），另有 echo-cmd 脚本级回归 15 断言；但仍无 GitHub Actions，门禁全靠本地自觉 |
+| G8 | **release 加固缺失**（旧 P2-15） | **部分解决**（分支 `feat/optimization-a`，2026-10-16）：已开 R8（`isMinifyEnabled`/`isShrinkResources` + 保底 `proguard-rules.pro`；release 出包 53.3MB、无 missing class，装机冒烟通过）并接入崩溃钩子（`runZonedGuarded` + `FlutterError.onError`，无远端上报后端仅 `debugPrint`）。**仍挂**：独立 keystore（用户决策项）。release 包人工裁剪检查已随 P3/P4 发布常态化（dex 字符串扫描 + slash 补全计数 + 全新装走查，未发现 ECP 调试面泄漏） |
 | G9 | **搜索仍为同步接口、无防抖、无删除入口**（旧 P2-12） | 未变；接真实异步数据源时一并演进 |
 | G10 | **墙钟 Timer 散落**（旧 P2-06） | current_state「时间源」有完整清单；帧/墙双轨并存是已知取舍 |
-| G11 | **多指触控竞态**（旧 P1-02，待复核） | 第二指劫持/穿越手势的风险自 v0.5.0 后未复核，导航手势代码区域未大改，假定仍在 |
-| G12 | **涟漪节点无 Key**（旧 P1-04，待复核） | 连发两次继承错误动画状态；未复核 |
+| G11 | **多指触控竞态**（旧 P1-02，待复核） | **已解决**（分支 `feat/optimization-a`，2026-10-16）：复核确认回归成立——`_handleRootPointerDown` 原无「已有手势在途」检查，第二指会覆盖 `_gesture`（劫持前指）或把手 `_handleGesture` 与导航条 `_gesture` 同帧并驱（穿越手势）；按下入口最前面加单指独占守卫（`_gesture`/`_handleGesture`/`_aiHold` 任一非空即忽略新指针），补多指回归用例（该项先用例在无守卫时失败） |
+| G12 | **涟漪节点无 Key**（旧 P1-04，待复核） | **已解决**（分支 `feat/optimization-a`，2026-10-16）：复核确认——涟漪可同屏并存，无 key 时框架按位置配对，先结束者被移除后存留项继承其已完成的动画 State（冻结在透明、`onEnded` 不再触发、永不移除）；`RippleSpec` 加自增稳定 id，节点挂 `ValueKey<int>(spec.id)`，补并发双涟漪回归用例 |
 | G13 | **触感 invokeMethod 无 catchError**（旧 P1-06，待复核） | **已解决**（分支 `feat/optimization-a`，2026-10-16）：`Haptics` 收口到 `_invoke()`，Android 通道调用统一 `.catchError` 静默降级（规范 1.11，调用方均为 fire-and-forget，此前通道异常会成为未捕获异步错误）；新增 `test/services/haptics_test.dart` mock 通道抛错验证不逃逸 | （已修） |
 
 旧报告中的 P1-05（单页 NaN，当前固定 4 页且短期不变）、P2-03/05/07/09/11
@@ -73,13 +77,14 @@
   ④ 审计流水 sqflite 落盘（现内存环，§6）。
 
 已决：Q1 按压色（v0.4.9/10 拍板）、
-**Q2 目标设备形态（2026-10-16 拍板）**：**手机锁竖屏、平板不锁方向**；
-平板/折叠的横屏与大屏 UI 适配暂不做（维持"被拉宽的竖版"，不承诺
-体验）。落地锁向（尚未实施，待发话）：Manifest 无法按设备类型区分
-screenOrientation，需在 MainActivity 按
+**Q2 目标设备形态（2026-10-16 拍板，同日落地）**：**手机锁竖屏、
+平板不锁方向**；平板/折叠的横屏与大屏 UI 适配暂不做（维持"被拉宽的
+竖版"，不承诺体验）。落地方式：Manifest 无法按设备类型区分
+screenOrientation，改在 `MainActivity.onCreate` 按
 `smallestScreenWidthDp >= 600` 判定——手机 `requestedOrientation =
-SCREEN_ORIENTATION_PORTRAIT`、平板 `UNSPECIFIED`；约 10 行 Kotlin，
-不涉及 Dart/布局。
+SCREEN_ORIENTATION_PORTRAIT`、平板 `UNSPECIFIED`（分支
+`feat/optimization-a`；MIX 2S 真机取证 `mCurrentAppOrientation=
+SCREEN_ORIENTATION_PORTRAIT`、请求横屏不生效）。
 Q7 快捷弧数量（v0.5.4 起数量驱动，
 不再写死 3）、Q9 发布节奏（已走功能优先路线至 v0.13）、
 **Q10 权限模型威胁对象（2026-10-13 拍板）**：不防"临时持机者"，

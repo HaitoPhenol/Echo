@@ -32,8 +32,10 @@
   application name + INTERNET 权限）。
 - lint：flutter_lints 默认集；**无 CI**（门禁靠本地 `flutter analyze` +
   `flutter test` 自觉执行）。
-- **发布配置**：release 尚用 debug 签名，无独立 keystore / R8；
-  无全局崩溃钩子（FlutterError.onError / runZonedGuarded）。
+- **发布配置**：release 用 debug 签名（独立 keystore 仍待定）；
+  **已开 R8**（`isMinifyEnabled`/`isShrinkResources` + 保底
+  `proguard-rules.pro`）；**已接全局崩溃钩子**（`runZonedGuarded` +
+  `FlutterError.onError`，保留默认输出并 `debugPrint` 标记，无远端上报后端）。
   release 包人工裁剪检查已随 P3/P4 发布常态化（dex 字符串扫描 +
   slash 补全计数 + 全新装走查，见问题清单 G8）。
 
@@ -170,19 +172,24 @@
 
 - 主验证设备：Android 真机（MIX 2S，1080×2160/440dpi，MIUI）；
   **形态裁定（Q2，2026-10-16）：手机锁竖屏、平板不锁方向**。
-  锁向尚未落地（待发话：MainActivity 按 smallestScreenWidthDp≥600
-  区分 requestedOrientation，见问题清单 Q2）；平板/折叠横屏与大屏
-  UI 适配暂不做——当前无 LayoutBuilder/断点/宽度钳制，大屏上是
+  锁向已落地（`MainActivity.onCreate` 按 `smallestScreenWidthDp≥600`
+  区分 `requestedOrientation`：手机 PORTRAIT、平板 UNSPECIFIED；MIX 2S
+  真机取证 `mCurrentAppOrientation=SCREEN_ORIENTATION_PORTRAIT`）；平板/折叠
+  横屏与大屏 UI 适配暂不做——当前无 LayoutBuilder/断点/宽度钳制，大屏上是
   "被拉宽的竖版"，不承诺体验。
-- 文案仅中文硬编码，无 l10n；无 Semantics 标注。
+- 文案仅中文硬编码，无 l10n；**无障碍已做最小集 Semantics**（底栏导航条
+  label/value + `onIncrease/onDecrease` 翻页动作，两端圆点/把手/AI/快捷弧/
+  会话行及左滑两按钮加按钮语义，机能风五个纯装饰层 `ExcludeSemantics`；
+  圆点/把手/AI/快捷弧的激活动作留待后续按需接线）。
 - Impeller 注记：MIX 2S + Flutter 3.47.6 横向滚筒非当前槽位首帧偶发
   白屏，息屏亮屏重建 surface 恢复，与业务代码无关。
 
 ## 测试现状
 
-- **441 个 Dart 测试，42 个文件** + echo-cmd 脚本级回归 15 断言：
+- **445 个 Dart 测试，43 个文件** + echo-cmd 脚本级回归 15 断言：
   - `test/widget_test.dart`（导航/浮层集成）、
-    `navigation/`（几何纯函数）、`pages/`（聊天交互）；
+    `navigation/`（几何纯函数）、`pages/`（聊天交互）、
+    `services/`（触感通道异常降级等）；
   - `test/diary/`：sy 格式层金标准、ID、序列化往返、zip 打包、
     时钟边界、内存/持久仓储、成稿器、编辑器命令/控制器、
     导出服务、年日月浏览 widget、M5 三态/分享流/崩溃恢复；
