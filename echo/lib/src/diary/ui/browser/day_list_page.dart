@@ -127,9 +127,14 @@ class _DayListPageState extends State<DayListPage> {
                 head: isToday ? '今天' : '${date.day}日',
                 highlight: isToday,
                 dim: archived,
-                // 归档稿保留的是归档前预览快照；空预览退化为星期小字，
-                // 不显示「空稿」（已导出的日记不存在空稿语义）。
-                sub: summary.preview.isNotEmpty ? summary.preview : weekday,
+                // 草稿空稿（当天自动成稿后尚未写字）保留「（空稿）」标注；
+                // exported/archived 保留的是操作前预览快照，正常都有正文，
+                // 空预览退化为星期小字（导出/归档稿没有"还能写"的空稿语义）。
+                sub: summary.preview.isNotEmpty
+                    ? summary.preview
+                    : summary.state == DiaryDocState.draft
+                        ? '$weekday（空稿）'
+                        : weekday,
                 trailing: switch (summary.state) {
                   DiaryDocState.archived => const _StateBadge(
                     text: '已归档',

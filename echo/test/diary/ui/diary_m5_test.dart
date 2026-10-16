@@ -218,6 +218,37 @@ void main() {
       expect(find.widgetWithText(TextButton, '归档'), findsOneWidget);
     });
 
+    testWidgets('draft 空稿行显「（空稿）」；exported 空预览退化星期小字', (
+      tester,
+    ) async {
+      // M5 反范式改造曾把空预览一律退化为星期小字，draft 空稿被误伤
+      // （D2 回归）：今天的空草稿按裁定保留且可见，应恢复标注。
+      final clock = fixedClock();
+      final repo = emptyRepo();
+      addTearDown(repo.dispose);
+      final composer = await composerFor(repo);
+      // 13 日导出且未写字（exported 空预览）；15 日由 bootstrap 自动成稿。
+      await composer.ensureDay(DateTime(2026, 6, 13), repo);
+      await repo.markExported([DateTime(2026, 6, 13)], exportedAt: fixedNow);
+
+      await tester.pumpWidget(app(clock: clock, repository: repo));
+      await tester.pumpAndSettle();
+      await openMonth(tester);
+
+      // 2026-06-15 为周一：draft 空稿显「周一（空稿）」。
+      final todayRow = tester.widget<DiaryListRow>(
+        find.widgetWithText(DiaryListRow, '今天'),
+      );
+      expect(todayRow.sub, '周一（空稿）');
+      expect(find.text('周一（空稿）'), findsOneWidget);
+
+      // 2026-06-13 为周六：exported 空预览不显「（空稿）」。
+      final exportedRow = tester.widget<DiaryListRow>(
+        find.widgetWithText(DiaryListRow, '13日'),
+      );
+      expect(exportedRow.sub, '周六');
+    });
+
     testWidgets('归档确认对话框：取消留在只读页；确认后回列表显已归档', (tester) async {
       final clock = fixedClock();
       final repo = emptyRepo();
