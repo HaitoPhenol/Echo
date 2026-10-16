@@ -70,7 +70,14 @@ class AiHold {
 
 /// 一个涟漪的位置描述。
 class RippleSpec {
-  RippleSpec({required this.center});
+  RippleSpec({required this.center}) : id = _nextId++;
+
+  /// 稳定身份（自增）。涟漪可同屏并存多个，先结束者从列表移除时
+  /// 挂载节点必须按此 id 配对（规范 1.6）：无 key 时框架按位置配对，
+  /// 存留涟漪会继承被移除项的动画 State（已完成），冻结且
+  /// onEnded 不再触发、永不移除。
+  final int id;
+  static int _nextId = 0;
 
   /// 涟漪圆心。
   final Offset center;

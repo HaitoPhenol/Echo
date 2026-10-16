@@ -10,6 +10,7 @@ import 'package:echo/src/navigation/widgets/handle_menu.dart';
 import 'package:echo/src/navigation/widgets/mechanical_page_drum.dart';
 import 'package:echo/src/navigation/widgets/quick_action_arc.dart';
 import 'package:echo/src/navigation/widgets/side_drawer.dart';
+import 'package:echo/src/navigation/widgets/trigger_ripple.dart';
 import 'package:echo/src/diary/ui/diary_page.dart';
 import 'package:echo/src/pages/chat_page.dart';
 import 'package:echo/src/pages/template_page.dart';
@@ -622,6 +623,69 @@ void main() {
       closed = find.byType(AiDialog).evaluate().isEmpty;
     }
     expect(closed, isTrue, reason: '点遮罩应收起 AI 对话框');
+  });
+
+  testWidgets('连发两次快捷操作：并存涟漪各自完成并移除，存留项不冻结（G12）', (tester) async {
+    await tester.pumpWidget(EchoApp(diaryRepository: diaryRepo));
+    await tester.pump();
+
+    // 上甩 → 移到指定弧按钮上 → 松手触发（涟漪 + 弧退场 + 「开发中」SnackBar）。
+    Future<void> fireOnce(IconData icon) async {
+      final g = await tester.createGesture();
+      await g.down(const Offset(600, 560));
+      await tester.pump();
+      await g.moveTo(const Offset(600, 528));
+      await tester.pump();
+      expect(find.byType(QuickActionArc), findsOneWidget);
+      final center = tester.getCenter(
+        find.descendant(of: find.byType(QuickActionArc), matching: find.byIcon(icon)),
+      );
+      await g.moveTo(center);
+      await tester.pump();
+      await g.up();
+      await tester.pump();
+    }
+
+    // 第一次触发 → 涟漪 A（650ms）。
+    await fireOnce(Icons.apps);
+    expect(find.byType(TriggerRipple), findsOneWidget);
+
+    // SnackBar（1s）会盖住导航条热区，测试里提前退场（等价于自然超时），
+    // 再等弧退场（360ms）完成，保证第二次手势开的是新弧。
+    ScaffoldMessenger.of(
+      tester.element(find.byType(Scaffold).first),
+    ).hideCurrentSnackBar();
+    await pumpFramesMs(tester, 380);
+    expect(find.byType(QuickActionArc), findsNothing);
+
+    // 第二次触发 → 涟漪 B 与 A 并存。
+    await fireOnce(Icons.add);
+    expect(find.byType(TriggerRipple), findsNWidgets(2));
+
+    // A 到点结束后被移除：B 仍在播（透明度 > 0）。无 key 时框架按
+    // 位置配对，B 会继承 A 已完成的动画 State：冻结在透明、
+    // onEnded 不再触发、永不移除——正是本用例要锁死的回归。
+    var onlySurvivor = false;
+    for (var i = 0; i < 50 && !onlySurvivor; i++) {
+      await tester.pump(const Duration(milliseconds: 16));
+      onlySurvivor = find.byType(TriggerRipple).evaluate().length == 1;
+    }
+    expect(onlySurvivor, isTrue, reason: 'A 结束移除后应只剩 B');
+    final opacity = tester.widget<FadeTransition>(
+      find.descendant(
+        of: find.byType(TriggerRipple),
+        matching: find.byType(FadeTransition),
+      ),
+    ).opacity.value;
+    expect(opacity, greaterThan(0.2), reason: 'B 应仍在动画中而非冻结');
+
+    // B 到点也正常结束并移除，树中无残留（冻结泄漏则永远等不到）。
+    var cleared = false;
+    for (var i = 0; i < 50 && !cleared; i++) {
+      await tester.pump(const Duration(milliseconds: 16));
+      cleared = find.byType(TriggerRipple).evaluate().isEmpty;
+    }
+    expect(cleared, isTrue, reason: 'B 结束后应移除，无残留');
   });
 
   testWidgets('把手右拖：抽屉跟手滑出、松手吸附；返回键关闭，把手回归', (tester) async {

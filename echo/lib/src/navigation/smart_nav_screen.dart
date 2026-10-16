@@ -1183,8 +1183,11 @@ class _SmartNavScreenState extends State<SmartNavScreen>
         ),
 
       // -------- 触发涟漪 --------
+      // 可同屏并存：按 RippleSpec.id 配对元素，先结束者移除时
+      // 存留项不继承其动画 State（规范 1.6 / 事故 1 同类）。
       for (final spec in _ripples)
         Positioned(
+          key: ValueKey<int>(spec.id),
           left: spec.center.dx - 30,
           top: spec.center.dy - 30,
           child: TriggerRipple(
