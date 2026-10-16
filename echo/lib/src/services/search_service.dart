@@ -2,8 +2,6 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import '../navigation/nav_destination.dart';
-
 // ====================================================================
 //  数据模型
 // ====================================================================
@@ -57,43 +55,6 @@ abstract class SearchProvider {
   /// 本地数据同步返回即可；需要网络/数据库时可在实现内做异步，
   /// 届时由 SearchService 统一 await（当前版本保持同步以简化调用）。
   List<SearchResult> search(String query);
-}
-
-/// 在导航目的地中搜索的数据源（当前唯一已接入的数据源）。
-///
-/// 让「搜索页面」形成真实闭环：输入页面名 → 得到结果 →
-/// 点击结果直接跳转到对应页面。
-class NavDestinationSearchProvider implements SearchProvider {
-  NavDestinationSearchProvider({
-    required this.destinations,
-    required this.onDestinationSelected,
-  });
-
-  /// 全部导航目的地。
-  final List<NavDestination> destinations;
-
-  /// 选中某目的地时回调，参数为其在导航中的序号。
-  final ValueChanged<int> onDestinationSelected;
-
-  @override
-  String get id => 'destinations';
-
-  @override
-  List<SearchResult> search(String query) {
-    final keyword = query.trim();
-    if (keyword.isEmpty) return const [];
-
-    return [
-      for (var i = 0; i < destinations.length; i++)
-        if (destinations[i].label.contains(keyword))
-          SearchResult(
-            title: destinations[i].label,
-            subtitle: '页面',
-            icon: destinations[i].icon,
-            onSelect: () => onDestinationSelected(i),
-          ),
-    ];
-  }
 }
 
 // ====================================================================

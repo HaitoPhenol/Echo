@@ -8,6 +8,7 @@ import '../diary/ui/diary_page.dart';
 import '../pages/chat_page.dart';
 import '../pages/debug_badge_controls.dart';
 import '../pages/template_page.dart';
+import '../services/search_service.dart';
 
 /// 一个导航目的地（即胶囊导航线上可到达的一页）。
 ///
@@ -37,6 +38,43 @@ class NavDestination {
 
   /// 页面本体构建器。
   final WidgetBuilder pageBuilder;
+}
+
+/// 在导航目的地中搜索的数据源（当前唯一已接入的数据源）。
+///
+/// 让「搜索页面」形成真实闭环：输入页面名 → 得到结果 →
+/// 点击结果直接跳转到对应页面。
+class NavDestinationSearchProvider implements SearchProvider {
+  NavDestinationSearchProvider({
+    required this.destinations,
+    required this.onDestinationSelected,
+  });
+
+  /// 全部导航目的地。
+  final List<NavDestination> destinations;
+
+  /// 选中某目的地时回调，参数为其在导航中的序号。
+  final ValueChanged<int> onDestinationSelected;
+
+  @override
+  String get id => 'destinations';
+
+  @override
+  List<SearchResult> search(String query) {
+    final keyword = query.trim();
+    if (keyword.isEmpty) return const [];
+
+    return [
+      for (var i = 0; i < destinations.length; i++)
+        if (destinations[i].label.contains(keyword))
+          SearchResult(
+            title: destinations[i].label,
+            subtitle: '页面',
+            icon: destinations[i].icon,
+            onSelect: () => onDestinationSelected(i),
+          ),
+    ];
+  }
 }
 
 /// 构建默认导航配置（当前 4 个页面，顺序即导航轨道顺序）。
