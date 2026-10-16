@@ -2,8 +2,10 @@ package com.everse.echo
 
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.ActivityInfo
 import android.os.BatteryManager
 import android.os.Build
+import android.os.Bundle
 import android.os.VibrationEffect
 import android.os.Vibrator
 import androidx.annotation.NonNull
@@ -19,6 +21,18 @@ class MainActivity : FlutterActivity() {
     /// 设备状态快照通道名（机能风顶部读数条的数据源）。
     /// Dart 端消费方：MechanicalCoordsBar。
     private val deviceStatsChannelName = "echo/device_stats"
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+
+        // Q2 设备形态：手机强制锁竖屏，平板不锁方向（按最小宽度 dp 判定，约 sw600dp 为平板）
+        val smallestWidthDp = resources.configuration.smallestScreenWidthDp
+        requestedOrientation = if (smallestWidthDp >= 600) {
+            ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED // 平板：跟随系统方向
+        } else {
+            ActivityInfo.SCREEN_ORIENTATION_PORTRAIT // 手机：锁定竖屏
+        }
+    }
 
     override fun configureFlutterEngine(@NonNull flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
