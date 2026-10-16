@@ -65,8 +65,8 @@
   由导航条 adjustable 动作完成。若要求"完全可操作"，需把 State 内的开竖单 /
   开 AI / 触发快捷弧回调下沉进各 widget（会引入耦合），建议单独安排。
 - **Q2 无自动化验证**：锁竖屏为原生系统行为，只能真机走查，见文末真机记录。
-- **G8 release 加固**：keystore 涉及密钥/口令（用户决策项），R8 开启需
-  proguard 规则并真机回归；见后续施工行与收尾汇报。
+- **G8 release 加固**：keystore 涉及密钥/口令（用户决策项，本轮挂起）；R8 已开
+  并过真机冒烟，见文末真机记录。
 
 ## 轮次收尾独立复审（2026-10-16，独立子智能体）
 
@@ -89,3 +89,30 @@
   `haptics_test.dart` 的 `ensureInitialized()` 可省。
 - **残余不确定性**：G8b 的 R8 出包由施工阶段的 `build apk --release` 成功（53.3MB、
   无 missing class）覆盖；Q2 为原生行为，无 Kotlin 单测，靠真机冒烟核验（见下）。
+
+## 真机记录（MIX 2S / `3f6cc09b` / 1080×2160 / 440dpi，2026-10-16）
+
+### Q2 锁竖屏（决定性证据）
+- 基线：`settings get system user_rotation`=0，display rotation 0。
+- 请求横屏：置 `accelerometer_rotation 0` + `user_rotation 1`，回读 `user_rotation`=1
+  （请求已被系统接受）。
+- Echo 前台时 `dumpsys window displays` 仍为 **rotation 0**，且
+  `mCurrentAppOrientation=SCREEN_ORIENTATION_PORTRAIT`；截图仍为 1080×2160 竖版。
+- Manifest 无 `screenOrientation`（已核），故该 PORTRAIT 只可能来自 MainActivity
+  新代码 → Q2 落地生效。debug 与 release 两包前台均报 PORTRAIT。
+- 局限：MIUI 启动器自身亦锁竖屏，HOME 后 `mCurrentAppOrientation` 仍为 PORTRAIT，
+  「切到桌面应恢复横屏」的对照无法在本机取得（MIUI 行为，非我方缺陷）。
+- 事后已还原 `accelerometer_rotation`=1、`user_rotation`=0。
+
+### 装机冒烟
+- debug：`build apk --debug` 成功；装机冷启动正常，主屏（终端页 + 底栏三件套）
+  竖版渲染无误。
+- release（R8 开启）：`build apk --release` 成功（53.3MB，无 R8 missing class、
+  无新增 dontwarn）；`am start -W` 冷启动 **1410ms**；`versionName=0.13.1` /
+  `versionCode=39`；主屏渲染正常，左滑翻页到 02 聊天页（「暂无消息」）成功
+  → R8 未破坏运行与手势。
+- release 下终端页两个「模拟 / 处理异常」按钮按设计缺席
+  （`nav_destination.dart:125` 的 `kDebugMode && id=='console'` 守卫），非 R8 裁剪。
+- 崩溃钩子未做主动触发（无上报后端，仅 `debugPrint`）；启动链路正常即视为接入
+  无副作用。
+- 截图存于 `artifacts/opt-a-*.png`（gitignore，未入库）。
