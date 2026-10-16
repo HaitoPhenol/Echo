@@ -51,7 +51,7 @@
 | G10 | **墙钟 Timer 散落**（旧 P2-06） | current_state「时间源」有完整清单；帧/墙双轨并存是已知取舍 |
 | G11 | **多指触控竞态**（旧 P1-02，待复核） | 第二指劫持/穿越手势的风险自 v0.5.0 后未复核，导航手势代码区域未大改，假定仍在 |
 | G12 | **涟漪节点无 Key**（旧 P1-04，待复核） | 连发两次继承错误动画状态；未复核 |
-| G13 | **触感 invokeMethod 无 catchError**（旧 P1-06，待复核） | `Haptics.tick/confirm` 仍直接 return channel Future；通道异常时为未捕获异步错误，严重度低 |
+| G13 | **触感 invokeMethod 无 catchError**（旧 P1-06，待复核） | **已解决**（分支 `feat/optimization-a`，2026-10-16）：`Haptics` 收口到 `_invoke()`，Android 通道调用统一 `.catchError` 静默降级（规范 1.11，调用方均为 fire-and-forget，此前通道异常会成为未捕获异步错误）；新增 `test/services/haptics_test.dart` mock 通道抛错验证不逃逸 | （已修） |
 
 旧报告中的 P1-05（单页 NaN，当前固定 4 页且短期不变）、P2-03/05/07/09/11
 （控制器私有化/几何常量/速度采样/注入/散落色）为低优先卫生项，

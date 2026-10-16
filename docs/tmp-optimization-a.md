@@ -34,7 +34,8 @@
 
 | # | 问题 | 提交 | 处理方法 | 门禁 | 审查结论 |
 |---|---|---|---|---|---|
-| 1 | D2 空稿预览标注丢失 | （本行随提交回填） | 确认回归成立（M4 `4235d06` 对空预览显「周X（空稿）」，M5 `66a3c24` 一律退化星期小字、注释理由只覆盖 exported）；`day_list_page.dart` 按 state 区分：draft 空稿恢复「周X（空稿）」，exported/archived 维持退化；修正注释；`diary_m5_test.dart` 补回归用例（441→442） | analyze 0 / test 442 全绿 | 待审 |
+| 1 | D2 空稿预览标注丢失 | 227f75e | 确认回归成立（M4 `4235d06` 对空预览显「周X（空稿）」，M5 `66a3c24` 一律退化星期小字、注释理由只覆盖 exported）；`day_list_page.dart` 按 state 区分：draft 空稿恢复「周X（空稿）」，exported/archived 维持退化；修正注释；`diary_m5_test.dart` 补回归用例（441→442） | analyze 0 / test 442 全绿 | 待审 |
+| 2 | G13 触感 invokeMethod 无 catchError | （本行随提交回填） | `Haptics` 收口 `_invoke()`，Android 通道统一 catchError 静默降级（规范 1.11）；新建 `test/services/haptics_test.dart`（首个 services 测试目录），mock 通道抛 PlatformException 验证不逃逸（442→443） | analyze 0 / test 443 全绿 | 待审 |
 
 ## 执行模式偏差记录
 
