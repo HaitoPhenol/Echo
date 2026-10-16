@@ -17,6 +17,7 @@ import '../services/search_service.dart';
 import '../services/window_inset_refresher.dart';
 import '../theme/mechanical_style.dart';
 import 'dock_geometry.dart';
+import 'dock_layout.dart';
 import 'nav_destination.dart';
 import 'nav_gesture_records.dart';
 import 'nav_physics.dart';
@@ -762,24 +763,8 @@ class _SmartNavScreenState extends State<SmartNavScreen>
   }
 
   /// 竖单三个按钮的圆心（与 HandleMenu 内边距/间距规则一致，
-  /// 供触发涟漪定位）。
-  List<Offset> _pageMenuPositions() {
-    final size = MediaQuery.sizeOf(context);
-    final safeBottom = MediaQuery.paddingOf(context).bottom;
-    final width = size.width;
-    final handleWidth = DockGeometry.handleWidthFor(width);
-    final diameter = DockGeometry.menuButtonDiameterFor(handleWidth);
-    final edge = DockGeometry.menuEdgeInsetFor(handleWidth);
-    final menuHeight = DockGeometry.menuHeightFor(handleWidth);
-
-    final bottom = size.height - safeBottom - DockGeometry.bottomMargin;
-    final top = bottom - menuHeight;
-    final centerX = DockGeometry.handleLeftFor(width) + handleWidth / 2;
-    return [
-      for (var i = 0; i < 3; i++)
-        Offset(centerX, top + edge + diameter / 2 + i * (diameter + 10)),
-    ];
-  }
+  /// 供触发涟漪定位）。纯计算收敛在 [DockLayout]。
+  List<Offset> _pageMenuPositions() => _layout.pageMenuPositions;
 
   // ================================================================
   //  手势：移动（含方向锁定）
@@ -978,166 +963,39 @@ class _SmartNavScreenState extends State<SmartNavScreen>
   }
 
   // ================================================================
-  //  几何计算（全部由 MediaQuery + DockGeometry 静态常量推算）
+  //  几何计算（薄封装：真实计算收敛在 DockLayout，输入为不可变事实）
   // ================================================================
 
-  /// 底边三条共用的顶边 y（把手条 / AI 条 / 导航条等高）。
-  double _dockTop(Size size, double safeBottom) =>
-      size.height -
-      safeBottom -
-      DockGeometry.bottomMargin -
-      DockGeometry.barHeight;
+  /// 当前几何快照：以 MediaQuery + 抽屉进度等不可变事实即时构造。
+  DockLayout get _layout => DockLayout(
+    size: MediaQuery.sizeOf(context),
+    safeBottom: MediaQuery.paddingOf(context).bottom,
+    pageCount: _destinations.length,
+    drawerK: _drawerAnim.value,
+  );
 
-  /// 把手条可视矩形（左下角：左边距 14、宽 12% 屏宽、高 10）。
-  Rect _handleRect() {
-    final size = MediaQuery.sizeOf(context);
-    final top = _dockTop(size, MediaQuery.paddingOf(context).bottom);
-    return Rect.fromLTWH(
-      DockGeometry.handleLeftFor(size.width),
-      top,
-      DockGeometry.handleWidthFor(size.width),
-      DockGeometry.barHeight,
-    );
-  }
+  Rect _handleHitRect() => _layout.handleHitRect;
 
-  /// AI 条可视矩形（把手条右侧 14px 间隙，宽 38vw - 56）。
-  Rect _aiRect() {
-    final size = MediaQuery.sizeOf(context);
-    final top = _dockTop(size, MediaQuery.paddingOf(context).bottom);
-    return Rect.fromLTWH(
-      DockGeometry.aiLeftFor(size.width),
-      top,
-      DockGeometry.aiWidthFor(size.width),
-      DockGeometry.barHeight,
-    );
-  }
+  Rect _aiHitRect() => _layout.aiHitRect;
 
-  /// 把手隐形热区：纵向同导航条规则（向上 32、向下 10），横向不
-  /// 扩展；左边距随抽屉开合在常态位与停靠位之间滑动。
-  Rect _handleHitRect() {
-    final size = MediaQuery.sizeOf(context);
-    final width = size.width;
-    final visual = _handleRect();
-    final rest = DockGeometry.handleLeftFor(width);
-    final docked = DockGeometry.dockedHandleLeftFor(width);
-    final left = rest + (docked - rest) * _drawerAnim.value;
-    return Rect.fromLTRB(
-      left,
-      visual.top - 32,
-      left + DockGeometry.handleWidthFor(width),
-      visual.bottom + 10,
-    );
-  }
+  ({Rect bar, Rect leftDot, Rect rightDot}) _navGeometry() =>
+      _layout.navGeometry;
 
-  /// AI 条隐形热区：纵向向上 32、向下 10，横向等于条自身长度。
-  Rect _aiHitRect() {
-    final visual = _aiRect();
-    return Rect.fromLTRB(
-      visual.left,
-      visual.top - 32,
-      visual.right,
-      visual.bottom + 10,
-    );
-  }
+  Rect _searchCapsuleRect() => _layout.searchCapsuleRect;
 
-  /// 常规态导航组件的三个可视矩形：导航条、左圆点、右圆点。
-  ///
-  /// 整体右对齐（右边距 14）、底边距 16；圆点与导航条等高 10，
-  /// 圆点与导航条间距 5。
-  ({Rect bar, Rect leftDot, Rect rightDot}) _navGeometry() {
-    final size = MediaQuery.sizeOf(context);
-    final safeBottom = MediaQuery.paddingOf(context).bottom;
-
-    final assemblyWidth = DockGeometry.navAssemblyWidthFor(size.width);
-    final barWidth = DockGeometry.navBarWidthFor(size.width);
-
-    final top = _dockTop(size, safeBottom);
-    final right = size.width - DockGeometry.sideMargin;
-
-    final leftDot = Rect.fromLTWH(
-      right - assemblyWidth,
-      top,
-      DockGeometry.dotDiameter,
-      DockGeometry.barHeight,
-    );
-    final rightDot = Rect.fromLTWH(
-      right - DockGeometry.dotDiameter,
-      top,
-      DockGeometry.dotDiameter,
-      DockGeometry.barHeight,
-    );
-    final barRight = right - DockGeometry.dotDiameter - DockGeometry.dotGap;
-    final bar = Rect.fromLTWH(
-      barRight - barWidth,
-      top,
-      barWidth,
-      DockGeometry.barHeight,
-    );
-    return (bar: bar, leftDot: leftDot, rightDot: rightDot);
-  }
-
-  /// 搜索态全宽胶囊的可视矩形（高 44，底边距 16）。
-  Rect _searchCapsuleRect() {
-    final size = MediaQuery.sizeOf(context);
-    final safeBottom = MediaQuery.paddingOf(context).bottom;
-
-    final bottom = size.height - safeBottom - DockGeometry.bottomMargin;
-    return Rect.fromLTRB(
-      DockGeometry.sideMargin,
-      bottom - DockGeometry.searchHeight,
-      size.width - DockGeometry.sideMargin,
-      bottom,
-    );
-  }
-
-  /// 屏幕横坐标 → 页位置（双击直达用，以缩短后的导航条为行程）。
-  double _pageAtX(double globalX) {
-    final barRect = _navGeometry().bar;
-
-    final barWidth = barRect.width;
-    // 与 _thumb 的滑块宽度保持同一规则：导航条长度 / 页面数。
-    final thumbWidth = barWidth / _destinations.length;
-
-    final center = (globalX - barRect.left).clamp(
-      thumbWidth / 2,
-      barWidth - thumbWidth / 2,
-    );
-    return (center - thumbWidth / 2) /
-        (barWidth - thumbWidth) *
-        (_destinations.length - 1);
-  }
-
-  /// 快捷弧曲线起点。
-  ///
-  /// 横坐标：缩短导航条左起 1/4 处——实测手势起点位于条上约
-  /// 0.23 处（系统「指针位置」截图量得），这样曲线末端仍在屏内、
-  /// 按钮整体以导航条中心对称。纵坐标为导航条垂直中点。
-  Offset _quickArcOrigin(Size size, double safeBottom) {
-    final assemblyWidth = DockGeometry.navAssemblyWidthFor(size.width);
-    final assemblyLeft = size.width - DockGeometry.sideMargin - assemblyWidth;
-    final barWidth = DockGeometry.navBarWidthFor(size.width);
-    final barLeft =
-        assemblyLeft + DockGeometry.dotDiameter + DockGeometry.dotGap;
-
-    return Offset(
-      barLeft + barWidth / 4,
-      size.height -
-          safeBottom -
-          DockGeometry.bottomMargin -
-          DockGeometry.barHeight / 2,
-    );
-  }
+  double _pageAtX(double globalX) => _layout.pageAtX(globalX);
 
   /// 计算快捷弧各操作项的位置与热区半径。
   ///
   /// 各按钮按 [_quickActions] 数量在四分之一椭圆曲线的中段自动
-  /// 排布（规则见 [DockGeometry.layoutQuickArc]）。
+  /// 排布（规则见 [DockGeometry.layoutQuickArc]）。结果写入 State
+  /// 缓存字段，故本方法保留在 State、只调用 [DockLayout] 的纯计算。
   void _computeQuickPositions() {
     final size = MediaQuery.sizeOf(context);
     final safeBottom = MediaQuery.paddingOf(context).bottom;
 
     final layout = DockGeometry.layoutQuickArc(
-      origin: _quickArcOrigin(size, safeBottom),
+      origin: DockLayout.quickArcOrigin(size, safeBottom),
       count: _quickActions.length,
     );
 
