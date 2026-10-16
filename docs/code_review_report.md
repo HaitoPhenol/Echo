@@ -7,6 +7,11 @@
 > ECP P1–P4 全部交付）。条目现状随每次 MINOR 发布顺带复核；
 > 标注「待复核」的条目未做完整真机回归。
 >
+> **2026-10-16 复核**：结构债务 G1/G2/G3/G5 已在分支
+> `refactor/struct-debt-a` 解决（行为保持重构，441 测试全绿、analyze
+> 零问题，经独立子智能体复核），随本轮合入 main；G4 仍挂起，待 Q3
+> 拍板。
+>
 > 历史审查与施工流水（只读归档）：
 > - [archive/codebase-review-v0.5.0-2026-10-06.md](archive/codebase-review-v0.5.0-2026-10-06.md)
 >   （v0.4.6~v0.5.0，含每条问题的行号证据与改法论证）
@@ -32,13 +37,13 @@
 
 ## B. 通用工程问题
 
-| # | 问题 | 现状（2026-10-15 v0.13.0 快核） |
+| # | 问题 | 现状（2026-10-16 复核；G1–G5 见本轮结构债务重构） |
 |---|---|---|
-| G1 | **`SmartNavScreen` 上帝类持续膨胀**：v0.5.0 时 853 行，现 1626 行 | 仍待重构：P2 已把导航控制提升为 `NavPhysicsController`（ECP 与手势共用），但主屏装配本身未拆；继续抽手势 Resolver / 各页装配 |
-| G2 | **`search_capsule.dart` 1152 行装多组件**（旧 P2-02） | 仍存在，行为零变化的纯拆分，排期独立 patch |
-| G3 | **分层倒置：services 依赖 navigation** | 仍存在：`search_service.dart` import `navigation/nav_destination.dart`（页面搜索源需要目的地模型；可考虑把可搜索项模型下沉为接口数据）。注：P4 已反向钉死 services→control 零依赖（源码断言） |
+| G1 | **`SmartNavScreen` 上帝类** | **已解决**（分支 `refactor/struct-debt-a`，2026-10-16）：主屏 1626 → 1353 行——几何纯函数收敛至 `navigation/dock_layout.dart`，手势记录/触发涟漪移出 `navigation/nav_gesture_records.dart` 与 `widgets/trigger_ripple.dart`，`build()` 内联子树抽为私有构建方法；手势阈值/时长/树形/Key 零改动。手势与浮层编排仍在 State，进一步抽 Resolver 属后续可选打磨 |
+| G2 | **`search_capsule.dart` 1152 行装多组件**（旧 P2-02） | **已解决**：拆为 `search_capsule.dart`(596) + `search_pill_morph.dart`(325) + `search_panel_content.dart`(252)；跨文件私有件提升为公共组件名，树形/Key/时长逐字不变 |
+| G3 | **分层倒置：services 依赖 navigation** | **已解决**：`NavDestinationSearchProvider` 迁至 `navigation/nav_destination.dart`（与目的地模型同址），`services/search_service.dart` 不再 import navigation，1.4 铁律恢复；navigation→services 为允许的向内依赖 |
 | G4 | **页面全部常驻构建**（旧 P2-08） | 仍如此（Row 一次性 build，日记页 State 常驻已被真机验证依赖此特性——自动成稿/防抖 flush 挂在常驻 State）。窗口化懒加载前必须先迁移这些生命周期假设，见 Q3 |
-| G5 | **锚点按页序号 int 索引**（旧 P2-10） | `NavBadgeService.levelOf(int)` 未变；脚手架侧写死页序已消除。任何锚点持久化之前必须先改 destinationId 索引 |
+| G5 | **锚点按页序号 int 索引**（旧 P2-10） | **已解决**：`NavBadgeService` 改按 `String destinationId` 索引（内存实现用 `Map`），锚点身份键同步用稳定 id；未知 id 读回 `normal`、写静默忽略；对外 ECP `badge` 命令入参（名/下标）与出参（index+name+level）契约不变 |
 | G6 | **无 Semantics 无障碍**（旧 P2-13） | 全库仅一处 `ExcludeSemantics`；TalkBack 不可用。发版前做最小集 |
 | G7 | **无 CI**（旧 P2-14 下半） | 测试已从 24 个增至 **441 个**（日记 + ECP 协议/事件/作业覆盖充分），另有 echo-cmd 脚本级回归 15 断言；但仍无 GitHub Actions，门禁全靠本地自觉 |
 | G8 | **release 加固缺失**（旧 P2-15） | release 仍用 debug 签名、无独立 keystore/R8、无 FlutterError.onError / runZonedGuarded 崩溃钩子。**release 包人工检查已常态化**：P3 R3、P4 G5 各做过全新装走查 + dex 裁剪字符串扫描 + slash 补全计数，未发现 ECP 调试面泄漏 |
