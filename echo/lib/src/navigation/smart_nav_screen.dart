@@ -488,6 +488,18 @@ class _SmartNavScreenState extends State<SmartNavScreen>
   /// 搜索态的「点击外部关闭」不在此处理：由 build 中铺在胶囊之下的
   /// 全屏 scrim 负责（结果/历史/胶囊在 scrim 之上，互不干扰）。
   void _handleRootPointerDown(PointerDownEvent event) {
+    // G11 单指独占：已有手势在途（导航条拖动 / 把手拖动 / AI 长按）时
+    // 忽略新的 PointerDown，避免两类竞态：
+    //  · 第二指劫持——覆盖 _gesture/_handleGesture/_aiHold，把先按下的
+    //    手指孤立；
+    //  · 穿越手势——把手 _handleGesture 与导航条 _gesture 两套记录被
+    //    同帧并驱，抽屉与翻页并发。
+    // 搜索态展开时 _gesture 已在胶囊长按分支内置空（见 _beginCapsuleGrab），
+    // 故本守卫不会阻断下方搜索态的点击处理。
+    if (_gesture != null || _handleGesture != null || _aiHold != null) {
+      return;
+    }
+
     if (_nav.isSearching) {
       // open 态点击可视胶囊本体 → 聚焦进入输入态（TextField 自身
       // 也能获得焦点，这里只补 icon 等非输入区的覆盖）。

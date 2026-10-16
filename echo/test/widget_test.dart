@@ -745,4 +745,63 @@ void main() {
     await g.up();
     await tester.pump();
   });
+
+  testWidgets('多指触控：第一指拖动在途时第二指按下不劫持、不并发（G11）', (tester) async {
+    // 表面 800×600：导航条热区约 x400..800、y542..594，按下点取
+    // 胶囊中心 x=600。聊天页（第 2 页）中心 x 会从 1200 随翻页左移，
+    // 以其可见中心作为「页面位置」的可观测标记来断言手势归属。
+    await tester.pumpWidget(EchoApp(diaryRepository: diaryRepo));
+    await tester.pump();
+
+    final chatPageMarker = find.byType(ChatPage);
+    double chatX() => tester.getCenter(chatPageMarker).dx;
+    final initialX = chatX();
+    expect(initialX, greaterThan(800), reason: '初始聊天页在屏幕右侧');
+
+    // ---- 第一指：按住导航条并分段左拖，锁定为翻页拖动 ----
+    final g1 = await tester.createGesture();
+    await g1.down(const Offset(600, 560));
+    await tester.pump();
+    await g1.moveTo(const Offset(590, 560));
+    await g1.moveTo(const Offset(555, 560));
+    await g1.moveTo(const Offset(520, 560));
+    await tester.pump();
+    final afterFirstDrag = chatX();
+    expect(
+      afterFirstDrag,
+      lessThan(initialX),
+      reason: '第一指左拖应使页面位置随翻页前移',
+    );
+
+    // ---- 第二指：同时在导航条上按下并反向拖动 ----
+    // 若被劫持，第二指会覆盖 _gesture 并让页面位置反向回退；单指独占
+    // 守卫生效时该指被忽略，页面位置保持不变。
+    final g2 = await tester.createGesture();
+    await g2.down(const Offset(600, 560));
+    await tester.pump();
+    await g2.moveTo(const Offset(680, 560));
+    await g2.moveTo(const Offset(760, 560));
+    await tester.pump();
+    expect(
+      chatX(),
+      closeTo(afterFirstDrag, 0.5),
+      reason: '第二指不应改写页面位置（未被劫持）',
+    );
+
+    // ---- 第一指继续左拖：仍是有效驱动者，页面继续左移 ----
+    await g1.moveTo(const Offset(485, 560));
+    await tester.pump();
+    expect(
+      chatX(),
+      lessThan(afterFirstDrag),
+      reason: '第一指仍应持续驱动翻页',
+    );
+
+    // 收尾：第一指松手落位；第二指自始至终未被接管，其释放不应产生
+    // 任何翻页副作用（不误触发双击跳页）。
+    await g1.up();
+    await tester.pump(const Duration(milliseconds: 16));
+    await g2.up();
+    await tester.pump(const Duration(milliseconds: 16));
+  });
 }
