@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../../../theme/app_colors.dart';
 
-/// 层级列表通用行：左侧大字标签、右侧辅助信息与箭头，
-/// 下方 tone1 细线。
+/// 层级列表通用行：左侧大字标签、右侧辅助信息与箭头。
+/// 行间分隔由背景机械网格承担，本行不画线。
 ///
 /// 行首亮度**只两档**（均取自现有亮度阶梯，不自造透明度）：
 /// · [highlight] 亮（主文字色 · 阶 4）——含今天的项：日页「今天」、
@@ -54,7 +54,9 @@ class DiaryListRow extends StatelessWidget {
       child: InkWell(
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 4),
+          // 2026-10-18 紧凑化：纵向内边距 14 → 5，行距（实测 ≈170 设备
+          // 像素）压到 ≈120，减少列表留白；横向 4 不变。
+          padding: const EdgeInsets.symmetric(vertical: 5, horizontal: 4),
           child: Row(
             children: [
               SizedBox(
