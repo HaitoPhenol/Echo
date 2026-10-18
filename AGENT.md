@@ -23,7 +23,7 @@
 | [docs/architecture.md](docs/architecture.md) | 了解目录结构、核心接口、扩展操作（加页面/快捷操作/搜索源等） |
 | [docs/engineering_standards.md](docs/engineering_standards.md) | **改动前必读**：工程原则、交付门禁、测试约定、历史事故档案 |
 | [docs/current_state.md](docs/current_state.md) | 了解当前实现手段（会变化，勿当教条）与已知债务 |
-| [docs/code_review_report.md](docs/code_review_report.md) | 当前已知问题的权威清单（日记线 D1–D7、通用工程 G1–G13、待决策 Q3–Q8，Q1/Q2/Q7/Q9/Q10 已决） |
+| [docs/code_review_report.md](docs/code_review_report.md) | 当前已知问题的权威清单（日记线 D1–D8、通用工程 G1–G13、待决策 Q3–Q8，Q1/Q2/Q7/Q9/Q10 已决） |
 | [docs/diary/](docs/diary/flutter-tech-plan.md) | 日记模块：技术方案（里程碑/裁定/验收）与思源 3.8.6 金标准格式；动日记代码前必读 |
 | [docs/ecp/](docs/ecp/ecp-design.md) | ECP 应用控制协议现行设计与命令手册（P1–P4 已交付 v0.13.0；改协议/加命令前必读，手册与 manifest 有双向测试） |
 | [docs/glossary.md](docs/glossary.md) | 讨论界面、写注释、写提交信息时统一称呼 |

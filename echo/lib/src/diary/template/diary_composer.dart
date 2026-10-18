@@ -5,24 +5,14 @@ import '../sy/sy_id.dart';
 import 'daily_default_template.dart';
 import 'diary_template_json.dart';
 
-/// data 快照重拉结果：快照文本 + 文档根 custom 增删。
-///
-/// patch 中值为 null 表示移除该键（本次源不可用），非 null 为覆盖。
-class DataSnapshotResult {
-  const DataSnapshotResult({required this.text, required this.customPatch});
-
-  final String text;
-  final Map<String, String?> customPatch;
-}
-
-/// 日记成稿编排器（tech-plan §5.1/§5.2）。
+/// 日记成稿编排器（tech-plan §5；2026-10-18 模板重设后）。
 ///
 /// 职责：
 /// - [ensureDay]：命中已有草稿直接返回；否则模板实例化 + 拉 provider
-///   填充 data 快照与 custom-* 并立即落盘。按日记日缓存 in-flight
-///   Future，模块预热与快速点进并发时也只成稿一次。
-/// - [fetchSnapshot]：↻ 刷新的取数+渲染纯逻辑，编辑页拿到结果后
-///   自行经控制器替换（压撤销栈）。
+///   写文档根 custom-* 并立即落盘。按日记日缓存 in-flight Future，
+///   模块预热与快速点进并发时也只成稿一次。
+/// - [fetchCustomPatch]：取数纯逻辑（三源并发、互不连坐），返回文档根
+///   custom-* 增删面；成稿与编辑页胶囊行点按刷新共用。
 /// - [isUserEmpty]：跨天清理的「什么都没写」判定。
 class DiaryComposer {
   DiaryComposer({
@@ -83,12 +73,8 @@ class DiaryComposer {
     }
 
     final document = template.instantiate(day, _ids);
-    final snapshot = await fetchSnapshot(day);
-    final dataBlock = document.blocks.firstWhere(
-      (b) => SyIdGenerator.isDataBlockId(b.id),
-    );
-    dataBlock.text = snapshot.text;
-    snapshot.customPatch.forEach((key, value) {
+    final patch = await fetchCustomPatch(day);
+    patch.forEach((key, value) {
       if (value != null) document.custom[key] = value;
     });
     document.updatedAt = _now();
@@ -97,11 +83,11 @@ class DiaryComposer {
   }
 
   // ================================================================
-  //  取数与快照渲染
+  //  取数（文档根 custom-* 数据面）
   // ================================================================
 
   /// 构造一篇「骨架态空稿」：与 [ensureDay] 走**同一**模板实例化
-  /// （只差未拉 data 快照），故 [isUserEmpty] 必判为空。
+  /// （只差未拉 custom-*），故 [isUserEmpty] 必判为空。
   ///
   /// `diary.seed` 造空稿专用——保证「空稿形状」与 prune 判定同源，
   /// 命令层不得自创「空」定义（否则 prune 认不得，端到端验证失效）。
@@ -110,8 +96,12 @@ class DiaryComposer {
     return template.instantiate(day, _ids);
   }
 
-  /// 拉取三个数据源（互不连坐）并渲染快照行；供成稿与 ↻ 复用。
-  Future<DataSnapshotResult> fetchSnapshot(DateTime diaryDate) async {
+  /// 拉取三个数据源（互不连坐）并产出文档根 custom-* 增删面。
+  ///
+  /// patch 值为 `null` 表示该源本次不可用（调用方应从 custom 移除该键）。
+  /// 成稿（[_compose]）与编辑页胶囊行点按刷新共用同一入口，保证两路
+  /// 数据口径完全一致。
+  Future<Map<String, String?>> fetchCustomPatch(DateTime diaryDate) async {
     final day = DateTime(diaryDate.year, diaryDate.month, diaryDate.day);
 
     HomeEnvironment? env;
@@ -132,45 +122,27 @@ class DiaryComposer {
           .catchError((Object _) => null),
     ]);
 
-    final fragments = <String>[];
     final patch = <String, String?>{};
 
     if (env != null) {
-      final temp = _formatNum(env!.tempC);
-      fragments.add('🌡️ $temp°C　💧 ${env!.humidityPct}%');
-      patch['custom-iot-temp'] = temp;
+      patch['custom-iot-temp'] = _formatNum(env!.tempC);
       patch['custom-iot-humidity'] = '${env!.humidityPct}';
     } else {
       patch['custom-iot-temp'] = null;
       patch['custom-iot-humidity'] = null;
     }
 
-    if (scheduleCount != null) {
-      fragments.add('📅 $scheduleCount 条日程');
-      patch['custom-schedule-count'] = '$scheduleCount';
-    } else {
-      patch['custom-schedule-count'] = null;
-    }
+    patch['custom-schedule-count'] = scheduleCount == null
+        ? null
+        : '$scheduleCount';
 
     final weatherText = weather?.trim();
-    if (weatherText != null && weatherText.isNotEmpty) {
-      fragments.add('☁️ $weatherText');
-      patch['custom-weather'] = weatherText;
-    } else {
-      patch['custom-weather'] = null;
-    }
+    patch['custom-weather'] = (weatherText != null && weatherText.isNotEmpty)
+        ? weatherText
+        : null;
 
-    final text = fragments.isEmpty
-        ? _placeholderText
-        : [fragments.join('　'), if (provider.isSampleData) '（示例数据）'].join('　');
-
-    return DataSnapshotResult(text: text, customPatch: patch);
+    return patch;
   }
-
-  /// 模板里 data 块的占位文案（全失败时使用）。
-  String get _placeholderText => template.spec.blocks
-      .firstWhere((b) => b.type == DiaryTemplateBlockType.data)
-      .placeholder;
 
   static String _formatNum(double v) =>
       v == v.roundToDouble() ? v.toInt().toString() : v.toString();
@@ -181,25 +153,16 @@ class DiaryComposer {
 
   /// 判定一篇成稿是否「什么都没写」：
   ///
-  /// 1. readonly 块（data 快照）一律忽略，快照内容不算写过；
-  /// 2. 与模板骨架声明（heading/paragraph）多重集等价的块忽略；
-  /// 3. 其余块中存在任一 trim 后非空文本即非空。
+  /// 1. 与模板骨架声明（heading/paragraph）多重集等价的块忽略；
+  /// 2. 其余块中存在任一 trim 后非空文本即非空。
   ///
   /// 用户写了字又删光 → 文本归空 → 仍判为空，次日照常清理。
   ///
-  /// 注意 readonly 不进 .sy 序列化，只在编辑器 attach 时按确定性 ID
-  /// 恢复；prune 直接从磁盘解码、不挂控制器，故这里也必须以 ID 身份
-  /// 识别 data 块，不能只信 [DiaryBlock.readonly] 标志。
+  /// 自动数据与心情只存文档根 custom-*、不占块，故天然不参与本判定。
   bool isUserEmpty(DiaryDocument document) {
-    final expected = template.spec.blocks
-        .where((b) => b.type != DiaryTemplateBlockType.data)
-        .map(_specKey)
-        .toList();
+    final expected = template.spec.blocks.map(_specKey).toList();
 
     for (final block in document.blocks) {
-      if (block.readonly || SyIdGenerator.isDataBlockId(block.id)) {
-        continue;
-      }
       final key = (kind: block.kind, level: block.level, text: block.text);
       final match = expected.indexOf(key);
       if (match >= 0) {
@@ -211,7 +174,7 @@ class DiaryComposer {
     return true;
   }
 
-  /// 模板声明到块等价键（data 块不参与，故无 role）。
+  /// 模板声明到块等价键。
   static ({DiaryBlockKind kind, int? level, String text}) _specKey(
     DiaryTemplateBlockSpec spec,
   ) {
@@ -225,11 +188,6 @@ class DiaryComposer {
         kind: DiaryBlockKind.paragraph,
         level: null,
         text: spec.text,
-      ),
-      DiaryTemplateBlockType.data => (
-        kind: DiaryBlockKind.paragraph,
-        level: null,
-        text: spec.placeholder,
       ),
     };
   }

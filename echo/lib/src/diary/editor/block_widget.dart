@@ -36,28 +36,14 @@ class _BlockWidgetState extends State<BlockWidget> {
   /// 浮层最大宽：与块容器等宽（首帧用屏宽兜底，实测后收敛）。
   double? _popoverMaxWidth;
 
-  /// data 块 ↻ 刷新进行中（防重入）。
-  bool _refreshing = false;
-
   BlockState get state => widget.state;
-
-  Future<void> _onRefreshData(BlockEditorController editor) async {
-    final refresher = editor.dataRefresher;
-    if (refresher == null || _refreshing || editor.locked) return;
-    setState(() => _refreshing = true);
-    try {
-      await refresher(state);
-    } finally {
-      if (mounted) setState(() => _refreshing = false);
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
     final editor = BlockEditorScope.of(context);
     final block = state.block;
     final selected = editor.selectedBlockId == block.id;
-    final readOnly = editor.locked || block.readonly;
+    final readOnly = editor.locked;
 
     // show/hide 不允许在 build 阶段直接调用，随选中态帧后同步浮层。
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -111,19 +97,10 @@ class _BlockWidgetState extends State<BlockWidget> {
         style: _styleFor(block),
         cursorColor: AppColors.accentBlue,
         cursorRadius: const Radius.circular(1),
-        decoration: InputDecoration(
+        decoration: const InputDecoration(
           isCollapsed: true,
           border: InputBorder.none,
-          contentPadding: const EdgeInsets.symmetric(
-            horizontal: 2,
-            vertical: 8,
-          ),
-          hintText: block.readonly ? null : '写点什么…',
-          hintStyle: TextStyle(
-            color: AppColors.textMuted,
-            fontSize: _paragraphSize,
-            height: _paragraphHeight,
-          ),
+          contentPadding: EdgeInsets.symmetric(horizontal: 2, vertical: 8),
         ),
       ),
     );
@@ -156,14 +133,7 @@ class _BlockWidgetState extends State<BlockWidget> {
                   onTap: () => editor.selectBlock(selected ? null : block.id),
                 ),
                 Expanded(child: textField),
-                if (state.isData && !editor.locked)
-                  _DataRefreshButton(
-                    refreshing: _refreshing,
-                    tint: _styleFor(block).color,
-                    onTap: () => _onRefreshData(editor),
-                  )
-                else
-                  const SizedBox(width: 2),
+                const SizedBox(width: 2),
               ],
             ),
           ),
@@ -494,46 +464,6 @@ class _BlockHandle extends StatelessWidget {
         width: 24,
         child: Center(
           child: Icon(Icons.drag_indicator, size: 16, color: color),
-        ),
-      ),
-    );
-  }
-}
-
-/// data 快照块尾部的 ↻ 入口（M4，仅 Echo 编辑期）。
-///
-/// 刷新中显 14px 转圈防重入；locked 文档不挂本组件。
-class _DataRefreshButton extends StatelessWidget {
-  const _DataRefreshButton({
-    required this.refreshing,
-    required this.tint,
-    required this.onTap,
-  });
-
-  final bool refreshing;
-  final Color? tint;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final color = (tint ?? AppColors.textPrimary).withValues(alpha: 0.75);
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: refreshing ? null : onTap,
-      child: SizedBox(
-        width: 28,
-        height: 28,
-        child: Center(
-          child: refreshing
-              ? SizedBox(
-                  width: 13,
-                  height: 13,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 1.5,
-                    color: color,
-                  ),
-                )
-              : Icon(Icons.refresh, size: 15, color: color),
         ),
       ),
     );

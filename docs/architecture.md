@@ -101,7 +101,7 @@ echo/
 │   ├── diary/                             # 日记：sy 金标准/时钟/仓储/成稿/编辑器/导出/浏览 widget（15 个文件）
 │   └── control/                           # ECP：协议/鉴权/七域/slash/事件/作业/播种/MCP 边界/手册一致性（441 总测试中的 control 部分）
 ├── assets/
-│   └── diary/templates/                   # 每日模板 JSON（daily-default.json 六块骨架）
+│   └── diary/templates/                   # 每日模板 JSON（daily-default.json 单空段骨架）
 └── README.md                              # Flutter 默认工程说明
 docs/
 ├── architecture.md                        # 本文档：架构与接口
@@ -589,16 +589,32 @@ ui/（年/月/日浏览、编辑页）
   仓储构造可注入 idGenerator、clock、dbFactory（测试 FFI + 临时目录）。
 - **`DiaryClock`（data/）**：日记日口径 `hour < 4 归前一自然日`；
   仓储 `today()` 与成稿器都经它取日，禁止业务代码直取 `DateTime.now()`。
-- **`DiaryDataProvider`（data/）**：环境/日程/天气三源（填 data 块与
-  custom-* 字段）；当前 `FakeDiaryDataProvider` 常量实现，接真实源只
-  新增实现、不动成稿链路。
+- **`DiaryDataProvider`（data/）**：环境/日程/天气三源（结果只落文档根
+  `custom-*`，不再拼块文本）；当前 `FakeDiaryDataProvider` 常量实现，
+  接真实源只新增实现、不动成稿链路。单源失败/无数据返回 null，composer
+  逐源容错、互不连坐。
 - **`DiaryComposer`（template/）**：`ensureDay` 幂等成稿
-  （未来日拒绝、in-flight 按日去重、已存在直接返回）+ 三源快照填充；
-  是"进笔记页自动成稿"与月页补记的共同入口。
-- **`sy/` 格式层**：`SyIdGenerator` 确定性 ID（容器日 ID / data 块
-  角色 ID），序列化只覆盖思源子集（跳过子集外块类型，结果带
-  skippedTypes），`SyZipExporter` 打思源 3.8.6 可导入的 .sy.zip。
-  金标准单测锁格式位级行为。
+  （未来日拒绝、in-flight 按日去重、已存在直接返回）+
+  `fetchCustomPatch(DateTime) → Future<Map<String,String?>>` 三源并发取数
+  （产物键 `custom-iot-temp` / `custom-iot-humidity` /
+  `custom-schedule-count` / `custom-weather`，null 表该源本次不可用、
+  调用方删键）；是"进笔记页自动成稿"与月页补记的共同入口。
+  `isUserEmpty` 跨天清理判定按模板骨架等价块。
+- **模板层（`template/daily_default_template.dart`）**：`daily-default-v2`
+  单空段落骨架（2026-10-18 日模板重设取代旧六块骨架；旧稿整机清空、
+  不做兼容）。
+- **编辑期控制器 `BlockEditorController`（editor/）**：除块编辑/撤销/底色
+  命令外，暴露 `documentCustom` 读写（`setDocumentCustom` /
+  `applyCustomPatch`，均不压撤销快照）；块级只读统一由文档级 `locked`
+  表达（2026-10-18 起 `DiaryBlock.readonly` 退役）。
+- **胶囊行 `DiaryCapsuleRow`（ui/widgets/）**：挂滚动区首项
+  （`BlockEditorView.header`）的自动数据 + 心情入口，读
+  `controller.documentCustom`；胶囊不是块、不进 `.sy` 块列表，但值存
+  文档根 `custom-*`、导出天然携带。
+- **`sy/` 格式层**：`SyIdGenerator` 确定性 ID（容器年/月/日 ID；data 块
+  角色 ID 已随 2026-10-18 模板重设退役），序列化只覆盖思源子集（跳过
+  子集外块类型，结果带 skippedTypes），`SyZipExporter` 打思源 3.8.6
+  可导入的 .sy.zip。金标准单测锁格式位级行为。
 - **生命周期注意**：`DiaryPage` State 在主屏 Row 中常驻，bootstrap
   （打开仓储、自动成稿、prune）与编辑器防抖 flush 都挂在它上面；
   未来若做页面窗口化懒加载（问题清单 Q3），必须先迁移这些假设。

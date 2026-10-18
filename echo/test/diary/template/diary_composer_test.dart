@@ -13,13 +13,8 @@ import 'package:flutter_test/flutter_test.dart';
 
 const _json = '''
 {
-  "id": "daily-default-v1",
+  "id": "daily-default-v2",
   "blocks": [
-    { "type": "heading", "level": 2, "text": "📈 自动记录" },
-    { "type": "data", "role": 1, "placeholder": "数据暂不可用，点 ↻ 重试" },
-    { "type": "heading", "level": 2, "text": "💭 今天" },
-    { "type": "paragraph" },
-    { "type": "heading", "level": 2, "text": "🌙 睡前" },
     { "type": "paragraph" }
   ]
 }
@@ -36,9 +31,6 @@ class _CountingProvider implements DiaryDataProvider {
   int envCalls = 0;
   int countCalls = 0;
   int weatherCalls = 0;
-
-  @override
-  bool get isSampleData => true;
 
   @override
   Future<HomeEnvironment?> fetchHomeEnvironment(DateTime d) async {
@@ -59,6 +51,15 @@ class _CountingProvider implements DiaryDataProvider {
     weatherCalls++;
     if (delay > Duration.zero) await Future<void>.delayed(delay);
     return weather;
+  }
+}
+
+/// 仅天气源抛异常：验证三源互不连坐。
+class _WeatherThrowsProvider extends _CountingProvider {
+  @override
+  Future<String?> fetchWeather(DateTime d) async {
+    weatherCalls++;
+    throw StateError('天气源不可用');
   }
 }
 
@@ -83,19 +84,16 @@ void main() {
   );
 
   group('DiaryComposer.ensureDay 成稿', () {
-    test('空日成稿：六块骨架 + 快照文本 + 四个 custom + 立即落盘', () async {
+    test('空日成稿：单空段骨架 + 四个 custom-* + 立即落盘', () async {
       final provider = _CountingProvider();
       final composer = buildComposer(provider: provider);
       final repo = buildRepo();
 
       final doc = await composer.ensureDay(today, repo);
 
-      expect(doc.blocks, hasLength(6));
-      final data = doc.blocks[1];
-      expect(SyIdGenerator.isDataBlockId(data.id), isTrue);
-      expect(data.readonly, isTrue);
-      expect(data.background, 3);
-      expect(data.text, '🌡️ 21°C　💧 45%　📅 3 条日程　☁️ 多云　（示例数据）');
+      expect(doc.blocks, hasLength(1));
+      expect(doc.blocks.single.kind, DiaryBlockKind.paragraph);
+      expect(doc.blocks.single.text, isEmpty);
 
       expect(doc.custom, {
         'custom-iot-temp': '21',
@@ -178,48 +176,75 @@ void main() {
     });
   });
 
-  group('DiaryComposer.fetchSnapshot 容错', () {
-    test('部分源缺失：省略片段，对应 custom 键不写', () async {
+  group('DiaryComposer.fetchCustomPatch 容错', () {
+    test('四数据键：温度/湿度/日程/天气（不带单位）', () async {
+      final composer = buildComposer(provider: _CountingProvider());
+      final patch = await composer.fetchCustomPatch(today);
+      expect(patch, {
+        'custom-iot-temp': '21',
+        'custom-iot-humidity': '45',
+        'custom-schedule-count': '3',
+        'custom-weather': '多云',
+      });
+    });
+
+    test('部分源缺失：仅对应键为 null，其余键正常', () async {
       final composer = buildComposer(
         provider: _CountingProvider()
           ..env = null
           ..weather = null,
       );
-      final r = await composer.fetchSnapshot(today);
-      expect(r.text, '📅 3 条日程　（示例数据）');
-      expect(r.customPatch['custom-iot-temp'], isNull);
-      expect(r.customPatch['custom-iot-humidity'], isNull);
-      expect(r.customPatch['custom-schedule-count'], '3');
-      expect(r.customPatch['custom-weather'], isNull);
+      final patch = await composer.fetchCustomPatch(today);
+      expect(patch['custom-iot-temp'], isNull);
+      expect(patch['custom-iot-humidity'], isNull);
+      expect(patch['custom-schedule-count'], '3');
+      expect(patch['custom-weather'], isNull);
     });
 
-    test('全源异常：占位文案 + 全 null patch', () async {
+    test('单源抛异常：只有该键为 null，其余键正常（不连坐）', () async {
+      final composer = buildComposer(provider: _WeatherThrowsProvider());
+      final patch = await composer.fetchCustomPatch(today);
+      expect(patch['custom-weather'], isNull);
+      expect(patch['custom-iot-temp'], '21');
+      expect(patch['custom-iot-humidity'], '45');
+      expect(patch['custom-schedule-count'], '3');
+    });
+
+    test('weather 为空白串：该键判 null（调用方删键）', () async {
+      final composer = buildComposer(
+        provider: _CountingProvider()..weather = '   ',
+      );
+      final patch = await composer.fetchCustomPatch(today);
+      expect(patch['custom-weather'], isNull);
+      expect(patch['custom-iot-temp'], '21');
+    });
+
+    test('全源异常：四键全 null（互不连坐、不抛）', () async {
       final composer = buildComposer(
         provider: FakeDiaryDataProvider(throwOnCall: StateError('iot down')),
       );
-      final r = await composer.fetchSnapshot(today);
-      expect(r.text, '数据暂不可用，点 ↻ 重试');
-      expect(r.customPatch.values, everyElement(isNull));
+      final patch = await composer.fetchCustomPatch(today);
+      expect(patch.values, everyElement(isNull));
     });
 
-    test('全源异常成稿：data 块落占位文案，文档无 custom-* 数据键', () async {
+    test('全源异常成稿：单空段骨架，文档无 custom-* 数据键', () async {
       final composer = buildComposer(
         provider: FakeDiaryDataProvider(throwOnCall: StateError('down')),
       );
       final doc = await composer.ensureDay(today, buildRepo());
-      expect(doc.blocks[1].text, '数据暂不可用，点 ↻ 重试');
+      expect(doc.blocks, hasLength(1));
+      expect(doc.blocks.single.text, isEmpty);
       expect(doc.custom, isEmpty);
     });
 
     test('刷新结果带移除语义（上次有值、本次源返回 null）', () async {
       final provider = _CountingProvider();
       final composer = buildComposer(provider: provider);
-      final first = await composer.fetchSnapshot(today);
-      expect(first.customPatch['custom-weather'], '多云');
+      final first = await composer.fetchCustomPatch(today);
+      expect(first['custom-weather'], '多云');
       provider.weather = null;
-      final second = await composer.fetchSnapshot(today);
-      expect(second.customPatch['custom-weather'], isNull);
-      expect(second.text, isNot(contains('☁️')));
+      final second = await composer.fetchCustomPatch(today);
+      expect(second['custom-weather'], isNull);
     });
   });
 
@@ -229,30 +254,26 @@ void main() {
       composer = buildComposer(provider: _CountingProvider());
     });
 
-    test('刚成稿（含已填 data 快照）判为空', () async {
+    test('刚成稿（单空段 + custom-* 数据）判为空', () async {
       final doc = await composer.ensureDay(today, buildRepo());
+      expect(doc.custom, isNotEmpty); // 数据在文档根，不占块。
       expect(composer.isUserEmpty(doc), isTrue);
     });
 
-    test('磁盘往返后 readonly 未恢复：data 快照仍不影响空判定（prune 实路径）', () async {
-      // 复现 M5 真机 bug：prune 直接从 .sy 解码文档，不经过编辑器
-      // attach，readonly 标志未恢复；此时 data 快照文本不得被当成
-      // 用户写过的内容。
+    test('磁盘往返后 custom-* 与单空段骨架保持一致，仍判空', () async {
       final doc = await composer.ensureDay(today, buildRepo());
       final restored = const SySerializer()
           .decodeBytes(const SySerializer().encodeBytes(doc))
           .document;
-      final dataBlock = restored.blocks.firstWhere(
-        (b) => SyIdGenerator.isDataBlockId(b.id),
-      );
-      expect(dataBlock.readonly, isFalse); // 标志确实不进序列化
-      expect(dataBlock.text.trim(), isNotEmpty); // 快照有实际内容
+      expect(restored.blocks, hasLength(1));
+      expect(restored.blocks.single.text, isEmpty);
+      expect(restored.custom['custom-iot-temp'], '21');
       expect(composer.isUserEmpty(restored), isTrue);
     });
 
     test('磁盘往返：用户写过字的稿仍判非空', () async {
       final doc = await composer.ensureDay(today, buildRepo());
-      doc.blocks[3].text = '今天写了一句';
+      doc.blocks.first.text = '今天写了一句';
       final restored = const SySerializer()
           .decodeBytes(const SySerializer().encodeBytes(doc))
           .document;
@@ -262,14 +283,14 @@ void main() {
     test('写过字判为非空', () {
       final doc = DailyDefaultTemplate(spec: DiaryTemplateSpec.fromJson(_json))
           .instantiate(today, SyIdGenerator(random: Random(1)));
-      doc.blocks[3].text = '写了一句今天的事';
+      doc.blocks.first.text = '写了一句今天的事';
       expect(composer.isUserEmpty(doc), isFalse);
     });
 
     test('写了字又删光判为空（次日可清）', () {
       final doc = DailyDefaultTemplate(spec: DiaryTemplateSpec.fromJson(_json))
           .instantiate(today, SyIdGenerator(random: Random(1)));
-      doc.blocks[3].text = '   ';
+      doc.blocks.first.text = '   ';
       expect(composer.isUserEmpty(doc), isTrue);
     });
 
@@ -277,18 +298,15 @@ void main() {
       final doc = DailyDefaultTemplate(spec: DiaryTemplateSpec.fromJson(_json))
           .instantiate(today, SyIdGenerator(random: Random(1)));
       doc.blocks.add(
-        DiaryBlock(
-          id: SyIdGenerator(random: Random(2)).next(),
-          text: '',
-        ),
+        DiaryBlock(id: SyIdGenerator(random: Random(2)).next(), text: ''),
       );
       expect(composer.isUserEmpty(doc), isTrue);
     });
 
-    test('删掉一个标题但无文字仍判为空', () {
+    test('骨架空段被删掉仍判为空', () {
       final doc = DailyDefaultTemplate(spec: DiaryTemplateSpec.fromJson(_json))
           .instantiate(today, SyIdGenerator(random: Random(1)));
-      doc.blocks.removeAt(4); // 🌙 睡前标题
+      doc.blocks.clear();
       expect(composer.isUserEmpty(doc), isTrue);
     });
 
@@ -306,13 +324,13 @@ void main() {
   });
 
   group('成稿序列化落在金标准子集内', () {
-    test('data 块编码为 background=3 段落，custom 仅四数据键', () async {
+    test('单空段编码为 NodeParagraph，custom 仅四数据键、骨架无底色', () async {
       final composer = buildComposer(provider: _CountingProvider());
       final doc = await composer.ensureDay(today, buildRepo());
       final json = const SySerializer().encodeJson(doc);
 
       expect(json, contains('NodeParagraph'));
-      expect(json, contains('var(--b3-font-background3)'));
+      expect(json, isNot(contains('var(--b3-font-background')));
       expect(json, isNot(contains('custom-echo')));
       expect(json, contains('custom-iot-temp'));
       expect(json, contains('custom-schedule-count'));
@@ -320,11 +338,8 @@ void main() {
       final decoded = const SySerializer().decode(json);
       expect(decoded.skippedTypes, isEmpty);
       expect(decoded.document.custom['custom-weather'], '多云');
-      final data = decoded.document.blocks.firstWhere(
-        (b) => SyIdGenerator.isDataBlockId(b.id),
-      );
-      expect(data.kind, DiaryBlockKind.paragraph);
-      expect(data.background, 3);
+      expect(decoded.document.blocks, hasLength(1));
+      expect(decoded.document.blocks.single.kind, DiaryBlockKind.paragraph);
     });
   });
 }

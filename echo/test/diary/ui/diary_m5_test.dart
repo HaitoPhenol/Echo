@@ -300,7 +300,7 @@ void main() {
   });
 
   group('M5 心情入口', () {
-    testWidgets('chip 开选择器选 🙂 即落盘；清除生效', (tester) async {
+    testWidgets('心情胶囊开选择器选 🙂 即落盘；清除生效', (tester) async {
       final repo = emptyRepo();
       addTearDown(repo.dispose);
       await tester.pumpWidget(app(repository: repo));
@@ -319,7 +319,7 @@ void main() {
 
       await tester.tap(find.text('🙂'));
       await tester.pumpAndSettle();
-      // chip 立刻显示当前心情，且已立即落盘。
+      // 胶囊立刻显示当前心情，且已立即落盘。
       final doc = await repo.findDay(DateTime(2026, 6, 15));
       expect(doc?.custom['custom-mood'], '🙂');
 
@@ -374,8 +374,8 @@ void main() {
       await tester.tap(find.text('今天'));
       await tester.pumpAndSettle();
 
-      // 第一个可写空段（与 M4 测试同位置）。
-      await tester.enterText(find.byType(TextField).at(3), 'paused 前打的字');
+      // 单空段骨架的第一个可写段落。
+      await tester.enterText(find.byType(TextField).first, 'paused 前打的字');
       await tester.pump();
       // 不等待防抖，直接发 paused 生命周期。
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);

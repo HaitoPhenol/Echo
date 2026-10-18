@@ -307,15 +307,17 @@
 - 类 读 · 级 1 · 幂等 · 起始 P1
 - 参数：`--date YYYY-MM-DD`（必填）
 - 返回：完整文档（id/title/date/state/custom 字段/blocks 含类型、
-  底色、readonly 标记、文件路径）。
+  级别、底色、updatedAt、文件路径）；块级只读由文档级 state（exported）
+  表达，**2026-10-18 日模板重设后 data 只读块退役，线格式不再单列
+  `readonly` 字段**。
 - 错误：`NOT_FOUND`（5）。
 
 ### `diary.ensure`
 - 类 写 · 级 2 · **幂等** · 起始 P1
-- 参数：`--date YYYY-MM-DD`（可选）、`--wait-snapshot`（布尔，等 data
-  快照拉取完成，默认 true）
+- 参数：`--date YYYY-MM-DD`（可选）
 - 作用：与进模块 bootstrap 完全相同的 `composer.ensureDay`（未来日拒绝、
-  in-flight 去重、命中已存在草稿直接返回）。
+  in-flight 去重、命中已存在草稿直接返回）。**2026-10-18 日模板重设后
+  成稿只写文档根 `custom-*`，原 `--wait-snapshot` 占位参数已删除。**
 - 返回：`{"created": bool, "document": {…同 diary.get 摘要…}}`。
 
 ### `diary.prune`

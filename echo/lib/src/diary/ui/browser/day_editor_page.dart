@@ -10,8 +10,10 @@ import '../../editor/editor_scope.dart';
 import '../../sy/diary_model.dart';
 import '../../sy/sy_id.dart';
 import '../../sy/sy_serializer.dart';
+import '../../template/diary_composer.dart';
 import '../../../theme/app_colors.dart';
 import '../diary_composer_scope.dart';
+import '../widgets/diary_capsule_row.dart';
 import '../widgets/diary_mood_picker.dart';
 import '../widgets/diary_shell.dart';
 
@@ -20,8 +22,8 @@ import '../widgets/diary_shell.dart';
 /// 职责编排：加载统一走 composer.ensureDay（命中草稿直接打开，无则
 /// 模板成稿并落盘，补记过去空日同样进入即成稿）；dirty → 1.5s 防抖
 /// upsert（M5 崩溃恢复口径，硬杀最多损失 1.5s）；进后台 / 页面 pop
-/// 时立即 flush。data 块的 ↻ 刷新经 composer.fetchSnapshot +
-/// 控制器 replaceDataSnapshot。
+/// 时立即 flush。自动数据与心情走文档根 custom-*，由滚动区首项的
+/// [DiaryCapsuleRow] 呈现与刷新（2026-10-18 模板重设）。
 class DayEditorPage extends StatefulWidget {
   const DayEditorPage({
     super.key,
@@ -56,6 +58,12 @@ class _DayEditorPageState extends State<DayEditorPage>
   DiaryDocument? _document;
   bool _loaded = false;
   bool _loadStarted = false;
+
+  /// 成稿编排器（`_load` 时存下，供胶囊行点按刷新复用）。
+  DiaryComposer? _composer;
+
+  /// 胶囊行取数中：期间数据胶囊不可重复点按。
+  bool _refreshing = false;
 
   /// 该日已归档（正文已从本机清理）：不挂编辑器，仅渲染占位页。
   bool _archived = false;
@@ -100,29 +108,17 @@ class _DayEditorPageState extends State<DayEditorPage>
     final existedBefore = await repository.findDay(_date);
     final document = await composer.ensureDay(_date, repository);
     _controller.attach(document);
-    // 导出只读态不提供 ↻ data 刷新（块组件自身也按 locked 隐藏入口，
-    // 这里不挂回调，双保险且语义干净）。
-    if (!document.locked) {
-      _controller.dataRefresher = (state) async {
-        final snapshot = await composer.fetchSnapshot(_date);
-        _controller.replaceDataSnapshot(
-          blockId: state.block.id,
-          text: snapshot.text,
-          customPatch: snapshot.customPatch,
-        );
-      };
-    }
+    _composer = composer;
     _controller.dirty.addListener(_onDirtyChanged);
     _document = document;
     if (mounted) setState(() => _loaded = true);
 
-    // 新成稿：聚焦第一个「可写空段」（跳过标题与 readonly data 块）。
+    // 新成稿：聚焦第一个空段落（跳过标题骨架）。
     if (existedBefore == null) {
       BlockState? target;
       for (final state in _controller.blocks) {
         final block = state.block;
-        if (!block.readonly &&
-            block.kind == DiaryBlockKind.paragraph &&
+        if (block.kind == DiaryBlockKind.paragraph &&
             block.text.trim().isEmpty) {
           target = state;
           break;
@@ -152,6 +148,24 @@ class _DayEditorPageState extends State<DayEditorPage>
     if (selection == null || !mounted) return;
     _controller.setDocumentCustom(kDiaryMoodKey, selection.mood);
     await _flushSave();
+  }
+
+  /// 数据胶囊点按刷新：重拉三源写文档根 custom-* 后立即落盘。
+  ///
+  /// 取数中或只读态直接返回（同一时刻只允许一次刷新，避免并发写）；
+  /// 与成稿（[DiaryComposer.fetchCustomPatch]）共用同一取数入口，口径一致。
+  Future<void> _refreshData() async {
+    final composer = _composer;
+    if (composer == null || _refreshing || _readOnly) return;
+    setState(() => _refreshing = true);
+    try {
+      final patch = await composer.fetchCustomPatch(_date);
+      if (!mounted) return;
+      _controller.applyCustomPatch(patch);
+      await _flushSave();
+    } finally {
+      if (mounted) setState(() => _refreshing = false);
+    }
   }
 
   /// exported → archived：二次确认后删本机正文、仅留索引并退出本页。
@@ -226,8 +240,6 @@ class _DayEditorPageState extends State<DayEditorPage>
             : Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  if (_loaded)
-                    DiaryMoodChip(controller: _controller, onPick: _pickMood),
                   EditorHistoryButtons(controller: _controller),
                   const SizedBox(width: 10),
                   ValueListenableBuilder<bool>(
@@ -279,7 +291,19 @@ class _DayEditorPageState extends State<DayEditorPage>
                     if (widget.unsupportedBlockTypes.isNotEmpty)
                       const _NoticeBanner(text: '含暂不支持的块，已只读展示'),
                     if (_readOnly) const _NoticeBanner(text: '已导出 · 只读'),
-                    Expanded(child: BlockEditorView()),
+                    Expanded(
+                      child: BlockEditorView(
+                        // 2026-10-18 紧凑化：去掉列表顶部内边距，正文区上沿
+                        // 随标题下留白一并上移（底部保留 8dp 收尾间隔）。
+                        contentPadding: const EdgeInsets.only(bottom: 8),
+                        header: DiaryCapsuleRow(
+                          controller: _controller,
+                          refreshing: _refreshing,
+                          onRefreshData: _readOnly ? null : _refreshData,
+                          onPickMood: _readOnly ? null : _pickMood,
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               ),

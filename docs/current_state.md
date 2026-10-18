@@ -82,10 +82,10 @@
 |---|---|
 | `sy/` | 思源格式层：`DiaryDocument` 模型、确定性 ID 生成器、子集序列化器、.sy.zip 打包 |
 | `data/` | `DiaryRepository` 抽象 + 内存实现 / **sqflite 持久实现**、`DiaryClock`（04:00 日界）、`DiaryDataProvider`（现为 Fake 常量）、debug 种子 |
-| `template/` | 模板 JSON 解析、每日成稿 `DiaryComposer`（幂等/并发去重/快照填充） |
-| `editor/` | 分块编辑器：命令、控制器（50 步撤销重做）、块视图、块标浮层 |
+| `template/` | 模板 JSON 解析、每日成稿 `DiaryComposer`（幂等/并发去重/custom-* 数据面填充） |
+| `editor/` | 分块编辑器：命令、控制器（50 步撤销重做、`applyCustomPatch` 批量写文档根 custom-*）、块视图（`header` 可挂滚动区首项）、块标浮层 |
 | `export/` | 导出服务（年行增量导出 .sy.zip） |
-| `ui/` | 年→月→日浏览页、日记编辑页、三态 UI、心情选择、分享确认流 |
+| `ui/` | 年→月→日浏览页、日记编辑页、三态 UI、胶囊行（`diary_capsule_row.dart`，心情入口）、分享确认流 |
 
 - **生产装配用持久仓储**（M5 起）：sqflite 库
   `<app_flutter>/echo_diary/diary.db`（diary_meta 单表：状态/时间戳/
@@ -94,8 +94,23 @@
 - **三态**：`draft`（可写）/ `exported`（只读横幅）/ `archived`
   （删文件留 meta、列表弱化）。
 - **自动成稿**：进笔记页 bootstrap 时 `ensureDay(clock.today())`，
-  模板六块骨架（data 块深蓝底只读 + ↻ 刷新 +「（示例数据）」）；
-  月页「+」补记，日期选择器禁未来日。
+  日模板 `daily-default-v2` 为**单空段落骨架**（2026-10-18 日模板重设，
+  旧六块骨架废弃）；月页「+」补记，日期选择器禁未来日。
+- **自动数据与心情（2026-10-18 重设）**：温度/湿度/天气/日程与心情写
+  文档根 `custom-*`——`composer.fetchCustomPatch(date)` 三源并发取数
+  （单源失败不连坐、null 删键），`controller.applyCustomPatch(patch)`
+  批量落盘；编辑页以滚动区首项**胶囊行** `DiaryCapsuleRow` 呈现
+  （温度→湿度→天气→日程→心情，`Wrap` 换行分散对齐、缺值显 `—`，
+  点数据胶囊重拉三源、点心情胶囊弹五档 sheet）。**data 只读块概念整体
+  退役**：`SyIdGenerator.dataBlock/dataRoleOf/isDataBlockId`、
+  `DiaryBlock.readonly`、`BlockState.isData`/`replaceDataSnapshot`、
+  `DiaryDataProvider.isSampleData`、`DiaryMoodChip` 均已删。
+- **正文区贴边（2026-10-18 紧凑化）**：`DiaryShell` 去掉标题下 20dp 留白，
+  并把头部→标题间距 12→2、标题上移量 -13→-3（两处等量相抵，标题**绘制
+  位不变**，只让布局盒下移 10dp）；编辑页另去列表顶部 8dp 内边距 →
+  正文区上沿由 ≈420 设备像素上移至 ≈338。底部取消停靠条避让高度，
+  正文区下沿**直达屏幕底部**，停靠条按浮层压在其上（`DiaryShell.
+  dockReservedHeight` 已删，口径同 ChatPage 列表内边距）。
 - **04:00 日界**：`DiaryClock.diaryDate`，hour<4 归前一自然日；
   测试注入时钟，生产取墙钟。
 - **空稿清理**：进模块 prune 早于今天的空草稿（meta+.sy 双删）。
@@ -210,7 +225,7 @@
 
 ## 已知问题与待决策
 
-见 [code_review_report.md](code_review_report.md)：日记线 D1–D7
+见 [code_review_report.md](code_review_report.md)：日记线 D1–D8
 （真实数据源、空稿标注回归、Slash 菜单、mood 桥接等）、
 通用工程 G1–G13、待拍板 Q3/Q4/Q5/Q6/Q8（Q2 设备形态已决）。
 

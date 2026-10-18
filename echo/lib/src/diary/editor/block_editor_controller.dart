@@ -30,9 +30,6 @@ class BlockState {
 
   String get text => block.text;
 
-  /// 是否为 data 快照块（确定性 ID 判定，M4）。
-  bool get isData => SyIdGenerator.isDataBlockId(block.id);
-
   void dispose() {
     controller.dispose();
     focusNode.dispose();
@@ -77,10 +74,6 @@ class BlockEditorController extends ChangeNotifier {
   /// 当前选中块（块标点击）；null 无选中。
   String? selectedBlockId;
 
-  /// data 块 ↻ 刷新回调（编辑页注入：composer 取数后回调
-  /// [replaceDataSnapshot]）。为 null 时不显示刷新入口。
-  Future<void> Function(BlockState state)? dataRefresher;
-
   /// 文档是否整体锁定（导出后只读）。
   bool get locked => _doc?.locked ?? false;
 
@@ -103,6 +96,29 @@ class BlockEditorController extends ChangeNotifier {
       if (doc.custom[key] == value) return;
       doc.custom[key] = value;
     }
+    _markDirty();
+    notifyListeners();
+  }
+
+  /// 批量写入/移除文档级 custom-* 属性（胶囊行数据刷新用）。
+  ///
+  /// 与 [setDocumentCustom] 同纪律：文档未挂载或锁定（导出只读）时
+  /// no-op；[patch] 中值为 null 的键移除；任一键实际变化才置 dirty 并
+  /// 通知，全无变化时不产生脏标记。**不压撤销快照**——数据刷新是系统
+  /// 动作，不进用户撤销链。
+  void applyCustomPatch(Map<String, String?> patch) {
+    final doc = _doc;
+    if (doc == null || locked) return;
+    var changed = false;
+    patch.forEach((key, value) {
+      if (value == null) {
+        if (doc.custom.remove(key) != null) changed = true;
+      } else if (doc.custom[key] != value) {
+        doc.custom[key] = value;
+        changed = true;
+      }
+    });
+    if (!changed) return;
     _markDirty();
     notifyListeners();
   }
@@ -133,9 +149,6 @@ class BlockEditorController extends ChangeNotifier {
     _redoStack.clear();
     _dirty.value = false;
     for (final block in document.blocks) {
-      // readonly 不进序列化：data 块以确定性 ID 为身份，挂载时恢复只读，
-      // 使「落盘→重开（M5 从 .sy 读取）」后快照语义不丢失。
-      if (SyIdGenerator.isDataBlockId(block.id)) block.readonly = true;
       final state = BlockState(block)
         ..lastValue = TextEditingValue(
           text: block.text,
@@ -182,7 +195,7 @@ class BlockEditorController extends ChangeNotifier {
     final oldValue = state.lastValue;
     state.lastValue = newValue;
     if (state.suppress) return;
-    if (locked || state.block.readonly) return;
+    if (locked) return;
     if (identical(newValue, oldValue)) return;
 
     final oldText = oldValue.text;
@@ -303,7 +316,7 @@ class BlockEditorController extends ChangeNotifier {
   ///
   /// 光标不在块首时不拦截，交 TextField 做普通删除。
   bool handleBackspace(BlockState state) {
-    if (locked || state.block.readonly) return false;
+    if (locked) return false;
     final selection = state.controller.selection;
     if (!selection.isCollapsed || selection.baseOffset != 0) {
       return false;
@@ -312,7 +325,6 @@ class BlockEditorController extends ChangeNotifier {
     if (index <= 0) return false;
 
     final prev = _states[index - 1];
-    if (prev.block.readonly) return false;
     // 整篇仅剩一个空块：不删除。
     if (state.block.text.isEmpty && _states.length <= 1) return false;
 
@@ -372,7 +384,7 @@ class BlockEditorController extends ChangeNotifier {
   }
 
   void turnInto(BlockState state, DiaryBlockKind kind, {int? level}) {
-    if (locked || state.block.readonly) return;
+    if (locked) return;
     if (kind == DiaryBlockKind.heading &&
         (level == null || level < 1 || level > 3)) {
       throw ArgumentError.value(level, 'level', 'Echo 生成标题级别为 1..3');
@@ -388,7 +400,7 @@ class BlockEditorController extends ChangeNotifier {
 
   /// 设置块底色（1..13）；传 null 清除。
   void setBackground(BlockState state, int? number) {
-    if (locked || state.block.readonly) return;
+    if (locked) return;
     if (number != null && !BlockBackgroundPalette.isValid(number)) {
       throw ArgumentError.value(number, 'number', '底色色号必须为 1..13');
     }
@@ -396,34 +408,6 @@ class BlockEditorController extends ChangeNotifier {
     _pushSnapshot();
     state.block.background = number;
     state.block.updatedAt = _now();
-    _markDirty();
-    notifyListeners();
-  }
-
-  // ================================================================
-  //  data 快照（M4 ↻ 刷新）
-  // ================================================================
-
-  /// 程序化替换 data 块快照文本并同步文档根 custom。
-  ///
-  /// 压一次撤销快照（用户可撤销掉一次刷新结果）；[customPatch] 值为
-  /// null 的键从文档 custom 移除。locked 文档或块不存在时 no-op。
-  void replaceDataSnapshot({
-    required String blockId,
-    required String text,
-    required Map<String, String?> customPatch,
-  }) {
-    final state = blockById(blockId);
-    if (state == null || locked || !state.isData) return;
-    _pushSnapshot();
-    applyValue(state, text, const TextSelection.collapsed(offset: 0));
-    customPatch.forEach((key, value) {
-      if (value == null) {
-        _doc!.custom.remove(key);
-      } else {
-        _doc!.custom[key] = value;
-      }
-    });
     _markDirty();
     notifyListeners();
   }
@@ -470,10 +454,6 @@ class BlockEditorController extends ChangeNotifier {
 
   void _restoreSnapshot(String json) {
     final lockedNow = _doc!.locked;
-    final readonlyById = {
-      for (final s in _states)
-        if (s.block.readonly) s.block.id: true,
-    };
     final decoded = _serializer.decode(json).document;
     // 解码从 ID 还原出 08:00:00 的容器时刻，重新构造以归一为自然日；
     // locked 是运行时属性（不进 JSON），单独带回。
@@ -486,9 +466,6 @@ class BlockEditorController extends ChangeNotifier {
       updatedAt: decoded.updatedAt,
       locked: lockedNow,
     );
-    for (final block in restored.blocks) {
-      if (readonlyById[block.id] ?? false) block.readonly = true;
-    }
     for (final s in _states) {
       s.dispose();
     }

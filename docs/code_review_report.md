@@ -26,15 +26,21 @@
 
 ## A. 日记模块（M1–M5 之后）
 
+> **2026-10-18 日模板重设**：日模板改单空段骨架、data 只读块与
+> `readonly` 整体退役，自动数据与心情改走文档根 `custom-*` + 胶囊行
+> （见 [diary/flutter-tech-plan.md](diary/flutter-tech-plan.md) §5.3）；
+> 下表 D1/D7 随之改述。
+
 | # | 问题 | 现状 | 建议 |
 |---|---|---|---|
-| D1 | **data 块数据是假实现** | `FakeDiaryDataProvider` 常量（21°C/45%/3 条/多云），界面标「（示例数据）」；真实 IoT/天气/日程源未接 | 产品化前置；接入只换 provider 实现，成稿链路不动 |
+| D1 | **自动数据是假实现**（原「data 块数据是假实现」） | `FakeDiaryDataProvider` 常量（21°C/45%/3 条/多云），2026-10-18 起经编辑页**胶囊行**呈现（不再标「（示例数据）」，data 只读块已退役）；真实 IoT/天气/日程源未接 | 产品化前置；接入只换 provider 实现，`fetchCustomPatch`/胶囊行链路不动 |
 | D2 | **空稿预览标注丢失**（疑似回归） | **已解决**（分支 `feat/optimization-a`，2026-10-16）：`day_list_page.dart` 空预览改按 state 区分——draft 恢复「周X（空稿）」（M4 行为），exported/archived 维持星期小字退化；M5 移除标注的注释理由只覆盖后两者，已修正注释并补 widget 回归测试（draft 空稿显标注、exported 空预览不显） | （已修） |
 | D3 | **Slash 命令面板、↑/↓ 逐行跳焦未做** | M3 遗留 patch（tech-plan §4.4），不阻塞 | 编辑器打磨 patch，M6 连写前后插入 |
 | D4 | **mood 思源聚合出图未通** | custom-mood 数据落盘正确；思源 v3.8.6 属性视图需 Template 字段 `{{ index . "custom-mood" }}` 桥接，移动端未配通 | 思源侧配置活，非 Echo 代码问题 |
 | D5 | **撤销快照经 sy codec 的潜在丢块** | tech-plan §7.1：回读含子集外块文档时结构撤销可能跳过只读节点。当前无外部 .sy 导入链路，风险未触发 | 上导入功能前二选一：快照保原始节点 / 含 skippedTypes 禁结构撤销 |
 | D6 | **思源平台限制**（非我方缺陷） | Android 思源不响应 ACTION_SEND（只能 SAF 手动导入 zip）；导入会重生成全部块 ID，重复导入=新建同名笔记本，非合并幂等 | 在使用文档中写明流程；不依赖"容器 ID 幂等"假设 |
-| D7 | **真实数据源前刷新无可见反馈** | ↻ 对假常量数据零变化；功能不崩但用户无感 | 接真实 provider 时加「更新于 HH:mm」 |
+| D7 | **真实数据源前刷新无可见反馈** | 点胶囊行的数据胶囊重拉三源，对假常量数据零变化；功能不崩但用户无感 | 接真实 provider 时加「更新于 HH:mm」 |
+| D8 | **日模板重设真机验收** | **已完成**（2026-10-18，MIX 2S）：`flutter analyze` 零告警、全量 453 项测试已过；真机走查五胶囊齐备、心情点选即时生效、点数据胶囊重拉三源、导出 zip 中今日文档根含 `custom-iot-temp`/`custom-humidity`/`custom-weather`/`custom-schedule-count`；同日紧凑化（正文区上沿 420→340、下沿直达屏幕底 + 停靠条作浮层）已真机实测确认 | （已验） |
 
 日记模块的完整里程碑状态见
 [diary/flutter-tech-plan.md](diary/flutter-tech-plan.md)。

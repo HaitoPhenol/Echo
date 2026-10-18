@@ -1,28 +1,25 @@
 import 'dart:convert';
 
 /// 模板块种类（Echo 内部模板 schema，非思源格式）。
-enum DiaryTemplateBlockType { heading, paragraph, data }
+///
+/// 自动数据与心情不走块：它们写进文档根 `custom-*`，由胶囊行 UI 呈现
+///（2026-10-18 模板重设，旧 data 快照块概念退役）。
+enum DiaryTemplateBlockType { heading, paragraph }
 
 /// 模板中的单个块声明。
 ///
 /// - [DiaryTemplateBlockType.heading]：[level] 必填 1..6，[text] 为预填标题；
-/// - [DiaryTemplateBlockType.paragraph]：普通段落，[text] 默认空；
-/// - [DiaryTemplateBlockType.data]：data 快照块，[role] 必填正整数，
-///   [placeholder] 为数据全不可用时的占位文案，实例化后 readonly+底色 3。
+/// - [DiaryTemplateBlockType.paragraph]：普通段落，[text] 默认空。
 class DiaryTemplateBlockSpec {
   const DiaryTemplateBlockSpec({
     required this.type,
     this.level,
     this.text = '',
-    this.role,
-    this.placeholder = '',
   });
 
   final DiaryTemplateBlockType type;
   final int? level;
   final String text;
-  final int? role;
-  final String placeholder;
 }
 
 /// 声明式日模板（assets/diary/templates/*.json 的内存表示）。
@@ -66,9 +63,8 @@ class DiaryTemplateSpec {
       final type = switch (typeStr) {
         'heading' => DiaryTemplateBlockType.heading,
         'paragraph' => DiaryTemplateBlockType.paragraph,
-        'data' => DiaryTemplateBlockType.data,
         _ => throw FormatException(
-          '第 $i 个块 type 非法：$typeStr（仅 heading/paragraph/data）',
+          '第 $i 个块 type 非法：$typeStr（仅 heading/paragraph）',
         ),
       };
 
@@ -88,32 +84,13 @@ class DiaryTemplateSpec {
         throw FormatException('第 $i 个非 heading 块不得带 level');
       }
 
-      final role = readOptInt('role');
-      if (type == DiaryTemplateBlockType.data) {
-        if (role == null || role < 1) {
-          throw FormatException('第 $i 个 data 块必须带正整数 role');
-        }
-      } else if (role != null) {
-        throw FormatException('第 $i 个非 data 块不得带 role');
-      }
-
       final text = entry['text'] ?? '';
       if (text is! String) {
         throw FormatException('第 $i 个块 text 必须是字符串');
       }
-      final placeholder = entry['placeholder'] ?? '';
-      if (placeholder is! String) {
-        throw FormatException('第 $i 个块 placeholder 必须是字符串');
-      }
 
       blocks.add(
-        DiaryTemplateBlockSpec(
-          type: type,
-          level: level,
-          text: text,
-          role: role,
-          placeholder: placeholder,
-        ),
+        DiaryTemplateBlockSpec(type: type, level: level, text: text),
       );
     }
 

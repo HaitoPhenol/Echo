@@ -63,12 +63,12 @@ class DiaryDaySummary {
   /// 最近内容更新时间（meta 反范式列；archived 为归档前快照）。
   final DateTime updatedAt;
 
-  /// 列表预览规则：用户写下的第一段非空文字（跳过 readonly data
-  /// 快照与标题骨架），单行化并截 40 字；一个字没写返回空串。
+  /// 列表预览规则：用户写下的第一段非空文字（跳过标题骨架），
+  /// 单行化并截 40 字；一个字没写返回空串。
   /// 内存与持久两个仓储共用，保证列表口径一致。
   static String previewOf(DiaryDocument doc) {
     final preview = doc.blocks
-        .where((b) => !b.readonly && b.kind == DiaryBlockKind.paragraph)
+        .where((b) => b.kind == DiaryBlockKind.paragraph)
         .map((b) => b.text.replaceAll('\n', ' ').trim())
         .firstWhere((t) => t.isNotEmpty, orElse: () => '');
     return preview.length > 40 ? preview.substring(0, 40) : preview;
@@ -198,7 +198,7 @@ abstract class DiaryRepository extends ChangeNotifier {
   /// 且 [isEmpty] 判定为「什么都没写」的 **draft** 草稿
   /// （tech-plan §5.2 第 4 条）。
   ///
-  /// 判定函数由 composer 提供（忽略 readonly data 块与模板骨架预填块），
+  /// 判定函数由 composer 提供（忽略模板骨架预填块），
   /// 仓储只负责日期筛选与删除。exported/archived 永不参与删除，但会
   /// 带原因进入结果的 kept 列表（ECP `diary.prune` 报告需要）。
   ///

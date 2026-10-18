@@ -21,12 +21,9 @@ import 'package:echo/src/diary/ui/browser/year_list_page.dart';
 import 'package:echo/src/diary/ui/diary_page.dart';
 import 'package:echo/src/diary/ui/widgets/diary_list_row.dart';
 
-/// 天气可切换的假 provider（第二次起返回晴），验证 ↻ 刷新。
+/// 天气可切换的假 provider（第二次起返回晴），验证数据胶囊点按刷新。
 class _SwitchWeatherProvider implements DiaryDataProvider {
   int calls = 0;
-
-  @override
-  bool get isSampleData => true;
 
   @override
   Future<HomeEnvironment?> fetchHomeEnvironment(DateTime d) async =>
@@ -79,27 +76,33 @@ void main() {
   }
 
   group('M4 自动成稿', () {
-    testWidgets('进模块即成稿：列表自然出现今天，编辑器为六块模板快照', (tester) async {
+    testWidgets('进模块即成稿：列表自然出现今天，编辑器为胶囊行 + 单空段', (tester) async {
       await drillToToday(tester);
 
-      // 三个骨架标题 + data 快照行 + 示例标注 + 3 号底色 data 块。
-      expect(find.text('📈 自动记录'), findsOneWidget);
-      expect(find.text('💭 今天'), findsOneWidget);
-      expect(find.text('🌙 睡前'), findsOneWidget);
+      // 胶囊行：数据四槽 + 心情槽恒显（此测试只断言渲染，不点按）。
       expect(
-        find.text('🌡️ 21°C　💧 45%　📅 3 条日程　☁️ 多云　（示例数据）'),
+        find.byKey(const ValueKey<String>('diary-capsule-temp')),
         findsOneWidget,
       );
-      // 只读 data 块尾部有 ↻ 入口。
-      expect(find.byIcon(Icons.refresh), findsOneWidget);
-      // 六块结构：1 个只读 data TextField + 5 个可写（标题/空段）。
-      expect(find.byType(TextField), findsNWidgets(6));
+      expect(find.text('21°C'), findsOneWidget);
+      expect(find.text('45%'), findsOneWidget);
+      expect(find.text('多云'), findsOneWidget);
+      expect(find.text('3 条'), findsOneWidget);
+      expect(find.byIcon(Icons.mood_outlined), findsOneWidget);
+      expect(find.text('心情'), findsOneWidget);
+
+      // 正文单空段：仅 1 个可写 TextField，旧骨架标题与 ↻ 入口都不在。
+      expect(find.byType(TextField), findsOneWidget);
+      expect(find.text('📈 自动记录'), findsNothing);
+      expect(find.text('💭 今天'), findsNothing);
+      expect(find.text('🌙 睡前'), findsNothing);
+      expect(find.byIcon(Icons.refresh), findsNothing);
     });
 
-    testWidgets('写作后重进：用户文字保留，模板与快照不被二次成稿覆盖', (tester) async {
+    testWidgets('写作后重进：用户文字保留，胶囊数据不被二次成稿覆盖', (tester) async {
       await drillToToday(tester);
 
-      await tester.enterText(find.byType(TextField).at(3), '今天写的内容');
+      await tester.enterText(find.byType(TextField).first, '今天写的内容');
       await tester.pump();
       await tester.binding.handlePopRoute();
       await tester.pumpAndSettle();
@@ -108,19 +111,17 @@ void main() {
       // 日列表仍只有今天一篇（自动成稿不重复落盘）。
       expect(find.byType(DiaryListRow), findsOneWidget);
 
-      // 再进：文字在、快照也在（ensureDay 命中既有草稿不覆盖）。
+      // 再进：文字在、胶囊数据也在（ensureDay 命中既有草稿不覆盖）。
       await tester.tap(find.text('今天'));
       await tester.pumpAndSettle();
       expect(find.text('今天写的内容'), findsOneWidget);
-      expect(
-        find.text('🌡️ 21°C　💧 45%　📅 3 条日程　☁️ 多云　（示例数据）'),
-        findsOneWidget,
-      );
+      expect(find.text('21°C'), findsOneWidget);
+      expect(find.text('多云'), findsOneWidget);
     });
   });
 
-  group('M4 ↻ 刷新', () {
-    testWidgets('点 ↻ 重新取数：文本更新且落盘到 custom 与 data 块', (tester) async {
+  group('M4 数据胶囊刷新', () {
+    testWidgets('点数据胶囊重新取数：天气更新且落盘', (tester) async {
       await tester.pumpWidget(app(provider: _SwitchWeatherProvider()));
       await tester.pumpAndSettle();
       await tester.tap(find.text('2026'));
@@ -129,18 +130,20 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('今天'));
       await tester.pumpAndSettle();
-      expect(find.textContaining('☁️ 多云'), findsOneWidget);
+      expect(find.text('多云'), findsOneWidget);
 
-      await tester.tap(find.byIcon(Icons.refresh));
+      await tester.tap(
+        find.byKey(const ValueKey<String>('diary-capsule-weather')),
+      );
       await tester.pumpAndSettle();
-      expect(find.textContaining('☁️ 晴'), findsOneWidget);
+      expect(find.text('晴'), findsOneWidget);
 
       // pop 立即落盘；重进同一篇验证刷新结果已持久化。
       await tester.binding.handlePopRoute();
       await tester.pumpAndSettle();
       await tester.tap(find.text('今天'));
       await tester.pumpAndSettle();
-      expect(find.textContaining('☁️ 晴'), findsOneWidget);
+      expect(find.text('晴'), findsOneWidget);
     });
   });
 
@@ -225,11 +228,9 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byType(DayEditorPage), findsOneWidget);
       expect(find.text('DIARY // 2026.6.10'), findsOneWidget);
-      // 补记同样是模板成稿（进入即成稿）。
-      expect(
-        find.text('🌡️ 21°C　💧 45%　📅 3 条日程　☁️ 多云　（示例数据）'),
-        findsOneWidget,
-      );
+      // 补记同样是模板成稿（进入即成稿）：胶囊行带当日数据。
+      expect(find.text('21°C'), findsOneWidget);
+      expect(find.text('多云'), findsOneWidget);
 
       await tester.binding.handlePopRoute();
       await tester.pumpAndSettle();
@@ -256,7 +257,7 @@ void main() {
       // 6/10 空稿；6/9 写了字。
       await composer.ensureDay(DateTime(2026, 6, 10), repo);
       final written = await composer.ensureDay(DateTime(2026, 6, 9), repo);
-      written.blocks[3].text = '这天写了，不能清';
+      written.blocks.first.text = '这天写了，不能清';
       await repo.upsertDraft(written);
 
       // 进模块（时钟已是 6/15）：自动成稿今天 + 清理早于今天的空稿。

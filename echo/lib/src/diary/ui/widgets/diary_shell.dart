@@ -33,9 +33,6 @@ class DiaryShell extends StatelessWidget {
 
   final Widget child;
 
-  /// 底部悬浮停靠三条避让（与 ChatPage._dockReservedHeight 同值）。
-  static const double dockReservedHeight = 26;
-
   @override
   Widget build(BuildContext context) {
     // 页面本体透明：直接透出 app 层机械网格纹理（与其他页一致，
@@ -59,7 +56,7 @@ class DiaryShell extends StatelessWidget {
                   const SizedBox(height: 10),
                   // 头部行统一 28px 高、内容垂直居中：返回箭头与 kicker
                   // 的绝对位置在年/月/日/编辑四页完全一致，不随 trailing
-                  // （补记/心情/撤销/保存/归档）自身高度浮动。各 trailing
+                  // （补记/撤销/保存/归档）自身高度浮动。各 trailing
                   // 控件高度必须 ≤ 28，超出会把行重新撑高造成错位。
                   SizedBox(
                     height: 28,
@@ -92,12 +89,14 @@ class DiaryShell extends StatelessWidget {
                       ],
                     ),
                   ),
-                  const SizedBox(height: 12),
-                  // 标题行单独上移（≈40 设备像素）：kicker/返回键行不动，
-                  // 仅大标题向头部行贴近；用 Transform 而非负间距，
-                  // 布局流保持非负。
+                  const SizedBox(height: 2),
+                  // 标题行单独上移：kicker/返回键行不动，仅大标题向头部行
+                  // 贴近；用 Transform 而非负间距，布局流保持非负。
+                  // 2026-10-18 紧凑化：头部→标题间距由 12 收到 2，同时把
+                  // 上移量由 -13 收到 -3，两处等量相抵——标题**画的**位置
+                  // 不变，只让标题的布局盒（及其后的正文区上沿）上移 10dp。
                   Transform.translate(
-                    offset: const Offset(0, -13),
+                    offset: const Offset(0, -3),
                     child: Text(
                       title,
                       style: const TextStyle(
@@ -109,13 +108,13 @@ class DiaryShell extends StatelessWidget {
                       ),
                     ),
                   ),
-                  const SizedBox(height: 20),
+                  // 2026-10-18 正文区上下沿贴边改造：
+                  //  · 上沿：去掉标题下 20dp 留白（编辑页另去列表顶部 8dp
+                  //    内边距），上沿由 ≈420 设备像素上移至 ≈343；
+                  //  · 下沿：不再为底部停靠条预留避让高度，直达屏幕底部，
+                  //    停靠条（悬浮胶囊）作浮层压在其上，内容可穿过其下方
+                  //    （与 ChatPage 列表内边距同思路）。
                   Expanded(child: child),
-                  SizedBox(
-                    height:
-                        MediaQuery.paddingOf(context).bottom +
-                        dockReservedHeight,
-                  ),
                 ],
               ),
             ),

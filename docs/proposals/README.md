@@ -31,6 +31,7 @@
 > 不走提案、直接执行的规则文档小改，在此追加一行（最新在上）。
 > 格式：日期 · 文件 · 一句话原因 · 提交。
 
+- 2026-10-18 · docs/diary/flutter-tech-plan.md、current_state.md、architecture.md、glossary.md、usage-guide.md、code_review_report.md、ecp/ecp-commands.md · 日模板重设（单空段骨架 + 胶囊行，data 只读块 / `readonly` 整体退役，自动数据与心情改走文档根 `custom-*`）致文档过时，按快通道直接修并在本册登记；同步收口两处连带的协议面：`diary.get` 块线格式删 `readonly` 字段、`diary.ensure` 删除已成死参的 `--wait-snapshot`（含 echo-cmd BOOL_FLAGS）；系用户当场裁定，非铁律 / 美术 token 变更，不走 RCR · 待随本次 docs 提交入库
 - 2026-10-12 · docs/ecp/ecp-commands.md · ECP P2 施工裁定快通道：chat.list 回包由裸数组细化为 `items:[...]` 包裹（信封 result 类型为对象，同 diary.list）；§6 chat/§7 console/§8 badge 全小节统一补「起始 P2」标注与错误码/回包形状；§9.1 补 console.refresh/badge.*/chat.* 与 --text-stdin 示例 · 随本提交入库
 - 2026-10-13 · docs/ecp/ecp-commands.md · ECP P1 施工裁定快通道：nav 页名由显示文案 terminal/chat/template/diary 改为与 UI 解耦的稳定 id console/chat/notes/me（nav.page/nav.goto、§8 badge、§9 示例同步）；diary.export 的 --notebook 由必填改可选、缺省「日记」；manifest 一致性测试（test/control/manifest_consistency_test.dart）把手册小节作为冻结契约双向校验 · 随本提交入库
 - 2026-10-12 · §E E1–E5 修复回执（code_review_report/ecp-design） · E1 接收器门禁实测改道：onReceive 内 Binder.getCallingUid() 恒本 App uid（消息派发已离 binder 事务），改用清单 android:permission=DUMP 在 AMS 层按真实发送 uid 拦截 + isCallerTrusted 纯函数 0/2000（API34+ 进程内二次门禁，3 条 JVM 单测）；E3 失败审计 2 测试；E4 9s/60s 文档化随 P3；E5 allowBackup=false 双构建实证；测试 230→232 · 随本提交入库

@@ -33,7 +33,7 @@ readonly MAIN_ACTIVITY="com.everse.echo/.MainActivity"
 # 布尔参数名（可 --flag / --flag=true|false / --flag true|false）。
 # 注意：confirm 不在此列——它是纯开关，永远不取值。
 readonly BOOL_FLAGS=(
-  dry-run reset keep-seeds wait-snapshot
+  dry-run reset keep-seeds
 )
 
 ADB_BIN="${ADB:-/home/phenol/Android/Sdk/platform-tools/adb}"
@@ -394,7 +394,7 @@ if [[ ${#PAIRS[@]} -gt 0 || "$TEXT_STDIN" == "true" ]]; then
 import json, os
 
 def camelize(key):
-    # CLI 一律 kebab-case（--dry-run/--keep-seeds/--wait-snapshot），
+    # CLI 一律 kebab-case（--dry-run/--keep-seeds），
     # 总线 ParamSpec 用 camelCase；此处是唯一转换点。
     if "-" not in key:
         return key

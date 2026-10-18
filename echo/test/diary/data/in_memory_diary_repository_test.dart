@@ -82,7 +82,7 @@ void main() {
       expect(s.preview.length, 40);
     });
 
-    test('M4：预览忽略 readonly data 快照与标题，模板空稿预览为空', () async {
+    test('M4：预览取首个非空段落文本，跳过标题与空段', () async {
       final repo = repoAt(fixedNow);
       final date = DateTime(2026, 3, 12);
       final ids = SyIdGenerator(random: Random(3), now: () => fixedNow);
@@ -96,25 +96,33 @@ void main() {
               id: ids.next(),
               kind: DiaryBlockKind.heading,
               level: 2,
-              text: '📈 自动记录',
-            ),
-            DiaryBlock(
-              id: SyIdGenerator.dataBlock(date, 1),
-              text: '🌡️ 21°C　💧 45%　📅 3 条日程　☁️ 多云',
-              background: 3,
-              readonly: true,
-            ),
-            DiaryBlock(
-              id: ids.next(),
-              kind: DiaryBlockKind.heading,
-              level: 2,
-              text: '💭 今天',
+              text: '骨架标题',
             ),
             DiaryBlock(id: ids.next(), text: ''),
+            DiaryBlock(id: ids.next(), text: '用户写的第一段'),
           ],
         ),
       );
       final s = (await repo.daysOfMonth(2026, 3)).single;
+      expect(s.preview, '用户写的第一段');
+    });
+
+    test('M4：单空段模板骨架稿预览为空', () async {
+      final repo = repoAt(fixedNow);
+      final date = DateTime(2026, 3, 13);
+      final ids = SyIdGenerator(random: Random(4), now: () => fixedNow);
+      await repo.upsertDraft(
+        DiaryDocument(
+          id: SyIdGenerator.dayContainer(date),
+          date: date,
+          title: '3月13日',
+          custom: const {'custom-iot-temp': '21', 'custom-weather': '多云'},
+          blocks: [DiaryBlock(id: ids.next(), text: '')],
+        ),
+      );
+      final s = (await repo.daysOfMonth(2026, 3)).firstWhere(
+        (d) => d.date == date,
+      );
       expect(s.preview, '');
     });
 

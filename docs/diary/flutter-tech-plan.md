@@ -93,7 +93,7 @@ class DiaryBlock {
   int level;                       // heading：1..3
   String text;                     // 纯文本，行内换行用 \n
   int? background;                 // 思源底色号 1..13，null 无底色
-  bool readonly;                   // 数据注入块
+  // bool readonly;               // 数据注入块（2026-10-18 模板重设后退役，见 §5.3）
   DateTime updatedAt;
 }
 ```
@@ -164,7 +164,7 @@ BlockWidget = Row(
   Expanded(TextField(
     controller: block.textController,    // 每块独立
     focusNode: block.focusNode,
-    readOnly: block.readonly || doc.locked,
+    readOnly: doc.locked,            // 2026-10-18：块级 readonly 退役，只读由文档级 locked 表达
     style: block.level != null ? hStyle : pStyle,
     decoration: 底色 + placeholder)),
 )
@@ -225,24 +225,45 @@ BlockWidget = Row(
 
 ## 5. M4：模板与数据注入
 
-- 模板：`assets/diary/templates/daily-default.json`，上游 §6.1 的声明式骨架
-  （📈自动记录 / data 块 / 💭今天 / 🌙睡前）；
-- 每日流程：按日期查 meta → 无则实例化（批量发 ID、默认标题、
-  调 provider 填充 data 块与 custom-*）→ 落盘 draft；
-- 接口抽象先行：
+> **2026-10-18 用户定稿取代本节旧裁定**：日模板改为**单空段落骨架**
+> （`daily-default-v2`），**data 只读块概念整体退役**；自动数据（温度/
+> 湿度/天气/日程）与心情改走**文档根 `custom-*`**，编辑页以**胶囊行**
+> 呈现在标题下方滚动区。下面条目已按新结构改述，旧骨架与 data 块留痕
+> 见括注，完整新结构见 §5.3。
+
+- 模板：`assets/diary/templates/daily-default.json` = `daily-default-v2`，
+  仅一个空段落（旧「📈自动记录 / data 块 / 💭今天 / 🌙睡前」六块骨架
+  已于 2026-10-18 废弃）；
+- 每日流程：按日期查 meta → 无则实例化（发 ID、默认标题）→
+  `composer` 取数写进文档根 `custom-*` → 落盘 draft；
+- 接口抽象先行（三源契约不变）：
 
 ```dart
 abstract interface class DiaryDataProvider {
-  Future<IoTSnapshot?> fetchHomeEnvironment();      // custom-iot-temp/humidity
-  Future<int?> fetchScheduleCount();                 // custom-schedule-count
-  Future<String?> fetchWeather();                    // custom-weather
+  Future<HomeEnvironment?> fetchHomeEnvironment(DateTime diaryDate); // custom-iot-temp/humidity
+  Future<int?> fetchScheduleCount(DateTime diaryDate);               // custom-schedule-count
+  Future<String?> fetchWeather(DateTime diaryDate);                  // custom-weather
 }
 ```
 
-  M4 用假实现（21°C/45%、3 条日程），IoT/团队模块就绪后只换实现；
-- data 块只读 + ↻ 刷新；保存的是快照不是活引用；写作期间不自动刷新。
+  M4 用假实现（21°C/45%、3 条日程、多云），IoT/团队模块就绪后只换实现；
+- 数据落地：`DiaryComposer.fetchCustomPatch(DateTime) →
+  Future<Map<String,String?>>` 并发取三源，产物键 `custom-iot-temp` /
+  `custom-iot-humidity` / `custom-schedule-count` / `custom-weather`，
+  值为 `null` 表示该源本次不可用（调用方删键）；`_compose` 只把非 null
+  项写进 `document.custom`，**不再写块文本**。保存的是快照不是活引用；
+  写作期间不自动刷新。
+- UI：滚动区首项挂 `DiaryCapsuleRow`（温度→湿度→天气→日程→心情），
+  底色同导航条胶囊（`AppColors.tone1` + 全圆角），缺值显 `—`；点按任一
+  数据胶囊重拉全部三源并落盘（`BlockEditorController.applyCustomPatch`），
+  心情胶囊弹原有 sheet。
 
 ### 5.1 M4 计划评审裁定（2026-10-10，针对 m4_templates_plan.md 四问）
+
+> **2026-10-18 取代**：第 2 条（data 块只读快照 + 确定性块 ID）、第 4 条
+> （六块骨架与「示例数据」标注）、第 3 条括注的 ↻ UI 均已被当日用户定稿
+> 取代，改走单空段骨架 + 胶囊行 + `custom-*` 数据面，见 §5.3；以下旧文
+> 保留供回溯。
 
 1. **「晨间自动成稿」= 进入日记模块时今天已成稿，不做真后台定时**
   （详见 §5.2 的成稿生命周期；月日列表口径以 §5.2 第 3 条为准，
@@ -256,7 +277,7 @@ abstract interface class DiaryDataProvider {
    源就绪后若有需要在 M5 之后单独立项）。
    - ~~空模板弱化行~~ 方案作废，改按 §5.2 第 3 条：空日不出现在列表，
      跨天的空草稿在下次运行时后台删除。
-2. **data 块 = 只读段落快照（计划方向正确），禁止造思源自定义节点**：
+2. **data 块 = 只读段落快照（计划方向正确），禁止造思源自定义节点**（**2026-10-18 已取代 → §5.3**）：
    金标准子集外节点回读即被降级丢弃（对照表 §6），自定义节点导入风险
    不可控；快照段落思源 3.8.6 必开。两条细化：
    - **块底色用 3 号**（M1 真机验收样本即 background=3 的只读 data 块，
@@ -274,15 +295,23 @@ abstract interface class DiaryDataProvider {
      这是「快照非活引用」的预期表现。
 3. **M4 范围不含 Slash 面板与 ↑/↓ 逐行跳焦**：§4.4 已定性为不阻塞
    M4/M5 的编辑器打磨遗留，混入只会稀释 M4 主题；M4 交付物 = 模板资产 +
-   provider 假实现 + composer（成稿/容错/刷新）+ ↻ UI + 真机验收，
+   provider 假实现 + composer（成稿/容错/刷新）+ ↻ UI（2026-10-18：迁至
+   胶囊行，见 §5.3）+ 真机验收，
    一项不砍也不扩张。
-4. **骨架与假数据文案保持计划版本**：📈自动记录 / 💭今天 / 🌙睡前三段 +
+4. **骨架与假数据文案保持计划版本**（**2026-10-18 已取代 → §5.3**：
+   骨架改单空段、假数据走胶囊并按胶囊统一样式、删「（示例数据）」标注、
+   心情随胶囊行并入）：📈自动记录 / 💭今天 / 🌙睡前三段 +
    data 块 + 两个空段即 M1 验收样本结构；21°C/45%、3 条日程与 §5 契约
    一致。快照行格式在 composer 测试里锁死一种（全角空格分段，emoji 方案
    自定但全模板统一），假数据期间以 chip/尾部标注「示例数据」。
    custom-mood/custom-sleep 不进 M4（属用户手填/心情选择 UI，后续里程碑）。
 
 ### 5.2 日记日时钟、成稿生命周期与列表口径（2026-10-10 用户裁定，效力高于前述设想）
+
+> **2026-10-18 局部取代**：本条裁定的日时钟/成稿时点/列表口径/空稿清理
+> 本身继续有效；仅第 4 条副条对该「空」判定中 data 快照块的描述、以及
+> 末段「M4 仍交付 📈/💭/🌙 三段 + data 快照模板」被当日日模板重设取代，
+> 见 §5.3。
 
 用户依据长期沿用的旧记录习惯（另一个 app 的《记录规范》：年→月→日层级，
 月页只链接实际创建的日子，日文档含当日一句话小结与时间戳记录/补记条目）
@@ -316,16 +345,59 @@ M4 反转。**
      今天的空草稿保留（当天还可能写）。连续多天未打开则一次性清理多天。
    - "空"的判定（composer 提供，单测锁死）：忽略 readonly data 块与
      模板骨架预填块（与模板声明等价的 heading/段落），其余块中**不存在
-     任一 trim 后非空文本**即为空。用户写了字又自己删光，次日同样清理；
-     data 快照内容不作为"写过"的依据。
+     任一 trim 后非空文本**即为空。（**2026-10-18 更新**：data 只读块已
+     退役，判定只按模板骨架块；自动数据/心情只存文档根 `custom-*`、
+     不占块，天然不参与判定。）用户写了字又自己删光，次日同样清理；
+     ~~data 快照内容不作为"写过"的依据~~（该顾虑随 data 块退役消失）。
    - M4 内存仓储下清理仅活于进程内，接口与判定先行并测试；M5 持久化
      后自动获得真实的跨进程清理语义。
 
 旧规范的日文档形态（一句话当日小结 + `@YYYY/MM/DD HH:mm` 时间戳记录
-段落、可在之后补写"回忆"条目）作为**长期形态参考**存档：M4 仍交付
-📈/💭/🌙 三段 + data 快照模板，不引入时间戳流式块；时间戳记录/补记
+段落、可在之后补写"回忆"条目）作为**长期形态参考**存档：~~M4 仍交付
+📈/💭/🌙 三段 + data 快照模板~~（**2026-10-18 取代**：M4 现交付单空段
+骨架 + 胶囊行，见 §5.3），不引入时间戳流式块；时间戳记录/补记
 排版是否升级为独立块类型，在模板体系稳定后单独立项，导出仍须落在
 金标准子集（段落/标题）内。
+
+### 5.3 日模板重设：单空段骨架 + 胶囊行（2026-10-18 用户定稿）
+
+用户当日口头定稿，**取代 §5、§5.1、§5.2 中关于日模板骨架与 data 只读块
+的旧裁定**（旧文保留在上，供回溯）。现行结构：
+
+```
+┌─ 大标题（DiaryShell，固定不滚动，非块）
+│  ┌─ 胶囊行（滚动区首项，非块，随正文滚动）
+│  │   [温度] [湿度] [天气] [日程] [心情]
+│  └─ 正文块列表（单空段落起手）
+```
+
+- **模板**：`daily-default-v2`，仅一个空段落（旧六块骨架整体废弃）；
+  设备上旧模板草稿按用户裁定整体清空重来，不做旧骨架兼容/白名单。
+- **data 只读块整体退役**：`SyIdGenerator.dataBlock/dataRoleOf/
+  isDataBlockId` 删除；`DiaryBlock.readonly` 字段与构造参数删除；
+  `BlockEditorController` 的 `BlockState.isData`/`dataRefresher`/
+  `replaceDataSnapshot()` 删除；`DiaryDataProvider.isSampleData` 删除；
+  块级只读统一由文档级 `locked` 表达（ECP 线格式 `diaryBlockJson` 同步
+  删 `readonly` 字段）。
+- **数据面**：`DiaryComposer.fetchSnapshot` → `fetchCustomPatch(DateTime)
+  → Future<Map<String,String?>>`，三源并发互不连坐，产物键
+  `custom-iot-temp` / `custom-iot-humidity` / `custom-schedule-count` /
+  `custom-weather`，值为 `null` 表示该源本次不可用（调用方删键）；
+  `_compose` 只写 `document.custom`、不写块文本。
+  `BlockEditorController.applyCustomPatch(Map<String,String?>)` 批量写/删
+  `document.custom`，不压撤销快照（与 `setDocumentCustom` 同纪律）。
+- **UI 胶囊行**：新增 `ui/widgets/diary_capsule_row.dart` 的
+  `DiaryCapsuleRow(controller / onRefreshData / onPickMood / refreshing)`，
+  顺序 温度→湿度→天气→日程→心情，`Wrap(spaceBetween)` 自动换行分散对齐，
+  底色 `AppColors.tone1` + 全圆角，缺值显 `—`（心情缺值显空心图标 +
+  「心情」）；胶囊**不是块**、不进 `.sy` 块列表，但属于笔记内容（值存
+  文档根 `custom-*`，导出天然携带）。挂 `BlockEditorView.header`（滚动区
+  首项，随正文滚动）。点按任一数据胶囊 = 重拉全部三源并落盘；心情胶囊
+  弹原有 sheet。`diary_mood_picker.dart` 的 `DiaryMoodChip` 类删除
+  （心情入口迁入胶囊行）。
+- **空判定/预览**：日模板重设后 `isUserEmpty` 按「与模板声明等价的块
+  忽略、其余块无 trim 非空文本即为空」判定；`DiaryDaySummary.previewOf`
+  取「首个非空段落文本」。空行 `hintText: '写点什么…'` 删除。
 
 ## 6. M5：存储、状态机与导出
 
@@ -344,6 +416,9 @@ M4 反转。**
 - **prune 判定修正**：`readonly` 标志不进 `.sy` 序列化，磁盘解码出的 data
   快照块 `readonly=false`，会被 `isUserEmpty` 误判为用户内容导致历史空稿
   永不清理；改为「`readonly` 或确定性 data 块 ID」二者任一即跳过。
+  （**2026-10-18 再更新**：data 只读块与 `readonly` 字段已整体退役，判定
+  回到「与模板骨架声明等价的块忽略、其余块无 trim 非空文本即为空」，
+  见 §5.3。）
 - **裁定 B（分享确认）**：share_plus 在 Android 拿不到发送成功回执，
   `exportYear` 增 `confirmShared` 回调——分享面板返回后弹确认对话框，
   用户确认才批量 markExported，选「尚未发送」则全部保留 draft（zip 缓存
@@ -372,8 +447,8 @@ M4 反转。**
 | M1 ✅ | 完成 | sy/ 格式层 + 金标准单测 + 示例包思源导入通过 | 2026-10-10 完成：38 个日记测试 + 全量 62 测试绿、analyze 0 问题；示例包在 3.8.6 真机导入验收通过 |
 | M2 ✅ | 1–1.5 周 | 编辑器核心：分块/合并/越界/自动保存；年→月→日三级浏览页 + DiaryRepository 内存实现 | 2026-10-10 完成：T01/T02/T04/T05/T08/T09 单测化，层级下钻与落盘预览 widget 化，200 块懒加载测试；真机国产 IME 拆/合块+防抖落盘验收。注：**崩溃恢复（进程被杀不丢字）随 M5 持久化一起验收**——M2 仓储为内存实现，5s 防抖只落内存 |
 | M3 ✅（核心 + 打磨 patch） | 1 周 | 选中/底色 13 色桥/转标题/撤销/Slash | 2026-10-10 核心完成：selectBlock/setBackground/turnInto 命令 + serializer 往返 + 50 步撤销重做，非法参数/只读守卫齐；底色导出随序列化往返一致。同日 M3 打磨 patch 接线完成：块标浮层（正文/H1–H3/13 色/无色）、标题栏撤销重做按钮、月行三态，底色换思源 midnight 实值（MIX 2S 真机验收）。**仅余 Slash 菜单留下个 patch** |
-| M4 ✅ | 1 周 | 模板实例化 + Provider 假实现 + data 块刷新；04:00 日记日时钟、进模块自动成稿、空草稿跨天清理、月日列表去枚举化（§5.2） | 2026-10-10 完成：全量 164 测试绿（基线 107，新增 57）、analyze 0 问题；MIX 2S 真机验收通过（进模块今天自动成稿六块、data 块深蓝底反色+「（示例数据）」+↻ 可刷新、月页补记选择器未来日禁选/过去日成稿、今天在日列表倒序自然位不置顶、空稿标注、列表只显真实日记）；3:59/4:00 日界与跨天空草稿清理由单测/widget 测试锁定。偏差：①无后台调度，自动成稿在进模块时执行；②data 块 ID 确定性生成（非随机）以支持刷新按 ID 还原；③月/日列表同步去枚举化。真机注：MIX 2S（Adreno 630）+ Flutter 3.47.6 Impeller 对横向滚筒非当前槽位首帧白屏，息屏亮屏重建 surface 即恢复，与 M4 代码无关（同机 TemplatePage 也复现） |
-| M5 ✅ | 1 周 | meta 表/状态机/增量导出/分享/只读/持久化 | 2026-10-11 完成：全量 194 测试绿（基线 189，新增 5）、analyze 0 问题；MIX 2S 真机验收通过——①杀进程冷启草稿不丢（5s 防抖窗口文字在盘）；②跨天 prune 自然复验（10/8 空稿 meta+.sy 双删，keep 文档与今稿保留）；③导出 zip（9 entries、.siyuan conf/sort）→ 思源 v3.8.6 真机两次导入：年/月/日树与星期标题正确、正文分块正确、custom-iot-* / custom-weather / custom-mood 自定义属性全部落盘（7日 🙂、10日 😢）；④三态 UI（draft/exported/archived）与分享确认流（裁定 B）真机走通。**偏差/边界**：schema 反范式（meta 增 title/preview/block_count，列表不解析正文）；`readonly` 不进 .sy 序列化，prune 改按确定性 data 块 ID 识别快照块；share_plus 在 Android 无发送回执，导出后弹「确认已发送？」对话框，确认才 markExported、否认保留 draft；**思源 Android 不响应 ACTION_SEND**，只能在 App 内 Documents → Import 走 SAF 选 zip；**思源导入会重新生成全部块 ID**，重复导入是**新建同名笔记本而非合并/幂等**（原计划"容器幂等"假设不成立，Echo 侧 zip 本身可重复生成不受影响）；**mood 属性视图聚合已在桌面端 MCP 复验通过**（当晚补验）：select 心情列（🙂绿/😢蓝）逐行绑定 + kanban 视图自动按心情分组成列（无 mood 行入「未设置」）；Template 列只读桥接块属性的正确写法为裸表达式 `.action{ index . "custom-mood" }`（勿包 `{{ }}`），但模板文本列不能分组，"成图"仍须 select 列（详见 §6 结论） |
+| M4 ✅ | 1 周 | 模板实例化 + Provider 假实现 + data 块刷新；04:00 日记日时钟、进模块自动成稿、空草稿跨天清理、月日列表去枚举化（§5.2） | 2026-10-10 完成：全量 164 测试绿（基线 107，新增 57）、analyze 0 问题；MIX 2S 真机验收通过（进模块今天自动成稿六块、data 块深蓝底反色+「（示例数据）」+↻ 可刷新（**2026-10-18 该骨架与 data 块已由日模板重设取代，见 §5.3**）、月页补记选择器未来日禁选/过去日成稿、今天在日列表倒序自然位不置顶、空稿标注、列表只显真实日记）；3:59/4:00 日界与跨天空草稿清理由单测/widget 测试锁定。偏差：①无后台调度，自动成稿在进模块时执行；②~~data 块 ID 确定性生成（非随机）以支持刷新按 ID 还原~~（2026-10-18：随 data 块退役）；③月/日列表同步去枚举化。真机注：MIX 2S（Adreno 630）+ Flutter 3.47.6 Impeller 对横向滚筒非当前槽位首帧白屏，息屏亮屏重建 surface 即恢复，与 M4 代码无关（同机 TemplatePage 也复现） |
+| M5 ✅ | 1 周 | meta 表/状态机/增量导出/分享/只读/持久化 | 2026-10-11 完成：全量 194 测试绿（基线 189，新增 5）、analyze 0 问题；MIX 2S 真机验收通过——①杀进程冷启草稿不丢（5s 防抖窗口文字在盘）；②跨天 prune 自然复验（10/8 空稿 meta+.sy 双删，keep 文档与今稿保留）；③导出 zip（9 entries、.siyuan conf/sort）→ 思源 v3.8.6 真机两次导入：年/月/日树与星期标题正确、正文分块正确、custom-iot-* / custom-weather / custom-mood 自定义属性全部落盘（7日 🙂、10日 😢）；④三态 UI（draft/exported/archived）与分享确认流（裁定 B）真机走通。**偏差/边界**：schema 反范式（meta 增 title/preview/block_count，列表不解析正文）；`readonly` 不进 .sy 序列化，prune 改按确定性 data 块 ID 识别快照块（**2026-10-18：readonly 与 data 块均退役，prune 改按模板骨架判定，见 §5.3**）；share_plus 在 Android 无发送回执，导出后弹「确认已发送？」对话框，确认才 markExported、否认保留 draft；**思源 Android 不响应 ACTION_SEND**，只能在 App 内 Documents → Import 走 SAF 选 zip；**思源导入会重新生成全部块 ID**，重复导入是**新建同名笔记本而非合并/幂等**（原计划"容器幂等"假设不成立，Echo 侧 zip 本身可重复生成不受影响）；**mood 属性视图聚合已在桌面端 MCP 复验通过**（当晚补验）：select 心情列（🙂绿/😢蓝）逐行绑定 + kanban 视图自动按心情分组成列（无 mood 行入「未设置」）；Template 列只读桥接块属性的正确写法为裸表达式 `.action{ index . "custom-mood" }`（勿包 `{{ }}`），但模板文本列不能分组，"成图"仍须 select 列（详见 §6 结论） |
 | M6 | 0.5–1 周 | ≥2 台真机连写 7 天、粘贴/撤销边界 | 全流程零异常 |
 
 依赖关系：M1 独立先行；M4 依赖 M2；M5 依赖 M1+M4。

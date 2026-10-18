@@ -25,14 +25,16 @@ String isoDateTime(DateTime d) =>
 String isoMonth(int year, int month) =>
     '$year-${month.toString().padLeft(2, '0')}';
 
-/// 日记块的线格式（手册 §5 diary.get：类型/级别/底色/readonly）。
+/// 日记块的线格式（手册 §5 diary.get：类型/级别/底色）。
+///
+/// 2026-10-18 模板重设后 data 只读块退役，线格式同步删 `readonly` 字段
+/// （不再存在只读块，块级只读由文档级 `locked` 统一表达）。
 Map<String, Object?> diaryBlockJson(DiaryBlock b) => {
   'id': b.id,
   'kind': b.kind.name,
   if (b.level != null) 'level': b.level,
   'text': b.text,
   if (b.background != null) 'background': b.background,
-  'readonly': b.readonly,
   'updatedAt': isoDateTime(b.updatedAt),
 };
 

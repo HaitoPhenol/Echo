@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../../../theme/app_colors.dart';
-import '../../editor/block_editor_controller.dart';
 
 /// 心情在文档 custom 中的键；序列化后即思源文档属性 custom-mood。
 const String kDiaryMoodKey = 'custom-mood';
@@ -20,64 +19,6 @@ class DiaryMoodSelection {
   const DiaryMoodSelection(this.mood);
 
   final String? mood;
-}
-
-/// 编辑页标题栏的心情入口。
-///
-/// 已设置时显示当前 emoji；未设置时显示空心表情图标 + 极小字「心情」。
-/// 随控制器重建（选择后立刻刷新）；文档锁定（导出只读）时只展示
-/// 当前值、不可点按。
-class DiaryMoodChip extends StatelessWidget {
-  const DiaryMoodChip({super.key, required this.controller, this.onPick});
-
-  final BlockEditorController controller;
-
-  /// 点按回调（编辑页注入：弹 sheet、写控制器、触发落盘）；
-  /// 为 null 或文档锁定时 chip 不可交互。
-  final VoidCallback? onPick;
-
-  @override
-  Widget build(BuildContext context) {
-    return ListenableBuilder(
-      listenable: controller,
-      builder: (context, _) {
-        final mood = controller.documentCustom[kDiaryMoodKey];
-        final enabled = onPick != null && !controller.locked;
-        return GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: enabled ? onPick : null,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-            child: mood != null
-                ? Text(mood, style: const TextStyle(fontSize: 16))
-                : Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.mood_outlined,
-                        size: 15,
-                        color: enabled
-                            ? AppColors.pageLabel
-                            : AppColors.mechInkDim,
-                      ),
-                      const SizedBox(width: 3),
-                      Text(
-                        '心情',
-                        style: TextStyle(
-                          fontSize: 10,
-                          letterSpacing: 1.2,
-                          color: enabled
-                              ? AppColors.pageLabel
-                              : AppColors.mechInkDim,
-                        ),
-                      ),
-                    ],
-                  ),
-          ),
-        );
-      },
-    );
-  }
 }
 
 /// 弹出五档心情 bottom sheet。

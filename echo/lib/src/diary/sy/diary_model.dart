@@ -11,7 +11,6 @@ class DiaryBlock {
     this.level,
     this.text = '',
     this.background,
-    this.readonly = false,
     DateTime? updatedAt,
   }) : updatedAt = updatedAt ?? DateTime.now() {
     if (!SyIdGenerator.isValid(id)) {
@@ -38,9 +37,6 @@ class DiaryBlock {
 
   /// 思源块底色色号 1..13（--b3-font-backgroundN），null 表示无底色。
   int? background;
-
-  /// 数据注入块只读。
-  bool readonly;
 
   /// 内容变更时间戳（与 ID 解耦，金标准 §2）。
   DateTime updatedAt;
@@ -71,7 +67,9 @@ class DiaryDocument {
 
   String title;
 
-  /// 文档级 custom-* 属性（weather/mood/sleep/iot-*/schedule-count）。
+  /// 文档级 custom-* 属性（2026-10-18 起：custom-iot-temp/humidity、
+  /// custom-weather、custom-schedule-count、custom-mood 等）。由编辑页
+  /// 胶囊行读取呈现。
   final Map<String, String> custom;
 
   final List<DiaryBlock> blocks;

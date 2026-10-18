@@ -6,11 +6,13 @@ import '../sy/sy_serializer.dart';
 import 'diary_template.dart';
 import 'diary_template_json.dart';
 
-/// M4 默认日模板（📈自动记录 / data 快照 / 💭今天 / 🌙睡前）。
+/// 默认日模板（2026-10-18 重设）：单空段落骨架。
 ///
-/// 与 [BlankDiaryTemplate] 不同：实例化即带完整骨架，data 块使用
-/// 确定性 ID、readonly、3 号底色（M1 真机验收深蓝反色），初始文本
-/// 为占位文案，由 composer 拉取 provider 后替换为数据快照。
+/// 自动数据（温度/湿度/天气/日程条数）与心情**不再是块**：它们写进文档根
+/// `custom-*` 属性，由编辑页的胶囊行 UI 呈现并随正文滚动。
+///
+/// 与 [BlankDiaryTemplate] 的区别仅是「声明式资产驱动」——实例化同样只
+/// 产生可写段落，没有任何只读块。
 class DailyDefaultTemplate implements DiaryTemplate {
   DailyDefaultTemplate({required this.spec});
 
@@ -47,12 +49,6 @@ class DailyDefaultTemplate implements DiaryTemplate {
             id: ids.next(),
             text: b.text,
           ),
-          DiaryTemplateBlockType.data => DiaryBlock(
-            id: SyIdGenerator.dataBlock(day, b.role!),
-            text: b.placeholder,
-            background: _dataBackground,
-            readonly: true,
-          ),
         },
     ];
     return DiaryDocument(
@@ -62,7 +58,4 @@ class DailyDefaultTemplate implements DiaryTemplate {
       blocks: blocks,
     );
   }
-
-  /// data 快照块底色（tech-plan §5.1 第 2 条，M1 验收样本同值）。
-  static const int _dataBackground = 3;
 }

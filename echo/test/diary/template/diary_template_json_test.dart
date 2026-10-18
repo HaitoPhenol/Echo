@@ -9,30 +9,21 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   const validJson = '''
 {
-  "id": "daily-default-v1",
+  "id": "daily-default-v2",
   "blocks": [
-    { "type": "heading", "level": 2, "text": "📈 自动记录" },
-    { "type": "data", "role": 1, "placeholder": "数据暂不可用，点 ↻ 重试" },
-    { "type": "heading", "level": 2, "text": "💭 今天" },
-    { "type": "paragraph" },
-    { "type": "heading", "level": 2, "text": "🌙 睡前" },
     { "type": "paragraph" }
   ]
 }
 ''';
 
   group('DiaryTemplateSpec.fromJson', () {
-    test('合法骨架解析为 6 个声明', () {
+    test('单空段落骨架解析为 1 个声明', () {
       final spec = DiaryTemplateSpec.fromJson(validJson);
-      expect(spec.id, 'daily-default-v1');
-      expect(spec.blocks, hasLength(6));
-      expect(spec.blocks[0].type, DiaryTemplateBlockType.heading);
-      expect(spec.blocks[0].level, 2);
-      expect(spec.blocks[1].type, DiaryTemplateBlockType.data);
-      expect(spec.blocks[1].role, 1);
-      expect(spec.blocks[1].placeholder, '数据暂不可用，点 ↻ 重试');
-      expect(spec.blocks[3].type, DiaryTemplateBlockType.paragraph);
-      expect(spec.blocks[3].text, isEmpty);
+      expect(spec.id, 'daily-default-v2');
+      expect(spec.blocks, hasLength(1));
+      expect(spec.blocks.single.type, DiaryTemplateBlockType.paragraph);
+      expect(spec.blocks.single.level, isNull);
+      expect(spec.blocks.single.text, isEmpty);
     });
 
     test('paragraph 可带预填文本，缺省为空串', () {
@@ -42,12 +33,23 @@ void main() {
       expect(spec.blocks.single.text, '预置');
     });
 
+    test('heading 解析 level 与预填标题', () {
+      final spec = DiaryTemplateSpec.fromJson(
+        '{"id":"t","blocks":[{"type":"heading","level":2,"text":"今天"}]}',
+      );
+      expect(spec.blocks.single.type, DiaryTemplateBlockType.heading);
+      expect(spec.blocks.single.level, 2);
+      expect(spec.blocks.single.text, '今天');
+    });
+
     for (final bad in [
       ['id 缺失', '{"blocks":[{"type":"paragraph"}]}'],
       ['id 空白', '{"id":"  ","blocks":[{"type":"paragraph"}]}'],
       ['blocks 缺失', '{"id":"t"}'],
       ['blocks 空', '{"id":"t","blocks":[]}'],
       ['块类型非法', '{"id":"t","blocks":[{"type":"quote"}]}'],
+      // 旧 data 快照块已退役：schema 仅认 heading/paragraph。
+      ['data 块已退役', '{"id":"t","blocks":[{"type":"data","role":1}]}'],
       ['heading 缺 level', '{"id":"t","blocks":[{"type":"heading"}]}'],
       [
         'heading level 越界',
@@ -57,12 +59,7 @@ void main() {
         'paragraph 带 level',
         '{"id":"t","blocks":[{"type":"paragraph","level":1}]}',
       ],
-      ['data 缺 role', '{"id":"t","blocks":[{"type":"data"}]}'],
-      ['data role 为 0', '{"id":"t","blocks":[{"type":"data","role":0}]}'],
-      [
-        'heading 带 role',
-        '{"id":"t","blocks":[{"type":"heading","level":1,"role":1}]}',
-      ],
+      ['块非对象', '{"id":"t","blocks":[1]}'],
       ['JSON 语法错误', '{not json'],
       ['根是数组', '[]'],
     ]) {
@@ -85,48 +82,33 @@ void main() {
       return template.instantiate(date, ids);
     }
 
-    test('六块结构：三标题 + data 快照 + 两空段', () {
+    test('单空段落骨架：确定性日容器 ID + 金标准标题 + 一个空段落', () {
       final doc = build();
       expect(doc.id, SyIdGenerator.dayContainer(date));
       expect(doc.title, '10月10日 周六');
-      expect(doc.blocks, hasLength(6));
-
-      final headings = doc.blocks
-          .where((b) => b.kind == DiaryBlockKind.heading)
-          .toList();
-      expect(headings.map((b) => b.text), ['📈 自动记录', '💭 今天', '🌙 睡前']);
-      expect(headings.every((b) => b.level == 2), isTrue);
-
-      final paragraphs = doc.blocks
-          .where((b) => b.kind == DiaryBlockKind.paragraph)
-          .toList();
-      expect(paragraphs, hasLength(3)); // data 也是段落承载
+      expect(doc.blocks, hasLength(1));
+      expect(doc.blocks.single.kind, DiaryBlockKind.paragraph);
+      expect(doc.blocks.single.level, isNull);
+      expect(doc.blocks.single.text, isEmpty);
+      expect(doc.blocks.single.background, isNull); // 无底色骨架
     });
 
-    test('data 块：确定性 ID、readonly、3 号底色、占位文案', () {
-      final doc = build();
-      final data = doc.blocks[1];
-      expect(data.id, SyIdGenerator.dataBlock(date, 1));
-      expect(SyIdGenerator.isDataBlockId(data.id), isTrue);
-      expect(data.readonly, isTrue);
-      expect(data.background, 3);
-      expect(data.text, '数据暂不可用，点 ↻ 重试');
-    });
-
-    test('所有块 ID 合 22 位规范；data 之外为随机 ID', () {
+    test('所有块 ID 合 22 位规范', () {
       final doc = build();
       expect(doc.blocks.every((b) => SyIdGenerator.isValid(b.id)), isTrue);
-      expect(doc.blocks[0].id, isNot(SyIdGenerator.dataBlock(date, 1)));
     });
 
-    test('同日重复实例化 data 块 ID 幂等', () {
+    test('同日可重复实例化：每次都产出单空段骨架', () {
       final spec = DiaryTemplateSpec.fromJson(validJson);
       final t = DailyDefaultTemplate(spec: spec);
       final a = t.instantiate(date, SyIdGenerator(random: Random(1)));
       final b = t.instantiate(date, SyIdGenerator(random: Random(2)));
-      final dataA = a.blocks.firstWhere((b) => b.readonly);
-      final dataB = b.blocks.firstWhere((b) => b.readonly);
-      expect(dataA.id, dataB.id);
+      expect(a.blocks, hasLength(1));
+      expect(b.blocks, hasLength(1));
+      expect(a.blocks.single.kind, DiaryBlockKind.paragraph);
+      expect(b.blocks.single.kind, DiaryBlockKind.paragraph);
+      // 容器 ID 确定（同一自然日同一路径）；块 ID 随机故不同。
+      expect(a.id, b.id);
     });
 
     test('模板 id 不写入文档 custom', () {

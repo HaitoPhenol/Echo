@@ -164,7 +164,9 @@
 | **年/月/日列表** | 三级浏览页；只显真实存在日记的时间单位（无空日枚举），倒序排列，今天在自然位但 label 显「今天」 | `diary/ui/browser/year_list_page.dart` 等 |
 | **补记** | 月页右上「+」经日期选择器给过去日期成稿（未来日置灰） | `month_list_page.dart`、`DiaryComposer` |
 | **成稿 / ensureDay** | 无日记日期首次进入时按模板建稿；进笔记页对当天自动执行一次；幂等、并发去重 | `template/diary_composer.dart` |
-| **data 块 / 快照块** | 模板第二块：深蓝底（3 号色）只读段，显示天气/温湿度/日程，尾部 ↻ 手动刷新，确定性 ID 按日期+角色生成 | `template/daily_default_template.dart`、`sy/sy_id.dart` |
+| **data 块 / 快照块（已退役）** | 旧模板第二块：深蓝底（3 号色）只读段，显示天气/温湿度/日程，尾部 ↻ 手动刷新，确定性 ID 按日期+角色生成。**2026-10-18 日模板重设后整体退役**（`SyIdGenerator.dataBlock`/`DiaryBlock.readonly` 等已删），自动数据改走文档根 `custom-*` + 胶囊行 | 旧实现见 `template/daily_default_template.dart`、`sy/sy_id.dart`（均于 2026-10-18 改写） |
+| **胶囊行 / DiaryCapsuleRow** | 编辑页标题下方、滚动区首项的自动数据 + 心情指示条：温度→湿度→天气→日程→心情五枚胶囊，`Wrap` 自动换行分散对齐，底色同导航条胶囊（tone1 + 全圆角），缺值显 `—`；**不是块、不进 `.sy` 块列表**，值读文档根 `custom-*`、导出天然携带；点数据胶囊重拉全部源，点心情胶囊弹五档 sheet | `diary/ui/widgets/diary_capsule_row.dart` 的 `DiaryCapsuleRow` |
+| **`fetchCustomPatch` / `applyCustomPatch`** | 日记自动数据两段接缝：composer 的 `fetchCustomPatch(DateTime)` 三源并发产出 `custom-*` 增删面（值为 null 表该源本次不可用、调用方删键）；控制器的 `applyCustomPatch` 批量写/删文档根 `custom-*`（不压撤销快照） | `template/diary_composer.dart`、`editor/block_editor_controller.dart` |
 | **三态** | `draft` 草稿（可写）/ `exported` 已导出（只读横幅）/ `archived` 已归档（删本机正文留索引、列表弱化） | `data/diary_repository.dart`（DiaryDocState） |
 | **日记日时钟 / 04:00 日界** | 凌晨 4 点前算前一天的日记；全模块取日唯一入口 | `data/diary_clock.dart`（DiaryClock） |
 | **空稿清理 / prune** | 进笔记页时删除早于今天的空草稿（meta 与正文文件同生共死），写过字的保留 | `DiaryRepository.pruneEmptyBefore` |

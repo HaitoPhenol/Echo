@@ -153,6 +153,9 @@ final CommandSpec diaryGet = CommandSpec(
 );
 
 /// `diary.ensure`：与进模块 bootstrap 完全同源的 composer.ensureDay。
+///
+/// 2026-10-18 日模板重设后成稿只写文档根 `custom-*`、不再有独立的
+/// 「data 快照拉取」步骤，原 `--wait-snapshot` 占位参数随之删除。
 final CommandSpec diaryEnsure = CommandSpec(
   namespace: 'diary',
   verb: 'ensure',
@@ -161,12 +164,6 @@ final CommandSpec diaryEnsure = CommandSpec(
   level: ControlLevel.user,
   params: [
     ParamSpec('date', type: ArgType.date, summary: 'YYYY-MM-DD，缺省=日记日今天'),
-    ParamSpec(
-      'waitSnapshot',
-      type: ArgType.boolean,
-      defaults: true,
-      summary: '是否等待 data 快照拉取（成稿始终注入快照）',
-    ),
   ],
   handler: (ctx) async {
     final repo = ctx.requireService<DiaryRepository>('日记仓储');

@@ -62,12 +62,7 @@ void main() {
         title: '10月10日',
         custom: const {'custom-mood': '🙂', 'custom-weather': '多云'},
         blocks: [
-          DiaryBlock(
-            id: SyIdGenerator.dataBlock(date, 1),
-            text: '🌡️ 21°C',
-            background: 3,
-            readonly: true,
-          ),
+          DiaryBlock(id: ids.next(), text: '第一段'),
           DiaryBlock(id: ids.next(), text: '第一行\n第二行'),
           DiaryBlock(
             id: ids.next(),
@@ -90,18 +85,16 @@ void main() {
       expect(found.title, '10月10日');
       expect(found.custom, {'custom-mood': '🙂', 'custom-weather': '多云'});
       expect(found.blocks, hasLength(4));
-      expect(found.blocks[0].text, '🌡️ 21°C');
-      expect(found.blocks[0].background, 3);
-      expect(SyIdGenerator.isDataBlockId(found.blocks[0].id), isTrue);
+      expect(found.blocks[0].text, '第一段');
       expect(found.blocks[1].text, '第一行\n第二行');
       expect(found.blocks[2].kind, DiaryBlockKind.heading);
       expect(found.blocks[2].level, 2);
       expect(found.blocks[3].background, 12);
       expect(found.locked, isFalse);
 
-      // 列表来自 meta 反范式列，不读正文文件。
+      // 列表来自 meta 反范式列，不读正文文件；预览取首个非空段落。
       final summary = (await repo2.daysOfMonth(2026, 10)).single;
-      expect(summary.preview, '第一行 第二行');
+      expect(summary.preview, '第一段');
       expect(summary.blockCount, 4);
       expect(summary.state, DiaryDocState.draft);
     });
@@ -293,9 +286,9 @@ void main() {
       expect(await repo3.draftCountOfMonth(2026, 10), 2);
     });
 
-    test('真实 composer 谓词经磁盘往返：模板空稿被清、有字稿保留', () async {
-      // 回归 M5 真机 bug：prune 从 .sy 直读的文档 readonly 未恢复，
-      // 含内容的 data 快照曾把所有历史稿误判为「写过」。
+    test('真实 composer 谓词经磁盘往返：单空段骨架被清、有字稿保留', () async {
+      // 2026-10-18 模板重设后成稿为「单空段骨架 + custom-* 数据」：
+      // custom-* 不占块，prune 从 .sy 直读也应稳定判空并清理。
       final root = await tempRoot();
       addTearDown(() => root.delete(recursive: true));
       final composer = DiaryComposer(
@@ -307,9 +300,9 @@ void main() {
       final empty = DateTime(2026, 10, 9);
       final written = DateTime(2026, 10, 8);
       final repo1 = await open(root, now: DateTime(2026, 10, 10, 12));
-      await composer.ensureDay(empty, repo1); // 只有模板 + data 快照
+      await composer.ensureDay(empty, repo1); // 仅单空段骨架 + custom-*。
       final withText = await composer.ensureDay(written, repo1);
-      withText.blocks[3].text = '写了内容';
+      withText.blocks.first.text = '写了内容';
       await repo1.upsertDraft(withText);
       await repo1.close();
 
@@ -323,7 +316,7 @@ void main() {
       expect(result.deletedCount, 1);
       expect(await repo2.dayExists(empty), isFalse);
       expect(await repo2.dayExists(written), isTrue);
-      expect((await repo2.findDay(written))!.blocks[3].text, '写了内容');
+      expect((await repo2.findDay(written))!.blocks.first.text, '写了内容');
     });
   });
 

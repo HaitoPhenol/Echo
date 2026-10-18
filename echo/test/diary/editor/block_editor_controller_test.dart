@@ -196,22 +196,6 @@ void main() {
       expect(controller.handleBackspace(second), isFalse);
       controller.dispose();
     });
-
-    test('上一块/当前块只读时不合并', () {
-      doc = makeDoc(
-        blocks: [
-          DiaryBlock(id: ids.next(), text: 'data', readonly: true),
-          DiaryBlock(id: ids.next()),
-        ],
-      );
-      controller = BlockEditorController(idGenerator: ids, now: () => fixedNow)
-        ..attach(doc);
-      final second = controller.blocks[1];
-      collapseAt(second, 0);
-      expect(controller.handleBackspace(second), isFalse);
-      expect(controller.blocks, hasLength(2));
-      controller.dispose();
-    });
   });
 
   group('T05 ↑↓ 跳焦', () {
@@ -296,17 +280,7 @@ void main() {
       controller.dispose();
     });
 
-    test('只读块 / 锁定文档上的结构命令为 no-op', () {
-      doc = makeDoc(blocks: [DiaryBlock(id: ids.next(), readonly: true)]);
-      controller = BlockEditorController(idGenerator: ids, now: () => fixedNow)
-        ..attach(doc);
-      final s = controller.blocks.single;
-      controller.turnInto(s, DiaryBlockKind.heading, level: 1);
-      controller.setBackground(s, 5);
-      expect(s.block.kind, DiaryBlockKind.paragraph);
-      expect(s.block.background, isNull);
-      controller.dispose();
-
+    test('锁定文档上的结构命令与输入为 no-op', () {
       final locked = makeDoc(
         locked: true,
         blocks: [DiaryBlock(id: ids.next(), text: 'x')],
@@ -314,6 +288,10 @@ void main() {
       controller = BlockEditorController(idGenerator: ids, now: () => fixedNow)
         ..attach(locked);
       final ls = controller.blocks.single;
+      controller.turnInto(ls, DiaryBlockKind.heading, level: 1);
+      controller.setBackground(ls, 5);
+      expect(ls.block.kind, DiaryBlockKind.paragraph);
+      expect(ls.block.background, isNull);
       type(ls, 'xyz'); // 监听应直接忽略。
       expect(controller.handleBackspace(ls), isFalse);
       expect(ls.block.text, 'x');
@@ -450,6 +428,63 @@ void main() {
         () => controller.documentCustom['custom-mood'] = '😄',
         throwsUnsupportedError,
       );
+    });
+  });
+
+  group('applyCustomPatch（胶囊行数据刷新）', () {
+    test('批量写入置脏、同值不置脏、null 删键且不压撤销快照', () {
+      doc = makeDoc();
+      controller = BlockEditorController(idGenerator: ids, now: () => fixedNow)
+        ..attach(doc);
+      addTearDown(controller.dispose);
+      expect(controller.documentCustom, isEmpty);
+
+      controller.applyCustomPatch({
+        'custom-iot-temp': '21',
+        'custom-weather': '多云',
+      });
+      expect(controller.documentCustom, {
+        'custom-iot-temp': '21',
+        'custom-weather': '多云',
+      });
+      expect(controller.dirty.value, isTrue);
+      // 系统动作不进用户撤销链。
+      expect(controller.canUndo, isFalse);
+
+      // 同值再写：无变化不产生新的脏标记。
+      controller.markClean();
+      controller.applyCustomPatch({'custom-iot-temp': '21'});
+      expect(controller.dirty.value, isFalse);
+
+      // null = 移除键（源本次不可用）。
+      controller.applyCustomPatch({'custom-weather': null});
+      expect(controller.documentCustom.containsKey('custom-weather'), isFalse);
+      expect(controller.dirty.value, isTrue);
+
+      // 删除不存在的键：无变化不置脏。
+      controller.markClean();
+      controller.applyCustomPatch({'custom-weather': null});
+      expect(controller.dirty.value, isFalse);
+    });
+
+    test('locked（导出只读）文档 applyCustomPatch 为 no-op', () {
+      doc = makeDoc(locked: true);
+      controller = BlockEditorController(idGenerator: ids, now: () => fixedNow)
+        ..attach(doc);
+      addTearDown(controller.dispose);
+
+      controller.applyCustomPatch({'custom-iot-temp': '21'});
+      expect(controller.documentCustom, isEmpty);
+      expect(controller.dirty.value, isFalse);
+    });
+
+    test('未 attach（无文档）时 applyCustomPatch 为 no-op', () {
+      controller = BlockEditorController(idGenerator: ids, now: () => fixedNow);
+      addTearDown(controller.dispose);
+
+      controller.applyCustomPatch({'custom-iot-temp': '21'});
+      expect(controller.documentCustom, isEmpty);
+      expect(controller.dirty.value, isFalse);
     });
   });
 }
