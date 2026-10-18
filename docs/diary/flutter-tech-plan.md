@@ -399,6 +399,43 @@ M4 反转。**
   忽略、其余块无 trim 非空文本即为空」判定；`DiaryDaySummary.previewOf`
   取「首个非空段落文本」。空行 `hintText: '写点什么…'` 删除。
 
+### 5.4 时间戳段与导出超级块（2026-10-18 用户裁定）
+
+> 本节新增于 5.3 之后，补齐「进入编辑页自动时间戳 + 导出段/超级块」结构，
+> 与 §5.3 的胶囊行共同构成现行日文档形态。
+
+- **时间戳段生成（`DiaryComposer.ensureStamp`）**：在**进入编辑页**时触发
+  （`ensureDay` 本身不生成时间戳）。取文档中**最后一个**时间戳块，若距其
+  `updatedAt` 不足 **30 分钟**（`stampReuseWindow`）则**复用不新建**；
+  否则新建一个时间戳块——文本格式 `yyyy-MM-dd HH:mm`，携带块级属性
+  `custom-echo-stamp='1'`；文档无时间戳时插到**索引 0**，已有时间戳时
+  **追加到文档末尾**并补一个空正文行。生成后立即落盘并**聚焦该时间戳的
+  下一块**，用户直接写正文。已导出（`locked`）文档不生成。
+- **时间戳块渲染**：App 内为**只读胶囊 chip**（`DiaryCapsuleChip`，复用胶囊
+  外观；无块标、无浮层、无 TextField），光标自动落到它的下一行；思源不渲染
+  自定义属性，导出后在思源里保留其原本（`code`）样式。
+- **段 = 垂直超级块**：一个「段」= 一个时间戳块 + 其后到下一个时间戳前的块。
+  语义等同思源的**垂直超级块**（`NodeSuperBlock` / `Data:'row'`），**不引入
+  嵌套模型**——分组是导出时的派生，草稿模型始终是扁平块列表。
+- **导出结构（`encodeExportJson` / `encodeExportBytes`）**：在扁平草稿之上
+  叠加两层结构——① 文档**首行**一个水平超级块（`Data:'col'`），把文档根
+  `custom-*` 中有值的胶囊槽位写成带 `code` 行内标记的段落（全空则不生成）；
+  ② 每个「段」包成一个垂直超级块（`Data:'row'`），首块为带 `code` 标记的
+  时间戳段落。外壳与标记子节点序见格式对照表 §5.4。
+- **导出编码 vs 扁平编码（两条链路）**：**落盘/撤销/导入回读**走
+  **扁平编码** `SySerializer.encodeJson` / `encodeBytes`（不含超级块与行内
+  标记；本轮新增携带**块级** `custom-*`，故时间戳标志随草稿往返）；**导出**
+  走 `encodeExportBytes(doc, ids)`（仅在导出时叠加上述超级块与 `code` 标记）。
+  `SyZipExporter` 构造增可选 `SyIdGenerator? idGenerator`（日文档改走
+  `encodeExportBytes`），`DiaryExportService` 传 `repository.idGenerator`，
+  保证导出的超级块/合成段 ID 与仓储同源、不冲突。
+- **列表预览**：`DiaryDaySummary.previewOf` 跳过时间戳块（列表预览不含
+  时间戳），`isUserEmpty` 亦忽略时间戳块。
+- **胶囊槽位收口**：新增纯 Dart 文件 `sy/diary_capsule_items.dart` 收口 5 个
+  槽位键（`custom-iot-temp` / `custom-iot-humidity` / `custom-weather` /
+  `custom-schedule-count` / `custom-mood`）与 `buildDiaryCapsuleItems(custom)`，
+  供 UI 胶囊行与导出首行 col 超级块共用，避免字符串漂移。
+
 ## 6. M5：存储、状态机与导出
 
 - `sqflite` 表 `diary_meta(id PK, date, state, created_at, exported_at, file_path)`；

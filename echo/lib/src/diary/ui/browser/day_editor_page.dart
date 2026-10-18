@@ -104,33 +104,37 @@ class _DayEditorPageState extends State<DayEditorPage>
       }
       return;
     }
-    // 先探一次：区分「新开/补记」（自动聚焦首个可写空段）与翻旧稿。
-    final existedBefore = await repository.findDay(_date);
+    // 成稿：命中草稿直接打开，无则模板成稿并落盘。
     final document = await composer.ensureDay(_date, repository);
+    // 进入编辑页自动确保「当前段」时间戳（距上次 ≥30 分钟才新建）；
+    // ensureDay 本身不生成时间戳，生成动作收口在此入口（plan 决策 14）。
+    final stampAdded = composer.ensureStamp(document);
     _controller.attach(document);
     _composer = composer;
     _controller.dirty.addListener(_onDirtyChanged);
     _document = document;
     if (mounted) setState(() => _loaded = true);
 
-    // 新成稿：聚焦第一个空段落（跳过标题骨架）。
-    if (existedBefore == null) {
-      BlockState? target;
-      for (final state in _controller.blocks) {
-        final block = state.block;
-        if (block.kind == DiaryBlockKind.paragraph &&
-            block.text.trim().isEmpty) {
-          target = state;
-          break;
-        }
-      }
-      if (target != null) {
-        final focus = target.focusNode;
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted && focus.context != null) focus.requestFocus();
-        });
-      }
+    if (stampAdded) {
+      // 自动生成的时间戳立即落盘（不等 1.5s 防抖）；随后光标落到
+      // 该时间戳块的下一行，用户即可直接写正文（用户原话要求）。
+      await repository.upsertDraft(_controller.snapshotDocument());
+      _focusAfterLastStamp();
     }
+  }
+
+  /// 把焦点落到**最后一个**时间戳块的下一块（新段的正文行）。
+  void _focusAfterLastStamp() {
+    final blocks = _controller.blocks;
+    var lastStamp = -1;
+    for (var i = 0; i < blocks.length; i++) {
+      if (blocks[i].block.isStamp) lastStamp = i;
+    }
+    if (lastStamp < 0 || lastStamp + 1 >= blocks.length) return;
+    final target = blocks[lastStamp + 1].focusNode;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && target.context != null) target.requestFocus();
+    });
   }
 
   void _onDirtyChanged() {

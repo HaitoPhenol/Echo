@@ -213,6 +213,39 @@ void main() {
         expect(decoded.custom['custom-mood'], mood);
       }
     });
+
+    test('块级 custom-*（时间戳标志）encode→decode 原样往返', () {
+      final d = DateTime(2026, 10, 10, 9, 0, 0);
+      final doc = DiaryDocument(
+        id: SyIdGenerator.dayContainer(DateTime(2026, 10, 10)),
+        date: DateTime(2026, 10, 10),
+        title: '10月10日 周六',
+        updatedAt: d,
+        blocks: [
+          DiaryBlock(
+            id: '20261010090000-stampaa',
+            text: '2026-10-10 09:00',
+            custom: {kEchoStampAttr: '1'},
+            updatedAt: d,
+          ),
+        ],
+      );
+      final json = serializer.encodeJson(doc);
+      // 块级 custom 随块 Properties 字典序（custom-echo-stamp < id < updated）。
+      expect(
+        json,
+        contains(
+          '"Properties":{"custom-echo-stamp":"1",'
+          '"id":"20261010090000-stampaa","updated":"20261010090000"}',
+        ),
+      );
+
+      final decoded = serializer.decode(json).document;
+      expect(decoded.blocks.single.isStamp, isTrue);
+      expect(decoded.blocks.single.text, '2026-10-10 09:00');
+      // 再编码与首编一致（幂等）。
+      expect(serializer.encodeJson(decoded), json);
+    });
   });
 
   group('标题工具', () {

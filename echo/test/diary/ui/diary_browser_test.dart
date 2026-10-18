@@ -11,6 +11,7 @@ import 'package:echo/src/diary/data/diary_repository.dart';
 import 'package:echo/src/diary/data/in_memory_diary_repository.dart';
 import 'package:echo/src/diary/editor/block_editor_controller.dart';
 import 'package:echo/src/diary/editor/block_editor_view.dart';
+import 'package:echo/src/diary/editor/diary_capsule_chip.dart';
 import 'package:echo/src/diary/editor/editor_scope.dart';
 import 'package:echo/src/diary/sy/diary_model.dart';
 import 'package:echo/src/diary/sy/sy_id.dart';
@@ -161,6 +162,27 @@ void main() {
       expect(find.text('💭 今天'), findsNothing);
       expect(find.text('🌙 睡前'), findsNothing);
       expect(find.byIcon(Icons.refresh), findsNothing);
+    });
+
+    testWidgets('进编辑页自动生成时间戳胶囊，光标落到其下一行', (tester) async {
+      await drillToToday(tester);
+
+      // 时间戳块渲染为只读胶囊 chip（App 独有解析，键 diary-stamp-<id>）。
+      final stampChip = find.byWidgetPredicate(
+        (w) =>
+            w is DiaryCapsuleChip &&
+            w.key is ValueKey<String> &&
+            (w.key! as ValueKey<String>).value.startsWith('diary-stamp-'),
+      );
+      expect(stampChip, findsOneWidget);
+      final label = (stampChip.evaluate().single.widget as DiaryCapsuleChip).label;
+      expect(label, matches(RegExp(r'^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$')));
+
+      // 时间戳块不渲染可输入控件：仅下一行的正文 TextField 存在。
+      expect(find.byType(TextField), findsOneWidget);
+      // 光标已自动落到时间戳的下一行（正文 TextField 获得焦点）。
+      final field = tester.widget<TextField>(find.byType(TextField));
+      expect(field.focusNode!.hasFocus, isTrue);
     });
 
     testWidgets('写作后重进：用户文字保留，胶囊数据不被二次成稿覆盖', (tester) async {

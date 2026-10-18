@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
 
 import '../../../theme/app_colors.dart';
+import '../../sy/diary_capsule_items.dart';
 
 /// 心情在文档 custom 中的键；序列化后即思源文档属性 custom-mood。
-const String kDiaryMoodKey = 'custom-mood';
+///
+/// 别名至 [kCapsuleMoodKey]——键名由 `sy/diary_capsule_items.dart` 统一收口，
+/// UI 与导出编码两处不得各自硬编码字符串。
+const String kDiaryMoodKey = kCapsuleMoodKey;
 
 /// 五档固定离散心情（顺序：由正向到负向）。
 ///

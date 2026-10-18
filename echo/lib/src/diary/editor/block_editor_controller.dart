@@ -325,6 +325,9 @@ class BlockEditorController extends ChangeNotifier {
     if (index <= 0) return false;
 
     final prev = _states[index - 1];
+    // 上一块是时间戳块：一律不拦截——既不允许把正文并入只读的时间戳块，
+    // 也保证每个段的第一个正文行不被删掉（否则段尾只剩时间戳、无输入位）。
+    if (prev.block.isStamp) return false;
     // 整篇仅剩一个空块：不删除。
     if (state.block.text.isEmpty && _states.length <= 1) return false;
 
@@ -353,23 +356,30 @@ class BlockEditorController extends ChangeNotifier {
   }
 
   /// ↑/↓ 越界跳焦；返回 true 表示已拦截。
+  ///
+  /// 跳过只读的时间戳块：向上取最近的前一个非 stamp 块，向下取最近的
+  /// 后一个非 stamp 块；找不到（该方向只剩时间戳或已到边界）返回 false。
   bool handleVerticalMove(BlockState state, {required bool up}) {
     final index = _states.indexOf(state);
     if (up) {
-      if (index <= 0) return false;
       if (state.controller.selection.baseOffset != 0) return false;
-      final prev = _states[index - 1];
-      _postFocus(prev, prev.controller.text.length);
-      return true;
+      for (var i = index - 1; i >= 0; i--) {
+        if (_states[i].block.isStamp) continue;
+        _postFocus(_states[i], _states[i].controller.text.length);
+        return true;
+      }
+      return false;
     } else {
-      if (index >= _states.length - 1) return false;
       if (state.controller.selection.baseOffset !=
           state.controller.text.length) {
         return false;
       }
-      final next = _states[index + 1];
-      _postFocus(next, 0);
-      return true;
+      for (var i = index + 1; i < _states.length; i++) {
+        if (_states[i].block.isStamp) continue;
+        _postFocus(_states[i], 0);
+        return true;
+      }
+      return false;
     }
   }
 
@@ -385,6 +395,8 @@ class BlockEditorController extends ChangeNotifier {
 
   void turnInto(BlockState state, DiaryBlockKind kind, {int? level}) {
     if (locked) return;
+    // 时间戳块只读，无排版入口（UI 亦无入口，防御）。
+    if (state.block.isStamp) return;
     if (kind == DiaryBlockKind.heading &&
         (level == null || level < 1 || level > 3)) {
       throw ArgumentError.value(level, 'level', 'Echo 生成标题级别为 1..3');
@@ -401,6 +413,8 @@ class BlockEditorController extends ChangeNotifier {
   /// 设置块底色（1..13）；传 null 清除。
   void setBackground(BlockState state, int? number) {
     if (locked) return;
+    // 时间戳块只读，无底色入口（UI 亦无入口，防御）。
+    if (state.block.isStamp) return;
     if (number != null && !BlockBackgroundPalette.isValid(number)) {
       throw ArgumentError.value(number, 'number', '底色色号必须为 1..13');
     }

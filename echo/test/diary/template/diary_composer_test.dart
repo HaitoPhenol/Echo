@@ -2,6 +2,7 @@ import 'dart:math';
 
 import 'package:echo/src/diary/data/diary_clock.dart';
 import 'package:echo/src/diary/data/diary_data_provider.dart';
+import 'package:echo/src/diary/data/diary_repository.dart';
 import 'package:echo/src/diary/data/in_memory_diary_repository.dart';
 import 'package:echo/src/diary/sy/diary_model.dart';
 import 'package:echo/src/diary/sy/sy_id.dart';
@@ -340,6 +341,128 @@ void main() {
       expect(decoded.document.custom['custom-weather'], '多云');
       expect(decoded.document.blocks, hasLength(1));
       expect(decoded.document.blocks.single.kind, DiaryBlockKind.paragraph);
+    });
+  });
+
+  group('DiaryComposer.ensureStamp 时间戳段（30 分钟规则）', () {
+    late DateTime nowValue;
+
+    DiaryComposer stampComposer() => DiaryComposer(
+      template: DailyDefaultTemplate(spec: DiaryTemplateSpec.fromJson(_json)),
+      provider: _CountingProvider(),
+      idGenerator: SyIdGenerator(random: Random(3), now: () => nowValue),
+      now: () => nowValue,
+    );
+
+    DiaryDocument buildDoc({List<DiaryBlock>? blocks}) => DiaryDocument(
+      id: SyIdGenerator.dayContainer(DateTime(2026, 10, 18)),
+      date: DateTime(2026, 10, 18),
+      title: '10月18日 周日',
+      blocks: blocks ?? [DiaryBlock(id: '20261018080000-aaaaaaa')],
+      updatedAt: DateTime(2026, 10, 18, 8),
+    );
+
+    DiaryBlock stampBlock(DateTime at, String id) => DiaryBlock(
+      id: id,
+      text: '2026-10-18 10:00',
+      custom: {kEchoStampAttr: '1'},
+      updatedAt: at,
+    );
+
+    setUp(() => nowValue = DateTime(2026, 10, 18, 10, 0));
+
+    test('无时间戳：插到索引 0，文本 yyyy-MM-dd HH:mm，带 custom 标志，保留正文行', () {
+      final composer = stampComposer();
+      final doc = buildDoc();
+
+      expect(composer.ensureStamp(doc), isTrue);
+
+      final stamp = doc.blocks.first;
+      expect(stamp.isStamp, isTrue);
+      expect(stamp.text, '2026-10-18 10:00');
+      expect(stamp.custom[kEchoStampAttr], '1');
+      // 模板原有空段落落在时间戳之后，成为本段正文行。
+      expect(doc.blocks, hasLength(2));
+      expect(doc.blocks[1].isStamp, isFalse);
+      expect(doc.blocks[1].text, isEmpty);
+    });
+
+    test('距上次 < 30 分钟：复用不新建，返回 false 且文档不变', () {
+      final composer = stampComposer();
+      final doc = buildDoc(
+        blocks: [
+          stampBlock(DateTime(2026, 10, 18, 10, 0), '20261018100000-ssssss1'),
+          DiaryBlock(id: '20261018100001-bbbbbbb', text: '正文'),
+        ],
+      );
+      nowValue = DateTime(2026, 10, 18, 10, 29);
+
+      expect(composer.ensureStamp(doc), isFalse);
+      expect(doc.blocks, hasLength(2));
+      expect(doc.blocks.where((b) => b.isStamp), hasLength(1));
+    });
+
+    test('距上次恰好 30 分钟：阈值含边界，新建新段并补空正文行', () {
+      final composer = stampComposer();
+      final doc = buildDoc(
+        blocks: [
+          stampBlock(DateTime(2026, 10, 18, 10, 0), '20261018100000-ssssss2'),
+          DiaryBlock(id: '20261018100001-ddddddd', text: '正文'),
+        ],
+      );
+      nowValue = DateTime(2026, 10, 18, 10, 30);
+
+      expect(composer.ensureStamp(doc), isTrue);
+      expect(doc.blocks, hasLength(4));
+      final newStamp = doc.blocks[2];
+      expect(newStamp.isStamp, isTrue);
+      expect(newStamp.text, '2026-10-18 10:30');
+      expect(doc.blocks[3].isStamp, isFalse);
+      expect(doc.blocks[3].text, isEmpty);
+    });
+
+    test('已导出（locked）文档：不生成时间戳，返回 false', () {
+      final composer = stampComposer();
+      final doc = buildDoc()..locked = true;
+
+      expect(composer.ensureStamp(doc), isFalse);
+      expect(doc.blocks.any((b) => b.isStamp), isFalse);
+    });
+
+    test('isUserEmpty：自动时间戳不参与「是否写了字」判定', () {
+      final composer = stampComposer();
+      final empty = buildDoc(
+        blocks: [
+          stampBlock(DateTime(2026, 10, 18, 10, 0), '20261018100000-ssssss3'),
+          DiaryBlock(id: '20261018100001-eeeeeee', text: ''),
+        ],
+      );
+      expect(composer.isUserEmpty(empty), isTrue);
+
+      final written = buildDoc(
+        blocks: [
+          stampBlock(DateTime(2026, 10, 18, 10, 0), '20261018100000-ssssss4'),
+          DiaryBlock(id: '20261018100001-fffffff', text: '写了一句'),
+        ],
+      );
+      expect(composer.isUserEmpty(written), isFalse);
+    });
+
+    test('previewOf：列表预览跳过时间戳，取第一段用户文字', () {
+      final doc = buildDoc(
+        blocks: [
+          stampBlock(DateTime(2026, 10, 18, 10, 0), '20261018100000-ssssss5'),
+          DiaryBlock(id: '20261018100001-ggggggg', text: '今天的第一句'),
+        ],
+      );
+      expect(DiaryDaySummary.previewOf(doc), '今天的第一句');
+      // 只有时间戳、无正文时预览为空串（不把时间戳当摘要）。
+      final stampOnly = buildDoc(
+        blocks: [
+          stampBlock(DateTime(2026, 10, 18, 10, 0), '20261018100000-ssssss6'),
+        ],
+      );
+      expect(DiaryDaySummary.previewOf(stampOnly), isEmpty);
     });
   });
 }

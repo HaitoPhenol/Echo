@@ -272,6 +272,28 @@ void main() {
       expect(day.blocks.last.text, '心情：good');
     });
 
+    test('导出日文档叠加超级块与行内 code 标记（落盘编码不含）', () {
+      final raw = utf8.decode(
+        archive.files
+            .firstWhere((f) => f.name.endsWith('20261010080000-echo000.sy'))
+            .content,
+      );
+      // custom-mood 有值 → 首行水平胶囊超级块 + code 行内标记。
+      expect(raw, contains('"Type":"NodeSuperBlock"'));
+      expect(raw, contains('"Data":"col"'));
+      expect(raw, contains('"TextMarkType":"code"'));
+
+      // 同一文档走扁平落盘编码时不得出现超级块（本包已用导出编码）。
+      final day = serializer
+          .decodeBytes(
+            archive.files
+                .firstWhere((f) => f.name.endsWith('20261010080000-echo000.sy'))
+                .content,
+          )
+          .document;
+      expect(serializer.encodeJson(day), isNot(contains('NodeSuperBlock')));
+    });
+
     test('增量幂等：重复构建容器路径不变，sort.json 一致', () {
       final again = exporter.build(
         notebookName: 'Echo日记测试',

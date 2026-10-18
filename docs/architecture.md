@@ -614,11 +614,20 @@ ui/（年/月/日浏览、编辑页）
 - **胶囊行 `DiaryCapsuleRow`（ui/widgets/）**：挂滚动区首项
   （`BlockEditorView.header`）的自动数据 + 心情入口，读
   `controller.documentCustom`；胶囊不是块、不进 `.sy` 块列表，但值存
-  文档根 `custom-*`、导出天然携带。
-- **`sy/` 格式层**：`SyIdGenerator` 确定性 ID（容器年/月/日 ID；data 块
-  角色 ID 已随 2026-10-18 模板重设退役），序列化只覆盖思源子集（跳过
-  子集外块类型，结果带 skippedTypes），`SyZipExporter` 打思源 3.8.6
-  可导入的 .sy.zip。金标准单测锁格式位级行为。
+  文档根 `custom-*`、导出天然携带。五个槽位键与 `buildDiaryCapsuleItems`
+  收口于共享纯 Dart `sy/diary_capsule_items.dart`（UI 与导出首行 col
+  超级块共用，避免字符串漂移）；胶囊外观基元提取为共享
+  `editor/diary_capsule_chip.dart`（时间戳块渲染亦复用它）。
+- **`sy/` 格式层与双编码链路（2026-10-18）**：`SyIdGenerator` 确定性 ID
+  （容器年/月/日 ID；data 块角色 ID 已随模板重设退役）；模型 `DiaryBlock`
+  增**块级** `custom`（含 `custom-echo-stamp` 时间戳标志，`isStamp`）。
+  **序列化分两条链路**——**扁平编码** `encodeJson`/`encodeBytes` 供落盘 /
+  撤销快照 / 导入回读（只覆盖思源子集、跳过子集外块、结果带 `skippedTypes`，
+  本轮新增随块 `Properties` 携带块级 `custom-*`）；**导出编码**
+  `encodeExportBytes(doc, ids)` 仅在导出时叠加首行胶囊 `col` 超级块 + 每个
+  「段」`row` 超级块与 `code` 行内标记（**时间戳段**语义等同思源垂直超级块，
+  不引入嵌套模型）。`SyZipExporter` 打思源 3.8.6 可导入的 .sy.zip，构造可选
+  注入 `idGenerator`（与仓储同源）。金标准单测分别锁扁平/导出结构的位级行为。
 - **导出与每月提醒（2026-10-18）**：`DiaryExportService.exportMonth`
   按**月**收集 draft（`draftDocumentsOfMonth`）→ 打包 → 分享 → 人工
   确认后 `markExported`；ECP `diary.export` 走同路 `buildDraftZip`

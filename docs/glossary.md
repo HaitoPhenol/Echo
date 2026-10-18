@@ -165,7 +165,10 @@
 | **补记** | 笔记页常驻快捷：把手条竖单「补记」经日期选择器给过去日期成稿（未来日置灰）；入口 2026-10-19 自月页右上「+」迁来 | `navigation/page_action.dart`、`DiaryPageState.startBackfill`、`DiaryComposer` |
 | **成稿 / ensureDay** | 无日记日期首次进入时按模板建稿；进笔记页对当天自动执行一次；幂等、并发去重 | `template/diary_composer.dart` |
 | **data 块 / 快照块（已退役）** | 旧模板第二块：深蓝底（3 号色）只读段，显示天气/温湿度/日程，尾部 ↻ 手动刷新，确定性 ID 按日期+角色生成。**2026-10-18 日模板重设后整体退役**（`SyIdGenerator.dataBlock`/`DiaryBlock.readonly` 等已删），自动数据改走文档根 `custom-*` + 胶囊行 | 旧实现见 `template/daily_default_template.dart`、`sy/sy_id.dart`（均于 2026-10-18 改写） |
-| **胶囊行 / DiaryCapsuleRow** | 编辑页标题下方、滚动区首项的自动数据 + 心情指示条：温度→湿度→天气→日程→心情五枚胶囊，`Wrap` 自动换行分散对齐，底色同导航条胶囊（tone1 + 全圆角），缺值显 `—`；**不是块、不进 `.sy` 块列表**，值读文档根 `custom-*`、导出天然携带；点数据胶囊重拉全部源，点心情胶囊弹五档 sheet | `diary/ui/widgets/diary_capsule_row.dart` 的 `DiaryCapsuleRow` |
+| **胶囊行 / DiaryCapsuleRow** | 编辑页标题下方、滚动区首项的自动数据 + 心情指示条：温度→湿度→天气→日程→心情五枚胶囊，`Wrap` 自动换行分散对齐，底色同导航条胶囊（tone1 + 全圆角），缺值显 `—`；**不是块、不进 `.sy` 块列表**，值读文档根 `custom-*`、导出天然携带；点数据胶囊重拉全部源，点心情胶囊弹五档 sheet | `diary/ui/widgets/diary_capsule_row.dart` 的 `DiaryCapsuleRow`（胶囊外观基元提取为共享 `editor/diary_capsule_chip.dart`） |
+| **时间戳块 / 时间戳胶囊** | 进编辑页自动生成/复用的**只读胶囊**（文本 `yyyy-MM-dd HH:mm`），以**块级**属性 `custom-echo-stamp` 标识、App 独有解析；无块标、不可编辑，光标自动落到下一行；思源不渲染该自定义属性，导出后保留其 `code` 行内标记样式 | `editor/block_widget.dart`、`template/diary_composer.dart`（`ensureStamp`） |
+| **段 / 垂直超级块** | 一个时间戳块 + 其后到下一个时间戳前的块；语义等同思源**垂直超级块**，导出时以 `row` 超级块包裹；不引入嵌套模型（分组是导出时的派生） | `sy/sy_serializer.dart` |
+| **导出编码 / 扁平编码** | 落盘/撤销/导入回读走**扁平编码** `encodeJson`/`encodeBytes`（不含超级块与行内标记，新增携带块级 `custom-*`）；导出走 `encodeExportBytes`，叠加首行胶囊 `col` 超级块 + 每段 `row` 超级块 + `code` 标记 | `sy/sy_serializer.dart` |
 | **`fetchCustomPatch` / `applyCustomPatch`** | 日记自动数据两段接缝：composer 的 `fetchCustomPatch(DateTime)` 三源并发产出 `custom-*` 增删面（值为 null 表该源本次不可用、调用方删键）；控制器的 `applyCustomPatch` 批量写/删文档根 `custom-*`（不压撤销快照） | `template/diary_composer.dart`、`editor/block_editor_controller.dart` |
 | **三态** | `draft` 草稿（可写）/ `exported` 已导出（只读横幅）/ `archived` 已归档（删本机正文留索引、列表弱化） | `data/diary_repository.dart`（DiaryDocState） |
 | **日记日时钟 / 04:00 日界** | 凌晨 4 点前算前一天的日记；全模块取日唯一入口 | `data/diary_clock.dart`（DiaryClock） |

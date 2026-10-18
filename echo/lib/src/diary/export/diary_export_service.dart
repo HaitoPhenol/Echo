@@ -95,7 +95,10 @@ class DiaryExportService {
     Future<Directory> Function()? tempDirectory,
     DateTime Function()? now,
   }) : _share = shareChannel ?? _defaultShare,
-       _exporter = exporter ?? SyZipExporter(),
+       // 导出编码需要生成超级块/合成胶囊段 ID，注入与仓储同源的 ID 源，
+       // 避免与既有块 ID 冲突（plan H 节）。
+       _exporter =
+           exporter ?? SyZipExporter(idGenerator: repository.idGenerator),
        _tempDirectory = tempDirectory ?? getTemporaryDirectory,
        _now = now ?? DateTime.now;
 

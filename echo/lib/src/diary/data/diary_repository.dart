@@ -63,12 +63,12 @@ class DiaryDaySummary {
   /// 最近内容更新时间（meta 反范式列；archived 为归档前快照）。
   final DateTime updatedAt;
 
-  /// 列表预览规则：用户写下的第一段非空文字（跳过标题骨架），
-  /// 单行化并截 40 字；一个字没写返回空串。
+  /// 列表预览规则：用户写下的第一段非空文字（跳过标题骨架与自动生成的
+  /// 时间戳块），单行化并截 40 字；一个字没写返回空串。
   /// 内存与持久两个仓储共用，保证列表口径一致。
   static String previewOf(DiaryDocument doc) {
     final preview = doc.blocks
-        .where((b) => b.kind == DiaryBlockKind.paragraph)
+        .where((b) => b.kind == DiaryBlockKind.paragraph && !b.isStamp)
         .map((b) => b.text.replaceAll('\n', ' ').trim())
         .firstWhere((t) => t.isNotEmpty, orElse: () => '');
     return preview.length > 40 ? preview.substring(0, 40) : preview;

@@ -1,6 +1,8 @@
 import 'dart:convert';
 
+import 'diary_capsule_items.dart';
 import 'diary_model.dart';
+import 'sy_id.dart';
 
 /// .sy 解码结果：文档本体 + 子集外被跳过的顶层节点类型（供回读 UI 出占位）。
 class SyDecodeResult {
@@ -43,6 +45,32 @@ class SySerializer {
 
   /// 序列化为 .sy JSON 字符串（单行紧凑）。
   String encodeJson(DiaryDocument doc) => jsonEncode(_encodeDocument(doc));
+
+  // ---- 导出编码（思源目标结构：超级块 + code 行内标记）---------------------
+
+  /// 导出专用编码：在**扁平草稿**之上叠加思源目标结构。
+  ///
+  /// 与 [encodeJson] 的分工（见 plan 决策 5）：
+  /// * [encodeJson] / [encodeBytes] —— **扁平**，供落盘、撤销快照、导入
+  ///   三条链路使用，不含任何 `NodeSuperBlock` 与行内标记；
+  /// * [encodeExportJson] / [encodeExportBytes] —— **导出**，供
+  ///   [SyZipExporter] 生成思源导入包，叠加：
+  ///   1. 文档**首行**一个水平超级块（`Data:'col'`），把文档根 `custom-*`
+  ///      里有值的胶囊槽位（[buildDiaryCapsuleItems]）写成带 `code` 行内标记
+  ///      的段落（参考样本首行结构）；
+  ///   2. 每个「段」（一个 [DiaryBlock.isStamp] 时间戳块 + 其后到下一
+  ///      时间戳前的正文块）包成一个垂直超级块（`Data:'row'`），首段即
+  ///      带 `code` 标记的时间戳；时间戳块同时携带 [kEchoStampAttr] 块级
+  ///      自定义属性——思源不渲染自定义属性，故在思源里保留其 `code`
+  ///      原本样式。
+  ///
+  /// [ids] 为超级块外壳与合成胶囊段的 ID 来源（与仓储同源，避免冲突）。
+  String encodeExportJson(DiaryDocument doc, SyIdGenerator ids) =>
+      jsonEncode(_encodeExportDocument(doc, ids));
+
+  /// [encodeExportJson] 的 UTF-8 字节形式。
+  List<int> encodeExportBytes(DiaryDocument doc, SyIdGenerator ids) =>
+      utf8.encode(encodeExportJson(doc, ids));
 
   /// 编码空容器文档（年/月层级用，无正文块）。
   String encodeContainer({
@@ -99,7 +127,11 @@ class SySerializer {
   }
 
   Map<String, Object?> _encodeBlock(DiaryBlock block) {
-    final properties = <String, Object?>{'id': block.id};
+    final properties = <String, Object?>{
+      // 块级 custom-*（当前仅时间戳标志）随 Properties 往返；思源忽略自定义属性。
+      for (final entry in block.custom.entries) entry.key: entry.value,
+      'id': block.id,
+    };
     final background = block.background;
     if (background != null) {
       properties['style'] =
@@ -123,6 +155,157 @@ class SySerializer {
       ];
     }
     return node;
+  }
+
+  // ---- 导出编码内部工具 -----------------------------------------------------
+
+  /// 导出文档结构：首行胶囊 col 超级块（如有值）+ 段分组（row 超级块）。
+  Map<String, Object?> _encodeExportDocument(
+    DiaryDocument doc,
+    SyIdGenerator ids,
+  ) {
+    final children = <Map<String, Object?>>[];
+    final capsule = _capsuleSuperBlock(doc, ids);
+    if (capsule != null) children.add(capsule);
+    children.addAll(_rowSegments(doc, ids));
+    return _rootNode(
+      id: doc.id,
+      title: doc.title,
+      updatedAt: doc.updatedAt,
+      custom: doc.custom,
+      children: children.isEmpty ? null : children,
+    );
+  }
+
+  /// 首行水平超级块：把文档根 `custom-*` 中**有值**的胶囊槽位写成带 `code`
+  /// 行内标记的段落；五个槽位全空则返回 null（不生成空超级块）。
+  ///
+  /// 合成段落与外壳的 `updated` 统一取 `doc.updatedAt`（参考样本中胶囊
+  /// 各段共享同一 updated，即超级块创建时刻）。
+  Map<String, Object?>? _capsuleSuperBlock(
+    DiaryDocument doc,
+    SyIdGenerator ids,
+  ) {
+    final items = buildDiaryCapsuleItems(
+      doc.custom,
+    ).where((item) => item.hasValue).toList(growable: false);
+    if (items.isEmpty) return null;
+    return _superBlock(
+      id: ids.next(),
+      layout: 'col',
+      updated: doc.updatedAt,
+      children: [
+        for (final item in items)
+          _codeParagraph(
+            id: ids.next(),
+            text: item.exportText!,
+            updated: doc.updatedAt,
+          ),
+      ],
+    );
+  }
+
+  /// 段分组：扫描扁平块列表，遇 `isStamp` 即开新段（该 stamp 起、到下一个
+  /// stamp 前），每段包成一个垂直超级块。
+  ///
+  /// 首个 stamp 之前的散块按顶层扁平块输出（防御：新骨架下通常不存在）。
+  /// 「超级块内回车自动并入」由派生式分组天然满足——新正文块落点必在本段
+  /// 区间内（见 plan 决策 6）。
+  List<Map<String, Object?>> _rowSegments(
+    DiaryDocument doc,
+    SyIdGenerator ids,
+  ) {
+    final blocks = doc.blocks;
+    final out = <Map<String, Object?>>[];
+    var i = 0;
+    while (i < blocks.length && !blocks[i].isStamp) {
+      out.add(_encodeBlock(blocks[i]));
+      i++;
+    }
+    while (i < blocks.length) {
+      final start = i;
+      i++; // 跳过本段首个 stamp
+      while (i < blocks.length && !blocks[i].isStamp) {
+        i++;
+      }
+      out.add(_segmentSuperBlock(blocks.sublist(start, i), ids));
+    }
+    return out;
+  }
+
+  /// 单段垂直超级块：首块（stamp）用 `code` 行内标记，其余正文块沿用扁平
+  /// 编码规则；外壳 `updated` 取 stamp 的 `updatedAt`（段创建时刻）。
+  Map<String, Object?> _segmentSuperBlock(
+    List<DiaryBlock> segment,
+    SyIdGenerator ids,
+  ) {
+    final stamp = segment.first;
+    return _superBlock(
+      id: ids.next(),
+      layout: 'row',
+      updated: stamp.updatedAt,
+      children: [
+        // stamp 块携带 custom-echo-stamp 块级属性（思源忽略，故导出后在
+        // 思源里保留其 code 原本样式）。
+        _codeParagraph(
+          id: stamp.id,
+          text: stamp.text,
+          updated: stamp.updatedAt,
+          custom: stamp.custom,
+        ),
+        for (final block in segment.skip(1)) _encodeBlock(block),
+      ],
+    );
+  }
+
+  /// 组装 `NodeSuperBlock`（含开/布局/关三个标记子节点，参考样本结构）。
+  Map<String, Object?> _superBlock({
+    required String id,
+    required String layout,
+    required DateTime updated,
+    required List<Map<String, Object?>> children,
+  }) {
+    return {
+      'ID': id,
+      'Type': 'NodeSuperBlock',
+      'Properties': _sorted({'id': id, 'updated': _stamp(updated)}),
+      'Children': [
+        const {'Type': 'NodeSuperBlockOpenMarker'},
+        {'Type': 'NodeSuperBlockLayoutMarker', 'Data': layout},
+        ...children,
+        const {'Type': 'NodeSuperBlockCloseMarker'},
+      ],
+    };
+  }
+
+  /// 带 `code` 行内标记的段落：零宽空格 `\u200b` 包裹标记文本
+  /// （思源自带 Edit 光标锚点，参考样本一致）。
+  Map<String, Object?> _codeParagraph({
+    required String id,
+    required String text,
+    required DateTime updated,
+    Map<String, String>? custom,
+  }) {
+    final properties = <String, Object?>{
+      for (final entry in (custom ?? const <String, String>{}).entries)
+        entry.key: entry.value,
+      'id': id,
+      'updated': _stamp(updated),
+    };
+    return {
+      'ID': id,
+      'Type': 'NodeParagraph',
+      'Properties': _sorted(properties),
+      'Children': [
+        const {'Type': 'NodeText', 'Data': '\u200b'},
+        {
+          'Type': 'NodeTextMark',
+          'TextMarkType': 'code',
+          'TextMarkTextContent': text,
+        },
+        const {'Type': 'NodeText', 'Data': '\u200b'},
+      ],
+    };
   }
 
   // ---- 解码 ----------------------------------------------------------------
@@ -154,6 +337,13 @@ class SySerializer {
       final updated = blockProps['updated'] != null
           ? _parseStamp('${blockProps['updated']}')
           : date;
+      // 块级 custom-*（当前仅时间戳标志）回读，供 App 端识别只读胶囊块。
+      final blockCustom = <String, String>{};
+      for (final entry in blockProps.entries) {
+        if (entry.key.startsWith('custom-')) {
+          blockCustom[entry.key] = '${entry.value}';
+        }
+      }
       blocks.add(
         DiaryBlock(
           id: (blockProps['id'] ?? map['ID']) as String,
@@ -163,6 +353,7 @@ class SySerializer {
           level: (map['HeadingLevel'] as num?)?.toInt(),
           text: _extractText(map['Children'] as List<Object?>?),
           background: _extractBackground('${blockProps['style'] ?? ''}'),
+          custom: blockCustom,
           updatedAt: updated,
         ),
       );

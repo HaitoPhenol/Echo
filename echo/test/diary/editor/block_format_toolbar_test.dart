@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:echo/src/diary/editor/block_editor_controller.dart';
 import 'package:echo/src/diary/editor/block_editor_view.dart';
 import 'package:echo/src/diary/editor/block_widget.dart';
+import 'package:echo/src/diary/editor/diary_capsule_chip.dart';
 import 'package:echo/src/diary/editor/editor_history_buttons.dart';
 import 'package:echo/src/diary/editor/editor_scope.dart';
 import 'package:echo/src/diary/sy/diary_model.dart';
@@ -211,6 +212,66 @@ void main() {
       await tester.tap(find.byIcon(Icons.redo));
       await tester.pump();
       expect(editor.blocks.single.block.kind, DiaryBlockKind.heading);
+    });
+  });
+
+  group('时间戳块渲染（App 独有胶囊）', () {
+    /// 时间戳段（只读胶囊）+ 一个可写正文块的文档骨架。
+    BlockEditorController mountStampDoc(DateTime now, {bool locked = false}) {
+      final ids = SyIdGenerator(random: Random(7), now: () => now);
+      final date = DateTime(now.year, now.month, now.day);
+      final document = DiaryDocument(
+        id: SyIdGenerator.dayContainer(date),
+        date: date,
+        title: '测试日',
+        locked: locked,
+        blocks: [
+          DiaryBlock(
+            id: ids.next(),
+            text: '2026-05-15 09:00',
+            custom: const {kEchoStampAttr: '1'},
+          ),
+          DiaryBlock(id: ids.next(), text: '正文'),
+        ],
+      );
+      return BlockEditorController(idGenerator: ids, now: () => now)
+        ..attach(document);
+    }
+
+    testWidgets('stamp 块渲染为只读胶囊 chip：无 TextField、无块标', (tester) async {
+      final editor = mountStampDoc(DateTime(2026, 5, 15, 9));
+      addTearDown(editor.dispose);
+      await tester.pumpWidget(harness(editor));
+      await tester.pump();
+
+      // 胶囊 chip 以 `diary-stamp-<id>` 为键，且文案即时间戳。
+      final stampChip = find.byWidgetPredicate(
+        (w) =>
+            w is DiaryCapsuleChip &&
+            w.key is ValueKey<String> &&
+            (w.key! as ValueKey<String>).value.startsWith('diary-stamp-'),
+      );
+      expect(stampChip, findsOneWidget);
+      expect((tester.widget(stampChip) as DiaryCapsuleChip).label, '2026-05-15 09:00');
+
+      // 两个块中只有正文块可写：全文仅 1 个 TextField。
+      expect(find.byType(TextField), findsOneWidget);
+      // 时间戳块不渲染块标：整篇仅正文块的 1 个 drag_indicator。
+      expect(find.byIcon(Icons.drag_indicator), findsOneWidget);
+    });
+
+    testWidgets('普通块不受影响：块标与浮层照常可用', (tester) async {
+      final editor = mountStampDoc(DateTime(2026, 5, 15, 9));
+      addTearDown(editor.dispose);
+      await tester.pumpWidget(harness(editor));
+      await tester.pump();
+
+      // 点唯一的块标（正文块），浮层正常上树。
+      await tester.tap(find.byIcon(Icons.drag_indicator));
+      await tester.pump();
+      await tester.pump();
+      expect(find.text('H2'), findsOneWidget);
+      expect(editor.selectedBlockId, editor.blocks.last.block.id);
     });
   });
 }

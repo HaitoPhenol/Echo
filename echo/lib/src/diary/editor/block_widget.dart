@@ -4,6 +4,7 @@ import '../../theme/app_colors.dart';
 import '../sy/diary_model.dart';
 import 'block_commands.dart';
 import 'block_editor_controller.dart';
+import 'diary_capsule_chip.dart';
 import 'editor_scope.dart';
 
 /// 单个日记块：48dp 块标 + 多行输入区，支持段落/H1–H3 排印与块底色。
@@ -42,6 +43,23 @@ class _BlockWidgetState extends State<BlockWidget> {
   Widget build(BuildContext context) {
     final editor = BlockEditorScope.of(context);
     final block = state.block;
+
+    // 时间戳块：App 独有解析（`custom-echo-stamp` 块级属性）→ 渲染为只读
+    // 胶囊 chip，不含块标、不含浮层、不含可输入 TextField。光标由编辑页
+    // 自动落到它的下一行，用户在此块上无法编辑（plan 决策 3/16）。
+    if (block.isStamp) {
+      return Container(
+        margin: const EdgeInsets.symmetric(vertical: 1),
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: DiaryCapsuleChip(
+            key: ValueKey<String>('diary-stamp-${block.id}'),
+            label: block.text,
+          ),
+        ),
+      );
+    }
+
     final selected = editor.selectedBlockId == block.id;
     final readOnly = editor.locked;
 

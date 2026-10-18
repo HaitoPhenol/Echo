@@ -23,10 +23,17 @@ import 'sy_serializer.dart';
 /// zip 仅含文件条目、`/` 分隔；archive 4.x 默认 UTF-8 文件名编码并自动
 /// 置通用位 11（0x0800），中文路径无需额外处理（单测锁死该行为）。
 class SyZipExporter {
-  SyZipExporter({SySerializer? serializer})
-    : serializer = serializer ?? const SySerializer();
+  SyZipExporter({SySerializer? serializer, SyIdGenerator? idGenerator})
+    : serializer = serializer ?? const SySerializer(),
+      _ids = idGenerator ?? SyIdGenerator();
 
   final SySerializer serializer;
+
+  /// 导出编码所需 ID 来源（超级块外壳 + 合成胶囊段）。
+  ///
+  /// 与仓储同源的实例经 [DiaryExportService] 注入，避免与既有块 ID 冲突
+  /// （plan H 节）；未注入时自建（测试/独立调用）。
+  final SyIdGenerator _ids;
 
   /// zip 本地文件头中通用标志位的 UTF-8 位（bit 11），测试用。
   static const int utf8FlagBit = 0x0800;
@@ -97,7 +104,9 @@ class SyZipExporter {
           entries.add(
             _ZipEntry(
               '$notebookName/$yearId/$monthId/${doc.id}.sy',
-              serializer.encodeBytes(doc),
+              // 日文档走**导出编码**：叠加首行胶囊 col 超级块与每段 row
+              // 超级块（落盘/撤销仍走扁平 encodeBytes，见 plan 决策 5）。
+              serializer.encodeExportBytes(doc, _ids),
             ),
           );
         }

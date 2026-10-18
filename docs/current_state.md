@@ -130,6 +130,15 @@
   日模板 `daily-default-v2` 为**单空段落骨架**（2026-10-18 日模板重设，
   旧六块骨架废弃）；补记入口在**把手条竖单**（笔记页常驻，2026-10-19
   自月页右上「+」迁来），日期选择器禁未来日。
+- **时间戳段机制（2026-10-18）**：进**编辑页**时 `DiaryComposer.ensureStamp`
+  取文档最后一个时间戳块，距其 `updatedAt` 不足 **30 分钟**则复用、否则新建
+  一个只读时间戳胶囊（文本 `yyyy-MM-dd HH:mm`，块级属性
+  `custom-echo-stamp='1'`；无块标/无浮层/无 TextField，光标自动落到它的
+  下一行；生成后立即 `upsertDraft` 落盘并聚焦）。无时间戳时插索引 0、已有则
+  追加文档末尾并补一个空正文行；已导出（`locked`）不生成。**段 = 一个时间戳
+  块 + 其后到下一个时间戳前的块**，语义等同思源**垂直超级块**（不引入嵌套
+  模型，分组是导出时的派生）。`isUserEmpty` 与列表预览
+  `DiaryDaySummary.previewOf` 均跳过 stamp（列表预览不含时间戳）。
 - **自动数据与心情（2026-10-18 重设）**：温度/湿度/天气/日程与心情写
   文档根 `custom-*`——`composer.fetchCustomPatch(date)` 三源并发取数
   （单源失败不连坐、null 删键），`controller.applyCustomPatch(patch)`
@@ -154,6 +163,19 @@
   保留草稿可再次导出。Android 思源不响应 ACTION_SEND，实际走思源内
   SAF 导入。该月所有笔记都无未导出（`isMonthFullyExported`）时，
   导出按钮左侧显「已导出」徽标（与日行同款 `DiaryStateBadge`）。
+- **导出编码 vs 扁平编码（双链路，2026-10-18）**：**落盘/撤销/导入回读**仍走
+  **扁平编码** `SySerializer.encodeJson` / `encodeBytes`（不含超级块与行内
+  标记；本轮新增携带**块级** `custom-*`，时间戳标志随草稿往返）；**导出**走
+  `encodeExportBytes(doc, ids)`，仅在导出时叠加 ① 文档**首行水平超级块**
+  （`Data:'col'`，含 5 个带 `code` 行内标记的胶囊段落，只输出有值槽位）+
+  ② 每个「段」一个**垂直超级块**（`Data:'row'`，首块为带 `code` 标记的时间戳
+  段落）。`SyZipExporter` 构造增可选 `SyIdGenerator? idGenerator`，
+  `DiaryExportService` 传 `repository.idGenerator`（导出的超级块/合成段 ID
+  与仓储同源）。胶囊槽位键收口于新增纯 Dart `sy/diary_capsule_items.dart`
+  （5 键 + `buildDiaryCapsuleItems`）；共享胶囊组件
+  `editor/diary_capsule_chip.dart`（自 `ui/widgets/diary_capsule_row.dart` 的
+  私有 `_Capsule` 提取）。控制器守卫：正文首行退格不并入时间戳、段内唯一正文
+  行不被删、↑/↓ 纵向移动跳过 stamp、`turnInto`/`setBackground` 对 stamp no-op。
 - **每月导出提醒**：存在早于**本月 1 日**的未导出草稿（`oldestDraftBefore`）
   时，笔记页导航锚点走 **exception（红闪）**，且每次冷启动**首次**
   切到笔记页由 `DiaryPageState.maybeShowExportReminder()` 弹一次对话框
@@ -246,7 +268,7 @@
 
 ## 测试现状
 
-- **445 个 Dart 测试，43 个文件** + echo-cmd 脚本级回归 15 断言：
+- **494 个 Dart 测试，47 个文件** + echo-cmd 脚本级回归 15 断言：
   - `test/widget_test.dart`（导航/浮层集成）、
     `navigation/`（几何纯函数）、`pages/`（聊天交互）、
     `services/`（触感通道异常降级等）；

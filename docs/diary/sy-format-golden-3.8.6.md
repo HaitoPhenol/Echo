@@ -114,10 +114,16 @@ Echo 生成器必须输出。
 | `updated` | 全部节点 | 14 位秒级时间戳字符串，内容变更才刷新 |
 | `title` / `type` | 文档根 | `type` 恒为 `"doc"` |
 | `style` | 块 | 自由 CSS 声明串，思源原样存储不校验 |
-| `custom-*` | 文档根（Echo 用法） | 天气/心情/睡眠等结构化数据通道 |
+| `custom-*` | 文档根 与 **块级**（Echo 用法） | 文档根：天气/心情/睡眠等结构化数据通道（`custom-iot-temp` 等）；块级：**时间戳标志** `custom-echo-stamp`（值 `'1'`） |
 | 其它 | 超级块等 | 如 `ligatures`、表格 `colgroup`（本项目不生成） |
 
 含 `style` 的块，Properties 键序为 `id < style < updated`。
+
+**块级 `custom-*`（2026-10-18 新增，时间戳机制）**：属性键值对可写在任意块的
+`Properties` 中；Echo 用 `custom-echo-stamp` 标识「时间戳块」，App 内据此渲染为
+只读胶囊（无块标/无浮层/无 TextField）。**思源不渲染自定义属性**，故导出后该块
+在思源里只保留其原本的（`code`）行内标记样式；同一块的键序为
+`custom-* < id < style < updated`。
 
 ## 5. Echo 支持的块子集（生成范围）
 
@@ -162,13 +168,53 @@ Echo 生成器必须输出。
 > `--darkreader-*` 声明。思源照单全收（style 不校验），但 Echo **不得生成**
 > 这些垃圾声明。
 
+### 5.4 导出编码专属生成（时间戳段与超级块，2026-10-18）
+
+以下两类结构**仅在导出编码**（`SySerializer.encodeExportJson` /
+`encodeExportBytes`）中叠加生成，用于对齐思源目标结构；**落盘、撤销快照仍走
+扁平编码**（`encodeJson` / `encodeBytes`），扁平编码不含任何超级块与行内标记。
+
+**① 时间戳块（段落 + `NodeTextMark(code)`）**：每段首行为一个段落，其
+`Children` 以零宽空格 `\u200b`（`NodeText`，思源自带 Edit 光标锚点）包裹一个
+带 `TextMarkType:"code"` 的 `NodeTextMark`（文本如 `2026-10-18 12:30`），
+同时该块 `Properties` 携带块级 `custom-echo-stamp`（思源不渲染，故在思源里
+保留 `code` 的原本样式）：
+
+```json
+{"ID":"20261018123000-echo001","Type":"NodeParagraph",
+ "Properties":{"custom-echo-stamp":"1","id":"20261018123000-echo001","updated":"20261018123000"},
+ "Children":[{"Type":"NodeText","Data":"\u200b"},
+             {"Type":"NodeTextMark","TextMarkType":"code","TextMarkTextContent":"2026-10-18 12:30"},
+             {"Type":"NodeText","Data":"\u200b"}]}
+```
+
+**② 超级块 `NodeSuperBlock` + 三个标记子节点**：水平超级块（
+`NodeSuperBlockLayoutMarker` 的 `Data:"col"`）承载首行胶囊段；垂直超级块
+（`Data:"row"`）承载每个「段」。子节点序固定为
+`NodeSuperBlockOpenMarker` → `NodeSuperBlockLayoutMarker` → 内容块 →
+`NodeSuperBlockCloseMarker`：
+
+```json
+{"ID":"20261018123000-echo002","Type":"NodeSuperBlock",
+ "Properties":{"id":"20261018123000-echo002","updated":"20261018123000"},
+ "Children":[
+   {"Type":"NodeSuperBlockOpenMarker"},
+   {"Type":"NodeSuperBlockLayoutMarker","Data":"row"},
+   {"Type":"NodeTextMark", ... },
+   {"Type":"NodeSuperBlockCloseMarker"}]}
+```
+
+导出结构总览：文档**首行**一个 `col` 超级块，把文档根 `custom-*` 中有值的
+胶囊槽位写成带 `code` 标记的段落（全空则不生成）；其后每个「时间戳段」包成
+一个 `row` 超级块（首块为上述时间戳段落）。
+
 ## 6. 子集外节点（解析时降级，不生成）
 
 实测样本中出现、Echo 回读时按"纯文本占位块"处理的类型：
 
 | 类型 | 实测要点 |
 |---|---|
-| `NodeTextMark` | 行内样式。类型枚举实测：`strong`/`em`/`u`/`s`/`mark`/`code`/`kbd`/`sup`/`sub`/`inline-math`/`inline-memo`/`a`（链接，带 `TextMarkAHref`/`TextMarkATitle`）/`text`（带 span IAL 的自定义样式） |
+| `NodeTextMark` | 行内样式。类型枚举实测：`strong`/`em`/`u`/`s`/`mark`/`code`/`kbd`/`sup`/`sub`/`inline-math`/`inline-memo`/`a`（链接，带 `TextMarkAHref`/`TextMarkATitle`）/`text`（带 span IAL 的自定义样式）。**注**：其中 `code` 标记自 2026-10-18 起属**导出编码专属生成**（见 §5.4，时间戳段/首行胶囊段），解析仍按纯文本降级 |
 | `NodeKramdownSpanIAL` | 行内 `{: style="..."}`，与 `TextMarkType:"text"` 配对出现 |
 | `NodeList` / `NodeListItem` | `ListData.Typ`：0 无序（默认省略）、1 有序、3 任务；无序 `BulletChar=42`，`Marker` 为 base64（`Kg==`→`*`）；有序带 `Delimiter=46` 与 `Num` |
 | `NodeTaskListItemMarker` | `TaskListItemMarker`：32 空格=未完成，88（X）=完成（`TaskListItemChecked:true`） |
@@ -177,7 +223,7 @@ Echo 生成器必须输出。
 | `NodeThematicBreak` | 分割线 `---` |
 | `NodeTable`/`Head`/`Row`/`Cell` | `TableAligns`、`Properties.colgroup` |
 | `NodeHTMLBlock` | 原始 HTML 存 `Data` |
-| `NodeSuperBlock`(+open/close/`LayoutMarker`) | 超级块，布局 `col`/`row`；子块 style 带 width/flex |
+| `NodeSuperBlock`(+open/close/`LayoutMarker`) | 超级块，布局 `col`/`row`；子块 style 带 width/flex。**注**：`NodeSuperBlock(row/col)` 自 2026-10-18 起属**导出编码专属生成**（见 §5.4，首行胶囊 `col` + 每段 `row`），解析仍按纯文本降级 |
 | `NodeCallout` | `CalloutType`：TIP/NOTE/IMPORTANT/WARNING/CAUTION，含 `CalloutIcon`/`CalloutTitle` |
 | 卡片色段落 | `style` 用 `--b3-card-{info|success|warning|error}-{color|background}` |
 | `NodeBackslash` | 转义标记（如 `~`） |

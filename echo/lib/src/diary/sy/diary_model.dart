@@ -3,6 +3,13 @@ import 'sy_id.dart';
 /// 日记块种类：Echo 只生成段落与标题（金标准 §5）。
 enum DiaryBlockKind { paragraph, heading }
 
+/// 时间戳块的**块级**自定义属性键（App 独有解析标志）：
+/// 带该属性的段落即「时间戳块」，App 内渲染为只读胶囊 chip，
+/// 且导出时按段包进垂直超级块、首段加 `code` 行内标记。
+///
+/// 思源不渲染自定义属性，故导出后该块在思源里保留其原本（`code`）样式。
+const String kEchoStampAttr = 'custom-echo-stamp';
+
 /// 编辑器面向的块模型，与 .sy 中 NodeParagraph/NodeHeading 一一映射。
 class DiaryBlock {
   DiaryBlock({
@@ -11,8 +18,10 @@ class DiaryBlock {
     this.level,
     this.text = '',
     this.background,
+    Map<String, String>? custom,
     DateTime? updatedAt,
-  }) : updatedAt = updatedAt ?? DateTime.now() {
+  }) : custom = custom ?? {},
+       updatedAt = updatedAt ?? DateTime.now() {
     if (!SyIdGenerator.isValid(id)) {
       throw ArgumentError.value(id, 'id', '不符合思源 22 位块 ID 规范');
     }
@@ -37,6 +46,13 @@ class DiaryBlock {
 
   /// 思源块底色色号 1..13（--b3-font-backgroundN），null 表示无底色。
   int? background;
+
+  /// 块级 custom-* 属性（当前仅时间戳标志 [kEchoStampAttr]）。
+  /// 随 `.sy` 块 `Properties` 往返，导出时一并携带；思源忽略自定义属性。
+  final Map<String, String> custom;
+
+  /// 是否为时间戳块（App 独有解析：渲染为只读胶囊 chip，不参与正文编辑）。
+  bool get isStamp => custom.containsKey(kEchoStampAttr);
 
   /// 内容变更时间戳（与 ID 解耦，金标准 §2）。
   DateTime updatedAt;

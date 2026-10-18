@@ -11,9 +11,11 @@ import 'diary_template_json.dart';
 /// - [ensureDay]：命中已有草稿直接返回；否则模板实例化 + 拉 provider
 ///   写文档根 custom-* 并立即落盘。按日记日缓存 in-flight Future，
 ///   模块预热与快速点进并发时也只成稿一次。
+/// - [ensureStamp]：确保存在「当前段」时间戳块（距上次 ≥ 30 分钟才新建），
+///   由编辑页入口触发；[ensureDay] 本身不生成时间戳。
 /// - [fetchCustomPatch]：取数纯逻辑（三源并发、互不连坐），返回文档根
 ///   custom-* 增删面；成稿与编辑页胶囊行点按刷新共用。
-/// - [isUserEmpty]：跨天清理的「什么都没写」判定。
+/// - [isUserEmpty]：跨天清理的「什么都没写」判定（跳过时间戳块）。
 class DiaryComposer {
   DiaryComposer({
     required this.template,
@@ -28,10 +30,87 @@ class DiaryComposer {
   final SyIdGenerator _ids;
   final DateTime Function() _now;
 
+  /// 时间戳复用窗口：距**最后一个**时间戳块的 `updatedAt` 不足此时长即
+  /// 复用不新建（用户裁定 30 分钟）。用 stamp 自身的 `updatedAt` 判定而
+  /// 非解析文本——stamp 只读、后文编辑不会改写它（plan 决策 7）。
+  static const Duration stampReuseWindow = Duration(minutes: 30);
+
   /// key = yyyymmdd；同一日记日的成稿 Future 去重。
   final Map<int, Future<DiaryDocument>> _inFlight = {};
 
   static int _dayKey(DateTime d) => d.year * 10000 + d.month * 100 + d.day;
+
+  // ================================================================
+  //  时间戳段编排（2026-10-18 进入编辑页时触发）
+  // ================================================================
+
+  /// 确保文档存在「当前段」的时间戳块；**距上次时间戳 ≥ 30 分钟**才新建。
+  ///
+  /// * 取文档中**最后一个** [DiaryBlock.isStamp] 块：
+  ///   - 不存在 → 新建 stamp 并**插到索引 0**（模板原有的那个空段落即
+  ///     成为本段正文行，见 plan 决策 13）；
+  ///   - 存在且 `_now() - last.updatedAt < [stampReuseWindow]` → 复用，
+  ///     返回 `false`（不改动文档）；
+  ///   - 存在但已超窗 → 新建 stamp **追加到文档末尾**（开新段），并在其
+  ///     后补一个空段落作为新段正文行。
+  /// * 无论哪条分支，都保证该 stamp 之后至少有一个非 stamp 块（否则文档
+  ///   尾部无任何可输入位置，用户被锁死，见 plan 决策 17）。
+  ///
+  /// 触发点在**编辑页入口**（用户原话「进入编辑页时会自动生成」）；
+  /// [ensureDay] 保持纯成稿语义、不生成时间戳（plan 决策 14）。
+  ///
+  /// 返回 `true` 表示本次确实新建了时间戳（调用方需落盘并跳焦），
+  /// `false` 表示复用未改动。
+  bool ensureStamp(DiaryDocument document) {
+    // 已导出（只读锁定）文档不自动生成时间戳：导出后正文只读、禁止改动，
+    // 且仓储禁止覆盖 exported 态（否则 upsertDraft 抛 StateError）。
+    if (document.locked) return false;
+
+    final now = _now();
+
+    DiaryBlock? last;
+    for (final block in document.blocks) {
+      if (block.isStamp) last = block;
+    }
+    if (last != null && now.difference(last.updatedAt) < stampReuseWindow) {
+      return false;
+    }
+
+    final stamp = DiaryBlock(
+      id: _ids.next(),
+      text: _formatStamp(now),
+      custom: {kEchoStampAttr: '1'},
+      updatedAt: now,
+    );
+    if (last == null) {
+      document.blocks.insert(0, stamp);
+    } else {
+      document.blocks.add(stamp);
+    }
+
+    final index = document.blocks.indexOf(stamp);
+    final hasBodyRow =
+        index + 1 < document.blocks.length &&
+        !document.blocks[index + 1].isStamp;
+    if (!hasBodyRow) {
+      document.blocks.insert(
+        index + 1,
+        DiaryBlock(id: _ids.next(), updatedAt: now),
+      );
+    }
+
+    document.updatedAt = now;
+    return true;
+  }
+
+  /// 时间戳文本：`yyyy-MM-dd HH:mm`（年月日时分，用户原话）。
+  ///
+  /// 与参考样本（带秒 `yyyy-MM-dd HH:mm:ss`）不同——如后续要秒仅改此处。
+  static String _formatStamp(DateTime t) {
+    String p(int value, int width) => value.toString().padLeft(width, '0');
+    return '${p(t.year, 4)}-${p(t.month, 2)}-${p(t.day, 2)} '
+        '${p(t.hour, 2)}:${p(t.minute, 2)}';
+  }
 
   /// 确保某日记日已有草稿：有则原样返回，无则成稿落盘后返回。
   ///
@@ -88,6 +167,9 @@ class DiaryComposer {
 
   /// 构造一篇「骨架态空稿」：与 [ensureDay] 走**同一**模板实例化
   /// （只差未拉 custom-*），故 [isUserEmpty] 必判为空。
+  ///
+  /// 注：模板骨架只有正文段落，**不含时间戳块**——时间戳由编辑页入口
+  /// 调 [ensureStamp] 生成（用户原话「进入编辑页时会自动生成」）。
   ///
   /// `diary.seed` 造空稿专用——保证「空稿形状」与 prune 判定同源，
   /// 命令层不得自创「空」定义（否则 prune 认不得，端到端验证失效）。
@@ -153,8 +235,10 @@ class DiaryComposer {
 
   /// 判定一篇成稿是否「什么都没写」：
   ///
-  /// 1. 与模板骨架声明（heading/paragraph）多重集等价的块忽略；
-  /// 2. 其余块中存在任一 trim 后非空文本即非空。
+  /// 1. 自动生成的时间戳块（[DiaryBlock.isStamp]）一律跳过——它是骨架
+  ///    自动产物，不代表用户写了字；
+  /// 2. 与模板骨架声明（heading/paragraph）多重集等价的块忽略；
+  /// 3. 其余块中存在任一 trim 后非空文本即非空。
   ///
   /// 用户写了字又删光 → 文本归空 → 仍判为空，次日照常清理。
   ///
@@ -163,6 +247,7 @@ class DiaryComposer {
     final expected = template.spec.blocks.map(_specKey).toList();
 
     for (final block in document.blocks) {
+      if (block.isStamp) continue;
       final key = (kind: block.kind, level: block.level, text: block.text);
       final match = expected.indexOf(key);
       if (match >= 0) {

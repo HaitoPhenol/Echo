@@ -487,4 +487,108 @@ void main() {
       expect(controller.dirty.value, isFalse);
     });
   });
+
+  group('时间戳块（isStamp）守卫', () {
+    DiaryBlock stamp(String id, [String text = '2026-10-10 09:00']) =>
+        DiaryBlock(
+          id: id,
+          text: text,
+          custom: {kEchoStampAttr: '1'},
+          updatedAt: fixedNow,
+        );
+
+    /// 时间戳 + 一个正文行 + 普通段。
+    void attachWithStamp() {
+      doc = makeDoc(
+        blocks: [
+          stamp('20261010090000-ssssss1'),
+          DiaryBlock(id: '20261010090001-aaaaaaa', text: '正文'),
+          DiaryBlock(id: '20261010090002-bbbbbbb', text: '普通段'),
+        ],
+      );
+      controller = BlockEditorController(idGenerator: ids, now: () => fixedNow)
+        ..attach(doc);
+      addTearDown(controller.dispose);
+    }
+
+    test('正文块块首退格：上一块是时间戳，不拦截（不并入只读时间戳块）', () {
+      attachWithStamp();
+      final body = controller.blocks[1];
+      collapseAt(body, 0);
+
+      expect(controller.handleBackspace(body), isFalse);
+      expect(controller.blocks, hasLength(3));
+      expect(controller.blocks.first.block.isStamp, isTrue);
+    });
+
+    test('段内唯一正文行为空时块首退格：不删自身（保证段至少留一个正文行）', () {
+      attachWithStamp();
+      final body = controller.blocks[1];
+      // 把正文行清空：仍不允许删掉它（否则段尾只剩时间戳）。
+      controller.applyValue(body, '', TextSelection.collapsed(offset: 0));
+      collapseAt(body, 0);
+
+      expect(controller.handleBackspace(body), isFalse);
+      expect(controller.blocks, hasLength(3));
+    });
+
+    test('纵向移动跳过时间戳块：上一块是时间戳时继续上跳到普通段', () {
+      // 排布「普通段 / 时间戳 / 正文」，从正文向上须跨过时间戳落到普通段。
+      doc = makeDoc(
+        blocks: [
+          DiaryBlock(id: '20261010090000-ppppppp', text: '普通段'),
+          stamp('20261010090001-ssssss3'),
+          DiaryBlock(id: '20261010090002-qqqqqqq', text: '正文'),
+        ],
+      );
+      controller = BlockEditorController(idGenerator: ids, now: () => fixedNow)
+        ..attach(doc);
+      addTearDown(controller.dispose);
+      final body = controller.blocks[2];
+      collapseAt(body, 0);
+
+      expect(controller.handleVerticalMove(body, up: true), isTrue);
+    });
+
+    test('纵向移动：首个正文行向上只剩时间戳时返回 false（不拦截）', () {
+      doc = makeDoc(
+        blocks: [
+          stamp('20261010090000-ssssss2'),
+          DiaryBlock(id: '20261010090001-ccccccc', text: '正文'),
+        ],
+      );
+      controller = BlockEditorController(idGenerator: ids, now: () => fixedNow)
+        ..attach(doc);
+      addTearDown(controller.dispose);
+      final body = controller.blocks[1];
+      collapseAt(body, 0);
+
+      expect(controller.handleVerticalMove(body, up: true), isFalse);
+    });
+
+    test('turnInto / setBackground 对时间戳块为 no-op（只读）', () {
+      attachWithStamp();
+      final s = controller.blocks.first;
+
+      controller.turnInto(s, DiaryBlockKind.heading, level: 1);
+      expect(s.block.kind, DiaryBlockKind.paragraph);
+      controller.setBackground(s, 3);
+      expect(s.block.background, isNull);
+      expect(controller.dirty.value, isFalse);
+    });
+
+    test('撤销/重做保留块级 custom（时间戳标志）', () {
+      attachWithStamp();
+      final body = controller.blocks[2];
+      type(body, '普通段\n');
+      expect(controller.canUndo, isTrue);
+
+      controller.undo();
+      expect(controller.blocks.first.block.isStamp, isTrue);
+      expect(controller.blocks.first.block.custom[kEchoStampAttr], '1');
+
+      controller.redo();
+      expect(controller.blocks.first.block.isStamp, isTrue);
+    });
+  });
 }
