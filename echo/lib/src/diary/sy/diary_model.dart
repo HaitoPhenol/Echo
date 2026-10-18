@@ -10,6 +10,51 @@ enum DiaryBlockKind { paragraph, heading }
 /// 思源不渲染自定义属性，故导出后该块在思源里保留其原本（`code`）样式。
 const String kEchoStampAttr = 'custom-echo-stamp';
 
+/// 时间戳块的文本格式：`yyyy-MM-dd HH:mm`（年月日时分，用户原话）。
+///
+/// 与参考样本（带秒 `yyyy-MM-dd HH:mm:ss`）不同——如后续要秒仅改此处。
+/// 成稿（[DiaryComposer]）与「首次输入即重打点」（编辑器控制器）共用。
+String formatDiaryStamp(DateTime t) {
+  String p(int value, int width) => value.toString().padLeft(width, '0');
+  return '${p(t.year, 4)}-${p(t.month, 2)}-${p(t.day, 2)} '
+      '${p(t.hour, 2)}:${p(t.minute, 2)}';
+}
+
+/// 时间戳「段」判定工具（[DiaryBlock.isStamp] 之上的纯函数集合）。
+///
+/// 段 = 某个时间戳块与其后、下一个时间戳块之前的全部块。段是否「有内容」
+/// 决定该时间戳是否落盘（用户裁定：空段的时间戳只存在于 UI）。
+class DiaryStamp {
+  const DiaryStamp._();
+
+  /// 最后一个时间戳块的下标；无时间戳返回 -1。
+  static int lastIndex(List<DiaryBlock> blocks) {
+    for (var i = blocks.length - 1; i >= 0; i--) {
+      if (blocks[i].isStamp) return i;
+    }
+    return -1;
+  }
+
+  /// [index] 之后（同属该段）是否存在可判定为「用户内容」的块。
+  ///
+  /// 只认非时间戳块的非空文本；空块/纯空白不计。
+  static bool segmentHasContent(List<DiaryBlock> blocks, int index) {
+    for (var i = index + 1; i < blocks.length; i++) {
+      if (blocks[i].isStamp) break;
+      if (blocks[i].text.trim().isNotEmpty) return true;
+    }
+    return false;
+  }
+
+  /// 最后一个时间戳是否「待启用」：存在时间戳但该段尚无任何用户内容。
+  ///
+  /// 待启用 = 不落盘、且用户首次输入时需重打点为当前时间。
+  static bool isPending(List<DiaryBlock> blocks) {
+    final index = lastIndex(blocks);
+    return index >= 0 && !segmentHasContent(blocks, index);
+  }
+}
+
 /// 编辑器面向的块模型，与 .sy 中 NodeParagraph/NodeHeading 一一映射。
 class DiaryBlock {
   DiaryBlock({

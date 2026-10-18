@@ -591,4 +591,93 @@ void main() {
       expect(controller.blocks.first.block.isStamp, isTrue);
     });
   });
+
+  group('时间戳待启用（空段不落盘 + 首字符重打点）', () {
+    late DateTime currentNow;
+
+    DiaryBlock stamp(String id, String text) => DiaryBlock(
+      id: id,
+      text: text,
+      custom: {kEchoStampAttr: '1'},
+      updatedAt: fixedNow,
+    );
+
+    DiaryBlock para(String id, String text) =>
+        DiaryBlock(id: id, text: text, updatedAt: fixedNow);
+
+    void attachWith(List<DiaryBlock> blocks) {
+      doc = makeDoc(blocks: blocks);
+      controller = BlockEditorController(idGenerator: ids, now: () => currentNow)
+        ..attach(doc);
+      addTearDown(controller.dispose);
+    }
+
+    setUp(() => currentNow = DateTime(2026, 10, 10, 9));
+
+    test('段时间戳 + 空正文行 → 待启用；无时间戳 / 段内已有内容 → 不待启用', () {
+      attachWith([stamp('20261010090000-ssssss1', '2026-10-10 09:00'), para('20261010090001-aaaaaaa', '')]);
+      expect(controller.pendingStamp, isTrue);
+
+      attachWith([
+        stamp('20261010090000-ssssss2', '2026-10-10 09:00'),
+        para('20261010090001-bbbbbbb', '已有内容'),
+      ]);
+      expect(controller.pendingStamp, isFalse);
+
+      attachWith([para('20261010090001-ccccccc', '无时间戳')]);
+      expect(controller.pendingStamp, isFalse);
+    });
+
+    test('输入首个字符：时间戳重打点为当前时间，其后不再自动更新', () {
+      attachWith([
+        stamp('20261010090000-ssssss3', '2026-10-10 09:00'),
+        para('20261010090001-ddddddd', ''),
+      ]);
+      final body = controller.blocks[1];
+
+      currentNow = DateTime(2026, 10, 10, 9, 37);
+      type(body, '今');
+      expect(controller.blocks.first.block.text, '2026-10-10 09:37');
+      expect(controller.pendingStamp, isFalse);
+
+      // 继续输入：时间戳冻结在「动笔时间」，不再变。
+      currentNow = DateTime(2026, 10, 10, 10, 5);
+      type(body, '今天');
+      expect(controller.blocks.first.block.text, '2026-10-10 09:37');
+    });
+
+    test('清空内容 → 回待启用（时间戳暂不变）；再次输入 → 重新打点', () {
+      attachWith([
+        stamp('20261010090000-ssssss4', '2026-10-10 09:00'),
+        para('20261010090001-eeeeeee', '开始写'),
+      ]);
+      final body = controller.blocks[1];
+      expect(controller.pendingStamp, isFalse);
+
+      type(body, '');
+      expect(controller.pendingStamp, isTrue);
+      expect(controller.blocks.first.block.text, '2026-10-10 09:00');
+
+      currentNow = DateTime(2026, 10, 10, 11, 8);
+      type(body, '又写');
+      expect(controller.blocks.first.block.text, '2026-10-10 11:08');
+      expect(controller.pendingStamp, isFalse);
+    });
+
+    test('机制只作用于最后一个时间戳：更早的时间戳不被改写', () {
+      attachWith([
+        stamp('20261010090000-ssssss5', '2026-10-10 08:00'),
+        para('20261010090001-fffffff', '前文已保存'),
+        stamp('20261010093000-ssssss6', '2026-10-10 09:30'),
+        para('20261010093001-ggggggg', ''),
+      ]);
+      final body = controller.blocks[3];
+
+      currentNow = DateTime(2026, 10, 10, 9, 42);
+      type(body, '新段首字');
+
+      expect(controller.blocks[2].block.text, '2026-10-10 09:42');
+      expect(controller.blocks[0].block.text, '2026-10-10 08:00');
+    });
+  });
 }

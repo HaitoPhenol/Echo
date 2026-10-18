@@ -116,9 +116,12 @@ class _DayEditorPageState extends State<DayEditorPage>
     if (mounted) setState(() => _loaded = true);
 
     if (stampAdded) {
-      // 自动生成的时间戳立即落盘（不等 1.5s 防抖）；随后光标落到
-      // 该时间戳块的下一行，用户即可直接写正文（用户原话要求）。
-      await repository.upsertDraft(_controller.snapshotDocument());
+      // 即时落盘，但走「空段时间戳不写文件」清洗：待启用的空时间戳只存在
+      // 于 UI，不进 .sy（2026-10-19 用户裁定）；旧稿补建概述段等真实改动
+      // 仍即时落盘，不等 1.5s 防抖。随后光标落到该时间戳块的下一行。
+      await repository.upsertDraft(
+        composer.prunedForPersist(_controller.snapshotDocument()),
+      );
       _focusAfterLastStamp();
     }
   }
@@ -213,7 +216,10 @@ class _DayEditorPageState extends State<DayEditorPage>
     _saveTimer = null;
     if (!_controller.dirty.value || _readOnly) return;
     final document = _controller.snapshotDocument();
-    await DiaryRepositoryScope.of(context).upsertDraft(document);
+    // 待启用的空段时间戳不写文件（只在 UI 显示）；有内容的段时间戳正常落盘。
+    await DiaryRepositoryScope.of(context).upsertDraft(
+      _composer?.prunedForPersist(document) ?? document,
+    );
     _controller.markClean();
     if (mounted) setState(() => _savedAt = DateTime.now());
   }

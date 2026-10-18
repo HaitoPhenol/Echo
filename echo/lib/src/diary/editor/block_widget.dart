@@ -49,7 +49,9 @@ class _BlockWidgetState extends State<BlockWidget> {
     // 自动落到它的下一行，用户在此块上无法编辑（plan 决策 3/16）。
     if (block.isStamp) {
       return Container(
-        margin: const EdgeInsets.symmetric(vertical: 1),
+        // 时间戳胶囊上方留出更大间距，与上一段内容在视觉上分开
+        // （用户原话；导出时由 SySerializer 在时间戳上一行插入空行，同工）。
+        margin: const EdgeInsets.only(top: 12, bottom: 1),
         child: Align(
           alignment: Alignment.centerLeft,
           child: DiaryCapsuleChip(

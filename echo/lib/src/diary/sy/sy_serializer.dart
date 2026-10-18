@@ -228,9 +228,21 @@ class SySerializer {
       while (i < blocks.length && !blocks[i].isStamp) {
         i++;
       }
+      // 时间戳块**上一行**插入空行（用户裁定）：导出到思源后与前一段
+      // 内容拉开视觉间距，等价于 App 内时间戳胶囊的上方留白。
+      out.add(_blankParagraph(ids.next(), updated: blocks[start].updatedAt));
       out.add(_segmentSuperBlock(blocks.sublist(start, i), ids));
     }
     return out;
+  }
+
+  /// 空段落（无 Children）：导出时插在时间戳段上一行作视觉分隔。
+  Map<String, Object?> _blankParagraph(String id, {required DateTime updated}) {
+    return {
+      'ID': id,
+      'Type': 'NodeParagraph',
+      'Properties': _sorted({'id': id, 'updated': _stamp(updated)}),
+    };
   }
 
   /// 单段垂直超级块：首块（stamp）用 `code` 行内标记，其余正文块沿用扁平
