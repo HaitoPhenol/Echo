@@ -93,14 +93,20 @@ class DiaryShell extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      fontSize: MechanicalStyle.pageTitleFontSize,
-                      fontWeight: MechanicalStyle.pageTitleFontWeight,
-                      letterSpacing: 1.2,
-                      color: AppColors.textPrimary,
-                      height: 1.05,
+                  // 标题行单独上移（≈40 设备像素）：kicker/返回键行不动，
+                  // 仅大标题向头部行贴近；用 Transform 而非负间距，
+                  // 布局流保持非负。
+                  Transform.translate(
+                    offset: const Offset(0, -13),
+                    child: Text(
+                      title,
+                      style: const TextStyle(
+                        fontSize: MechanicalStyle.pageTitleFontSize,
+                        fontWeight: MechanicalStyle.pageTitleFontWeight,
+                        letterSpacing: 1.2,
+                        color: AppColors.textPrimary,
+                        height: 1.05,
+                      ),
                     ),
                   ),
                   const SizedBox(height: 20),
