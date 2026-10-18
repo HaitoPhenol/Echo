@@ -37,16 +37,15 @@ class DiaryShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 背景半透明但命中不透明：层级路由 opaque:false，下层路由仍在树中，
+    // 页面本体透明：直接透出 app 层机械网格纹理（与其他页一致，
+    // 不再叠加压暗层）。命中仍不透明——转场期下层路由还在树中，
     // 空白区域的点击必须被本页吞掉，不能穿透到下层年/月列表。
     return Listener(
       behavior: HitTestBehavior.opaque,
       onPointerDown: (_) {},
-      child: ColoredBox(
-        color: AppColors.background.withValues(alpha: 0.55),
-        child: Material(
-          type: MaterialType.canvas,
-          color: Colors.transparent,
+      child: Material(
+        type: MaterialType.canvas,
+        color: Colors.transparent,
           child: SafeArea(
             bottom: false,
             child: Padding(
@@ -117,7 +116,6 @@ class DiaryShell extends StatelessWidget {
             ),
           ),
         ),
-      ),
     );
   }
 }
