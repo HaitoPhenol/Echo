@@ -603,7 +603,10 @@ ui/（年/月/日浏览、编辑页）
   （产物键 `custom-iot-temp` / `custom-iot-humidity` /
   `custom-schedule-count` / `custom-weather`，null 表该源本次不可用、
   调用方删键）；是"进笔记页自动成稿"与月页补记的共同入口。
-  `isUserEmpty` 跨天清理判定按模板骨架等价块。
+  `isUserEmpty` 跨天清理判定按模板骨架等价块。另含 `ensureStamp`（进编辑页
+  确保概述段与当前段时间戳）与 `prunedForPersist`（落盘前剔除「最后一个段内
+  无内容的时间戳」，2026-10-19：空段时间戳只存 UI、不进 `.sy`，下次进页重新
+  生成）。
 - **模板层（`template/daily_default_template.dart`）**：`daily-default-v2`
   双块骨架——首块「一句话概述今日」段（普通可编辑段落、固定 12 号底色、恒在
   文档首位，`DiaryComposer.summaryBackground` / `isSummaryBlock` 收口）+ 一个
@@ -611,7 +614,11 @@ ui/（年/月/日浏览、编辑页）
 - **编辑期控制器 `BlockEditorController`（editor/）**：除块编辑/撤销/底色
   命令外，暴露 `documentCustom` 读写（`setDocumentCustom` /
   `applyCustomPatch`，均不压撤销快照）；块级只读统一由文档级 `locked`
-  表达（2026-10-18 起 `DiaryBlock.readonly` 退役）。
+  表达（2026-10-18 起 `DiaryBlock.readonly` 退役）。**待启用时间戳
+  （2026-10-19）**：维护 `pendingStamp`（末段时间戳段内尚无用户内容），该段
+  首个字符落键时经 `_restampStamp` 把时间戳重写为当前时间并自此冻结、不再
+  自动更新；内容清空则复位为待启用、再次输入重新打点（仅作用于最后一个
+  时间戳，前文已保存段不受影响）。
 - **胶囊行 `DiaryCapsuleRow`（ui/widgets/）**：挂滚动区首项
   （`BlockEditorView.header`）的自动数据 + 心情入口，读
   `controller.documentCustom`；胶囊不是块、不进 `.sy` 块列表，但值存
@@ -627,7 +634,9 @@ ui/（年/月/日浏览、编辑页）
   本轮新增随块 `Properties` 携带块级 `custom-*`）；**导出编码**
   `encodeExportBytes(doc, ids)` 仅在导出时叠加首行胶囊 `col` 超级块 + 每个
   「段」`row` 超级块与 `code` 行内标记（**时间戳段**语义等同思源垂直超级块，
-  不引入嵌套模型）。`SyZipExporter` 打思源 3.8.6 可导入的 .sy.zip，构造可选
+  不引入嵌套模型）；**2026-10-19**：每个 `row` 段超级块**之前**再插一个顶层空
+  `NodeParagraph`，使思源里时间戳段与前文留一空行（对应 App 内胶囊上方留白）。
+  `SyZipExporter` 打思源 3.8.6 可导入的 .sy.zip，构造可选
   注入 `idGenerator`（与仓储同源）。金标准单测分别锁扁平/导出结构的位级行为。
 - **导出与每月提醒（2026-10-18）**：`DiaryExportService.exportMonth`
   按**月**收集 draft（`draftDocumentsOfMonth`）→ 打包 → 分享 → 人工

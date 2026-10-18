@@ -31,6 +31,7 @@
 > 不走提案、直接执行的规则文档小改，在此追加一行（最新在上）。
 > 格式：日期 · 文件 · 一句话原因 · 提交。
 
+- 2026-10-19 · docs/diary/flutter-tech-plan.md、sy-format-golden-3.8.6.md、current_state.md、glossary.md、usage-guide.md、architecture.md · 日记时间戳「空段不落盘 + 首字符重打点」与导出段前空行（落盘清洗 `prunedForPersist` 剔掉「最后一个段内无内容的时间戳」、编辑器 `pendingStamp` 首字符重打点为动笔时刻后冻结、前端时间戳胶囊上方 `top:12` 间距、导出每个 `row` 段超级块前插顶层空 `NodeParagraph`）致文档过时，按快通道直接修并在本册登记；系用户当场裁定，非铁律 / 美术 token 变更，不走 RCR · 随本次 feat(diary) 提交入库
 - 2026-10-18 · docs/diary/sy-format-golden-3.8.6.md、flutter-tech-plan.md、current_state.md、glossary.md、usage-guide.md、architecture.md · 日记时间戳段与超级块机制（进编辑页生成/复用时间戳胶囊，30 分钟窗口；导出叠加首行 col 超级块 + 每段 row 超级块 + code 标记，落盘/撤销仍扁平；新增块级 custom-echo-stamp 标志与 sy/diary_capsule_items.dart、editor/diary_capsule_chip.dart）致文档过时，按快通道直接修并在本册登记；块级 custom-* 标志属用户当场裁定，非铁律/美术 token 变更，不走 RCR；追加新增模板首块「一句话概述今日」段（12 号底色）与 `background` schema 支持 · 待随本次 docs 提交入库
 - 2026-10-18 · docs/diary/flutter-tech-plan.md、current_state.md、architecture.md、glossary.md、usage-guide.md、code_review_report.md、ecp/ecp-commands.md · 日模板重设（单空段骨架 + 胶囊行，data 只读块 / `readonly` 整体退役，自动数据与心情改走文档根 `custom-*`）致文档过时，按快通道直接修并在本册登记；同步收口两处连带的协议面：`diary.get` 块线格式删 `readonly` 字段、`diary.ensure` 删除已成死参的 `--wait-snapshot`（含 echo-cmd BOOL_FLAGS）；系用户当场裁定，非铁律 / 美术 token 变更，不走 RCR · 待随本次 docs 提交入库
 - 2026-10-12 · docs/ecp/ecp-commands.md · ECP P2 施工裁定快通道：chat.list 回包由裸数组细化为 `items:[...]` 包裹（信封 result 类型为对象，同 diary.list）；§6 chat/§7 console/§8 badge 全小节统一补「起始 P2」标注与错误码/回包形状；§9.1 补 console.refresh/badge.*/chat.* 与 --text-stdin 示例 · 随本提交入库

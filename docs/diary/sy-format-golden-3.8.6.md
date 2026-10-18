@@ -217,6 +217,8 @@ Properties 键序为 `id < style < updated`。
 胶囊槽位写成带 `code` 标记的段落（全空则不生成）；`col` 超级块与首个 `row`
 段之间是**顶层**「一句话概述今日」段（普通 `NodeParagraph`，12 号底色，见
 下 ③）；其后每个「时间戳段」包成一个 `row` 超级块（首块为上述时间戳段落）。
+**每个 `row` 超级块之前**再插一个顶层空 `NodeParagraph`（无 `Children`，见
+④），使时间戳段与前文在思源里留一空行（2026-10-19 新增）。
 
 **③「一句话概述今日」段（顶层普通段落）**：位于 `col` 超级块之后、首个 `row`
 超级块之前，以**顶层 `NodeParagraph`** 输出（不包超级块），`style` 携带
@@ -232,6 +234,17 @@ Properties 键序为 `id < style < updated`。
 
 Properties 键序 `id < style < updated`；该段不属于任何超级块，故落在
 `col` 超级块与首个 `row` 超级块之间的文档顶层。
+
+**④ 段前空行（顶层空 `NodeParagraph`）**：导出时在每个 `row` 超级块**之前**
+插入一个顶层空 `NodeParagraph`（无 `Children`，`Properties` 仅 `id`/`updated`），
+使时间戳段与前文（含 ③ 概述段）之间在思源里留一空行，等价于 App 内时间戳
+胶囊的上方留白。该空行**仅在导出链路**生成（`_rowSegments` → `_blankParagraph`），
+落盘扁平编码不含（2026-10-19 用户裁定）：
+
+```json
+{"ID":"20261018123000-echo004","Type":"NodeParagraph",
+ "Properties":{"id":"20261018123000-echo004","updated":"20261018123000"}}
+```
 
 ## 6. 子集外节点（解析时降级，不生成）
 
