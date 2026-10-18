@@ -101,6 +101,43 @@ void main() {
     });
   });
 
+  group('把手竖单「今日日记」快捷', () {
+    testWidgets('非编辑页时进入今日编辑页；已在编辑页时静默不重复压栈', (tester) async {
+      final key = GlobalKey<DiaryPageState>();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: DiaryPage(
+            key: key,
+            clock: fixedClock(),
+            dataProvider: FakeDiaryDataProvider(),
+            repository: emptyRepo(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // 默认栈底为年列表，无编辑页。
+      expect(find.byType(YearListPage), findsOneWidget);
+      expect(find.byType(DayEditorPage), findsNothing);
+
+      // 快捷：把内层栈带到今日（2026-06-15）编辑页。
+      key.currentState!.openTodayEditor();
+      await tester.pumpAndSettle();
+      expect(find.byType(DayEditorPage), findsOneWidget);
+      expect(find.byType(YearListPage), findsNothing);
+
+      // 已在今日编辑页：再触发不重复压栈——返回一次即回年列表。
+      key.currentState!.openTodayEditor();
+      await tester.pumpAndSettle();
+      expect(find.byType(DayEditorPage), findsOneWidget);
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.byType(YearListPage), findsOneWidget);
+      expect(find.byType(DayEditorPage), findsNothing);
+    });
+  });
+
   group('M4 自动成稿', () {
     testWidgets('进模块即成稿：列表自然出现今天，编辑器为胶囊行 + 单空段', (tester) async {
       await drillToToday(tester);

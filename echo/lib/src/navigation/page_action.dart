@@ -31,14 +31,41 @@ class PageAction {
   final void Function(BuildContext context) onSelect;
 }
 
-/// 构建默认本页操作列表（竖单内从上到下的排列顺序）。
+/// 构建**某一页**的本页操作列表（竖单内从上到下的排列顺序）。
 ///
-/// 当前三个操作都处于「已接入接口、行为待实现」状态：
-/// 触发时弹出统一的「开发中」提示，保证用户永远能得到明确反馈，
-/// 而不是按了没有反应。
+/// 设计约定（见 [PageAction] 类注释）：把手条竖单显示的是**当前所在
+/// 页面**的操作，各页本应独立、互不相同。本函数按页面 id 分派：
+/// - **笔记页**：只放一个「今日日记」——直接跳进今日日记编辑页，不再
+///   显示刷新 / 分享 / 置顶等占位演示项；
+/// - 其余页面：暂沿用占位演示项 [buildDefaultPageActions]。
 ///
-/// 接入真实功能的做法：替换对应 [PageAction] 的 `onSelect`，
-/// 或改为按当前页面返回不同的操作列表（刷新/分享/置顶等）。
+/// [onOpenTodayDiary]：笔记页「今日日记」项的行为（由导航屏注入，
+/// 内部驱动日记内层栈到今日编辑页）。
+List<PageAction> buildPageActions(
+  String pageId, {
+  required VoidCallback onOpenTodayDiary,
+}) {
+  if (pageId == 'notes') {
+    return [
+      PageAction(
+        id: 'diary-today',
+        icon: Icons.edit_calendar,
+        label: '今日日记',
+        onSelect: (_) => onOpenTodayDiary(),
+      ),
+    ];
+  }
+  return buildDefaultPageActions();
+}
+
+/// 构建**占位演示**的本页操作列表（竖单内从上到下的排列顺序）。
+///
+/// 给尚未接入真实操作的页面（非笔记页）兜底使用；当前三个操作都处于
+/// 「已接入接口、行为待实现」状态：触发时弹出统一的「开发中」提示，
+/// 保证用户永远能得到明确反馈，而不是按了没有反应。
+///
+/// 接入真实功能的做法：在 [buildPageActions] 中按页面 id 返回专门
+/// 的操作列表（参考笔记页分支），不再复用本占位列表。
 List<PageAction> buildDefaultPageActions() {
   return [
     PageAction(

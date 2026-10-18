@@ -64,6 +64,13 @@
   导航条（横滑/圆点/双击/上甩快捷弧/长按搜索）。全部手势的坐标、
   死区、互斥与返回键顺序详见
   [usage-guide.md](usage-guide.md)（操作细节以该文件为准）。
+- **把手竖单按页独立（2026-10-18）**：`buildPageActions(pageId, ...)`
+  按当前页返回操作列表——**笔记页只放一个「今日日记」**（点按经
+  `DiaryPageState.openTodayEditor` 把日记内层栈带到今日编辑页；已在
+  今日编辑页则静默不重复压栈），其余页暂沿用 3 个占位项（刷新/分享/
+  置顶，`buildDefaultPageActions`）。竖单高度/按钮圆心随条数自适应
+  （`DockGeometry.menuHeightFor`、`DockLayout.pageMenuPositionsFor`），
+  笔记页单项竖单比旧的 3 项固定高度明显缩短。
 - 机能风视觉层（v0.6.0 转正，RCR-2026-001）：固定网格/点阵背景、
   顶部读数条、空心大页码、3D 转鼓、衬线页名牌；代码在
   `navigation/widgets/mechanical_*.dart`，token 在

@@ -98,6 +98,26 @@ void main() {
     });
   });
 
+  group('竖单高度随条数自适应', () {
+    test('menuHeightFor：n 个按钮的高度公式，1 项比 3 项矮', () {
+      const handleWidth = 130.0;
+      final diameter = DockGeometry.menuButtonDiameterFor(handleWidth);
+      final edge = DockGeometry.menuEdgeInsetFor(handleWidth);
+
+      // count 个按钮 + (count−1) 个 10 间距 + 上下同心留白。
+      double expected(int count) => count * diameter + (count - 1) * 10 + 2 * edge;
+
+      expect(DockGeometry.menuHeightFor(handleWidth, 1), expected(1));
+      expect(DockGeometry.menuHeightFor(handleWidth, 2), expected(2));
+      expect(DockGeometry.menuHeightFor(handleWidth, 3), expected(3));
+      // 笔记页单项竖单明显矮于旧的 3 项固定高度。
+      expect(
+        DockGeometry.menuHeightFor(handleWidth, 1),
+        lessThan(DockGeometry.menuHeightFor(handleWidth, 3)),
+      );
+    });
+  });
+
   group('quickArcPoint 曲线形状', () {
     test('端点与切线方向符合实测轨迹', () {
       final start = DockGeometry.quickArcPoint(origin, 0);

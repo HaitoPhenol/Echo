@@ -76,11 +76,15 @@ abstract final class DockGeometry {
   static double menuEdgeInsetFor(double handleWidth) =>
       (handleWidth - menuButtonDiameterFor(handleWidth)) / 2;
 
-  /// 竖单完全展开后的高度：3 个按钮 + 2 个间距(10) + 上下同心留白。
-  static double menuHeightFor(double handleWidth) {
+  /// 竖单完全展开后的高度：`count` 个按钮 + (`count`−1) 个间距(10) +
+  /// 上下同心留白。
+  ///
+  /// 按钮数由调用方按**当前页**的操作条数传入（各页独立，见 [PageAction]）；
+  /// 项数变化时本公式自动适配，不再假定恒为 3。
+  static double menuHeightFor(double handleWidth, int count) {
     final diameter = menuButtonDiameterFor(handleWidth);
     final edge = menuEdgeInsetFor(handleWidth);
-    return 3 * diameter + 2 * 10 + 2 * edge;
+    return count * diameter + (count - 1) * 10 + 2 * edge;
   }
 
   // ================================================================

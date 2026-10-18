@@ -59,10 +59,12 @@ class DiaryPage extends StatefulWidget {
   final bool preEnterToday;
 
   @override
-  State<DiaryPage> createState() => _DiaryPageState();
+  State<DiaryPage> createState() => DiaryPageState();
 }
 
-class _DiaryPageState extends State<DiaryPage> {
+/// 公开 State：供导航屏用 [GlobalKey] 调 [openTodayEditor]（把手竖单的
+/// 「今日日记」快捷入口），与本屏 `_handleMenuKey` / `_aiDialogKey` 同一做法。
+class DiaryPageState extends State<DiaryPage> {
   final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
 
   late final DiaryClock _clock = widget.clock ?? DiaryClock();
@@ -74,6 +76,9 @@ class _DiaryPageState extends State<DiaryPage> {
   DiaryExportService? _exportService;
   Object? _loadError;
   bool _canPopNested = false;
+
+  /// 内层栈顶路由名（由 [_DiaryStackObserver] 同步；不触发重建）。
+  String? _topRouteName;
 
   @override
   void initState() {
@@ -150,17 +155,37 @@ class _DiaryPageState extends State<DiaryPage> {
     NavigatorState navigator,
     String initialRoute,
   ) {
-    final today = _clock.today();
     return [
       MaterialPageRoute<void>(builder: (_) => const YearListPage()),
-      DiarySlideRoute<void>(
-        builder: (_) =>
-            DayEditorPage(year: today.year, month: today.month, day: today.day),
-        settings: RouteSettings(
-          name: '/day/${today.year}/${today.month}/${today.day}',
-        ),
-      ),
+      _todayEditorRoute(),
     ];
+  }
+
+  /// 今日编辑页路由（[预进][DiaryPage.preEnterToday] 与「今日日记」快捷共用）。
+  DiarySlideRoute<void> _todayEditorRoute() {
+    final today = _clock.today();
+    return DiarySlideRoute<void>(
+      builder: (_) =>
+          DayEditorPage(year: today.year, month: today.month, day: today.day),
+      settings: RouteSettings(name: _todayEditorRouteName()),
+    );
+  }
+
+  /// 今日编辑页的路由名（栈顶比对用）。
+  String _todayEditorRouteName() {
+    final today = _clock.today();
+    return '/day/${today.year}/${today.month}/${today.day}';
+  }
+
+  /// 把手竖单「今日日记」快捷：把日记内层栈带到今日编辑页。
+  ///
+  /// 已在今日编辑页时静默返回（不重建、不打断正在进行的编辑）；否则
+  /// 按标准滑入动画压入今日编辑页——返回仍回到跳转前所在的那一层。
+  void openTodayEditor() {
+    final navigator = _navigatorKey.currentState;
+    if (navigator == null) return;
+    if (_topRouteName == _todayEditorRouteName()) return;
+    navigator.push(_todayEditorRoute());
   }
 
   void _syncCanPop() {
@@ -209,7 +234,12 @@ class _DiaryPageState extends State<DiaryPage> {
             },
             child: Navigator(
               key: _navigatorKey,
-              observers: [_DiaryStackObserver(_syncCanPop)],
+              observers: [
+                _DiaryStackObserver(
+                  onChanged: _syncCanPop,
+                  onTopRoute: (name) => _topRouteName = name,
+                ),
+              ],
               // 首帧路由栈：默认只有年列表；[preEnterToday] 时一次性建好
               // 「年列表 + 今日编辑页」两层（初始路由无转场动画，此时日记页
               // 还在页面轨道上离屏，用户不可见）。
@@ -232,27 +262,38 @@ class _DiaryPageState extends State<DiaryPage> {
   }
 }
 
-/// 内层路由栈变化时同步「是否可返回」状态给 PopScope。
+/// 内层路由栈变化时：同步「是否可返回」给 PopScope，并记录栈顶路由名
+/// （供 [DiaryPageState.openTodayEditor] 判断当前是否已在今日编辑页）。
 class _DiaryStackObserver extends NavigatorObserver {
-  _DiaryStackObserver(this.onChanged);
+  _DiaryStackObserver({required this.onChanged, required this.onTopRoute});
 
   final VoidCallback onChanged;
+  final ValueChanged<String?> onTopRoute;
 
   @override
   void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
     super.didPush(route, previousRoute);
     onChanged();
+    onTopRoute(route.settings.name);
   }
 
   @override
   void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) {
     super.didPop(route, previousRoute);
     onChanged();
+    onTopRoute(previousRoute?.settings.name);
   }
 
   @override
   void didRemove(Route<dynamic> route, Route<dynamic>? previousRoute) {
     super.didRemove(route, previousRoute);
     onChanged();
+    onTopRoute(previousRoute?.settings.name);
+  }
+
+  @override
+  void didReplace({Route<dynamic>? newRoute, Route<dynamic>? oldRoute}) {
+    super.didReplace(newRoute: newRoute, oldRoute: oldRoute);
+    onTopRoute(newRoute?.settings.name);
   }
 }

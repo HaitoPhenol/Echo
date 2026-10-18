@@ -8,6 +8,7 @@ import '../control/bootstrap.dart';
 import '../control/control_event_bridge.dart';
 import '../control/slash_ui/slash_ui.dart';
 import '../diary/data/diary_repository.dart';
+import '../diary/ui/diary_page.dart';
 import '../services/chat_session_controller.dart';
 import '../services/chat_store.dart';
 import '../services/console_stats_service.dart';
@@ -85,8 +86,9 @@ class _SmartNavScreenState extends State<SmartNavScreen>
   /// 快捷操作配置。
   late final List<QuickAction> _quickActions;
 
-  /// 把手竖单的本页操作配置。
-  late final List<PageAction> _pageActions;
+  /// 日记页 State key：把手竖单「今日日记」快捷入口据此调用
+  /// [DiaryPageState.openTodayEditor] 驱动日记内层栈（若该页未挂载则为 null）。
+  final GlobalKey<DiaryPageState> _diaryKey = GlobalKey();
 
   /// 搜索历史存储与搜索服务。
   late final SearchHistoryStore _searchHistory;
@@ -218,9 +220,9 @@ class _SmartNavScreenState extends State<SmartNavScreen>
     // ---- 组装配置与服务（依赖关系：providers → searchService）----
     _destinations = buildDefaultDestinations(
       diaryRepository: widget.diaryRepository,
+      diaryPageKey: _diaryKey,
     );
     _quickActions = buildDefaultQuickActions();
-    _pageActions = buildDefaultPageActions();
     _searchHistory = InMemorySearchHistoryStore();
     _searchService = SearchService(
       history: _searchHistory,
@@ -740,13 +742,29 @@ class _SmartNavScreenState extends State<SmartNavScreen>
     Haptics.confirm();
     final bodyContext = _bodyContext;
     if (bodyContext != null) {
-      _pageActions[index].onSelect(bodyContext);
+      _currentPageActions()[index].onSelect(bodyContext);
     }
     setState(() {
       _ripples.add(RippleSpec(center: _pageMenuPositions()[index]));
     });
     _handleMenuKey.currentState?.dismiss();
   }
+
+  /// 当前页的本页操作（竖单只显示**当前所在页面**的操作，各页独立）。
+  ///
+  /// 竖单仅在 [_menuShown] 期间挂载，打开后由其 scrim 挡住换页手势，
+  /// 故「取列表 → 显示 → 按下 / 定位涟漪」期间当前页不会变化，
+  /// 索引始终与 [HandleMenu.actions] 一一对应。
+  List<PageAction> _currentPageActions() => buildPageActions(
+    _destinations[_nav.activePage].id,
+    onOpenTodayDiary: _openTodayDiary,
+  );
+
+  /// 「今日日记」快捷：直接进今日日记编辑页。
+  ///
+  /// 用户此刻就在笔记页上（竖单按当前页取用），无需切换轨道页；
+  /// 由日记页自己把内层栈带到今日编辑页（见 [DiaryPageState.openTodayEditor]）。
+  void _openTodayDiary() => _diaryKey.currentState?.openTodayEditor();
 
   /// 打开 AI 对话框（按压外观到松手时自然复位）。
   void _openAiDialog() {
@@ -774,9 +792,11 @@ class _SmartNavScreenState extends State<SmartNavScreen>
     }
   }
 
-  /// 竖单三个按钮的圆心（与 HandleMenu 内边距/间距规则一致，
-  /// 供触发涟漪定位）。纯计算收敛在 [DockLayout]。
-  List<Offset> _pageMenuPositions() => _layout.pageMenuPositions;
+  /// 竖单各按钮的圆心（与 HandleMenu 内边距/间距规则一致，
+  /// 供触发涟漪定位），条数按当前页的 [_currentPageActions] 长度而定。
+  /// 纯计算收敛在 [DockLayout]。
+  List<Offset> _pageMenuPositions() =>
+      _layout.pageMenuPositionsFor(_currentPageActions().length);
 
   // ================================================================
   //  手势：移动（含方向锁定）
@@ -1337,7 +1357,7 @@ class _SmartNavScreenState extends State<SmartNavScreen>
           width: handleWidth,
           child: HandleMenu(
             key: _handleMenuKey,
-            actions: _pageActions,
+            actions: _currentPageActions(),
             handleWidth: handleWidth,
             onFire: _handlePageActionFire,
             onDismissed: _handleMenuDismissed,

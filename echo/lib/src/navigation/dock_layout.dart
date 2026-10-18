@@ -136,20 +136,20 @@ class DockLayout {
     return (center - thumbWidth / 2) / (barWidth - thumbWidth) * (pageCount - 1);
   }
 
-  /// 竖单三个按钮的圆心（与 HandleMenu 内边距/间距规则一致，
-  /// 供触发涟漪定位）。
-  List<Offset> get pageMenuPositions {
+  /// 竖单 `count` 个按钮的圆心（与 HandleMenu 内边距/间距规则一致，
+  /// 供触发涟漪定位）。按钮数按当前页操作条数传入（各页独立）。
+  List<Offset> pageMenuPositionsFor(int count) {
     final width = size.width;
     final handleWidth = DockGeometry.handleWidthFor(width);
     final diameter = DockGeometry.menuButtonDiameterFor(handleWidth);
     final edge = DockGeometry.menuEdgeInsetFor(handleWidth);
-    final menuHeight = DockGeometry.menuHeightFor(handleWidth);
+    final menuHeight = DockGeometry.menuHeightFor(handleWidth, count);
 
     final bottom = size.height - safeBottom - DockGeometry.bottomMargin;
     final top = bottom - menuHeight;
     final centerX = DockGeometry.handleLeftFor(width) + handleWidth / 2;
     return [
-      for (var i = 0; i < 3; i++)
+      for (var i = 0; i < count; i++)
         Offset(centerX, top + edge + diameter / 2 + i * (diameter + 10)),
     ];
   }

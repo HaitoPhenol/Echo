@@ -392,7 +392,7 @@ tone2、快捷弧选中按钮 = tone4**；**拇指滑块是特例**：使用不�
 | 把手条 | 左边距 14，宽 12vw |
 | AI 条 | 左边距 `14 + 把手宽 + 14`，宽 `38vw - 56`（恰好填满中段） |
 | 导航条整体 | 宽 `w/2`、右边距 14；条本体 = 整体宽 − 两端圆点与间距 |
-| 竖单按钮直径 | `(把手宽 - 12).clamp(32, 42)`；边缘留白 = `(把手宽 − 按钮直径)/2`（横纵同值，端弧与端按钮**同心圆**）；竖单高 = 3 按钮 + 间距 10×2 + 上下留白 |
+| 竖单按钮直径 | `(把手宽 - 12).clamp(32, 42)`；边缘留白 = `(把手宽 − 按钮直径)/2`（横纵同值，端弧与端按钮**同心圆**）；竖单高 `menuHeightFor(把手宽, count)` = count 按钮 + (count−1)×间距 10 + 上下留白（**count 按当前页操作条数**，各页独立，笔记页为 1） |
 | 抽屉 | 宽 `min(78vw, 340)`；打开时把手停靠在 `抽屉宽 + 14` |
 
 手势全部在 `SmartNavScreen` 的根指针路由中按热区分发（
@@ -402,8 +402,8 @@ tone2、快捷弧选中按钮 = tone4**；**拇指滑块是特例**：使用不�
 也不会出现把手与导航条两套记录并驱的「穿越手势」：
 
 - **点按把手条** → 挂载 `HandleMenu`：由 10px 小条用 340ms
-  Cubic(0.3,1.2,.4,1) 向上生长成胶囊，三个圆形按钮白圆底 + inverse
-  图标错峰弹入；生长/收回期间 `IgnorePointer` 拦截（注意该节点必须
+  Cubic(0.3,1.2,.4,1) 向上生长成胶囊，各圆形按钮（条数按当前页）白圆底
+  + inverse 图标错峰弹入；生长/收回期间 `IgnorePointer` 拦截（注意该节点必须
   在逐帧重建的 builder 内部，status 翻转才会生效），完全展开后按钮
   才接受点击；触发操作后在按钮位置播放涟漪并自动收起。竖单挂载的
   同一帧常态把手隐藏，收回卸载同帧回归（与导航条/pill 交接同规则）。
@@ -430,9 +430,12 @@ tone2、快捷弧选中按钮 = tone4**；**拇指滑块是特例**：使用不�
 
 **本页操作配置 `PageAction`**（`page_action.dart`）：字段
 `id / icon / label / onSelect(BuildContext)`，与 `QuickAction`
-同构但语义是「作用于当前页」（今后可按页返回不同列表）；
-`buildDefaultPageActions()` 当前为刷新 / 分享 / 置顶三个占位，
-`onSelect` 统一弹「「X」功能开发中」SnackBar（1s，先清旧条）。
+同构但语义是「作用于当前页」。`buildPageActions(pageId, ...)` 按页
+分派、各页独立：**笔记页**只放一个「今日日记」——直接跳进今日日记
+编辑页（经 `DiaryPageState.openTodayEditor` 驱动日记内层栈）；
+其余页面暂沿用 `buildDefaultPageActions()`（刷新 / 分享 / 置顶三个
+占位，`onSelect` 统一弹「「X」功能开发中」SnackBar，1s，先清旧条）。
+竖单几何随当前页条数自适应（见 §3.9 `DockGeometry.menuHeightFor`）。
 
 Stack 分层在 `SmartNavScreen.build`（机能风层见 3.11）：
 固定背景（MechanicalBackground）→ 顶部读数条 → 横向页面轨道
@@ -672,10 +675,12 @@ ui/（年/月/日浏览、编辑页）
 替换掉「开发中」占位回调（如扫码、新建会话、语音助手）。
 
 ### 接入本页操作的真实行为 / 按页配置
-修改 `buildDefaultPageActions()` 中对应 `PageAction` 的 `onSelect`；
-要按页面给出不同操作时，把当前 State 持有的固定列表改为依据
-当前页 index 构建（`PageAction` 语义即「作用于当前页」）。
-竖单项数变化时同步检查 `DockGeometry.menuHeightFor` 的高度公式。
+竖单按页独立：在 `buildPageActions(pageId, ...)` 中按页面 id 返回专门的
+`PageAction` 列表（参考已有的笔记页分支——单项「今日日记」），不再复用
+`buildDefaultPageActions()` 占位列表。新增页面的真实操作时，页面 State
+无需改动，`SmartNavScreen` 直接读 `_currentPageActions()`（当前页）。
+竖单几何已按条数自适应（`DockGeometry.menuHeightFor(把手宽, count)`、
+`DockLayout.pageMenuPositionsFor(count)`），条数变化无需再改公式。
 
 ### 向侧边抽屉填充内容
 `SideDrawer` 面板当前为空壳（内容 `IgnorePointer`）。填充时在面板

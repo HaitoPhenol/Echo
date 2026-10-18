@@ -88,6 +88,10 @@ List<NavDestination> buildDefaultDestinations({
   /// 测试注入缝：注入后笔记页跳过生产持久仓储开库（widget 测试的
   /// fake-async 区无法完成真实文件 I/O）；生产环境传 null。
   DiaryRepository? diaryRepository,
+
+  /// 导航屏持有的日记页 State key：把手竖单「今日日记」快捷入口据此调用
+  /// [DiaryPageState.openTodayEditor]。
+  GlobalKey<DiaryPageState>? diaryPageKey,
 }) {
   /// (id, 标题) 列表：唯一来源在 [kNavDestinationSpecs]（控制层共用）。
   const specs = kNavDestinationSpecs;
@@ -107,6 +111,7 @@ List<NavDestination> buildDefaultDestinations({
           // 用户横滑到笔记页即见今日日记，无需再点 年→月→日。
           // 测试注入仓储时关闭，保持从年列表开始的既有断言基线。
           'notes' => DiaryPage(
+            key: diaryPageKey,
             repository: diaryRepository,
             preEnterToday: diaryRepository == null,
           ),

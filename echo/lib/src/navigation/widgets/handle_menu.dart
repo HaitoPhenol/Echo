@@ -8,7 +8,7 @@ import '../page_action.dart';
 ///
 /// 起始帧与把手条完全一致（10px 高的 tone1 半圆小条），随后在 340ms
 /// （曲线 (.3,1.2,.4,1)）内长高为深色胶囊：底色过渡到
-/// [AppColors.overlaySurface]、描边与阴影淡入；三个圆形操作按钮
+/// [AppColors.overlaySurface]、描边与阴影淡入；圆形操作按钮逐个
 /// 从底部错峰弹入（30/70/110ms，translateY 12、scale .6 起手）。
 ///
 /// 收起时反向播放，播完才通过 [onDismissed] 通知父级卸载并重新显示
@@ -26,7 +26,8 @@ class HandleMenu extends StatefulWidget {
     required this.onDismissed,
   });
 
-  /// 竖单内的操作（长度固定为 3，几何按 3 个按钮计算）。
+  /// 竖单内的操作（条数按页面而定：笔记页为 1 个「今日日记」，
+  /// 其余页面暂为 3 个占位项；几何按 [actions] 条数自动适配）。
   final List<PageAction> actions;
 
   /// 把手条宽度（竖单宽度与其一致）。
@@ -94,7 +95,7 @@ class HandleMenuState extends State<HandleMenu>
   @override
   Widget build(BuildContext context) {
     final width = widget.handleWidth;
-    final menuHeight = DockGeometry.menuHeightFor(width);
+    final menuHeight = DockGeometry.menuHeightFor(width, widget.actions.length);
     final buttonDiameter = DockGeometry.menuButtonDiameterFor(width);
     // 按钮距胶囊边缘的留白（横纵同值）：保证上下端弧与端按钮同心。
     final edgeInset = DockGeometry.menuEdgeInsetFor(width);
