@@ -75,6 +75,32 @@ void main() {
     expect(find.byType(DayEditorPage), findsOneWidget);
   }
 
+  group('开屏预进今日编辑页', () {
+    testWidgets('preEnterToday 时首帧直落今日编辑器，返回回到年列表', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: DiaryPage(
+            clock: fixedClock(),
+            dataProvider: FakeDiaryDataProvider(),
+            repository: emptyRepo(),
+            preEnterToday: true,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // 首帧即两层栈：今日编辑页在上，年列表被不透明路由遮在下（offstage）。
+      expect(find.byType(DayEditorPage), findsOneWidget);
+      expect(find.byType(YearListPage), findsNothing);
+
+      // 返回语义不变：预进只是把入口前移，返回仍回到年列表。
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.byType(DayEditorPage), findsNothing);
+      expect(find.byType(YearListPage), findsOneWidget);
+    });
+  });
+
   group('M4 自动成稿', () {
     testWidgets('进模块即成稿：列表自然出现今天，编辑器为胶囊行 + 单空段', (tester) async {
       await drillToToday(tester);

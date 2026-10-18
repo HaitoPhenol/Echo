@@ -13,9 +13,11 @@ import '../export/diary_export_service.dart';
 import '../template/daily_default_template.dart';
 import '../template/diary_composer.dart';
 import '../../control/bootstrap.dart';
+import 'browser/day_editor_page.dart';
 import 'browser/year_list_page.dart';
 import 'diary_composer_scope.dart';
 import 'diary_export_scope.dart';
+import 'diary_route.dart';
 
 /// 日记模块根页：内嵌一个 Navigator 承载 年→月→日→编辑器 四级栈，
 /// 系统返回键由 [PopScope] 收口到内层栈；栈底时不拦截，交给系统
@@ -32,6 +34,7 @@ class DiaryPage extends StatefulWidget {
     this.dataProvider,
     this.repository,
     this.exportService,
+    this.preEnterToday = false,
   });
 
   /// 测试注入缝：固定时钟/数据源/仓储/导出服务；生产环境全部走真实装配。
@@ -39,6 +42,21 @@ class DiaryPage extends StatefulWidget {
   final DiaryDataProvider? dataProvider;
   final DiaryRepository? repository;
   final DiaryExportService? exportService;
+
+  /// 开屏预进今日编辑页：为 true 时内层路由栈首帧即
+  /// 「年列表 → 今日编辑页」两层（初始路由一次性建好、无入场动画）。
+  ///
+  /// 日记页在生产里随导航页面轨道**离屏常驻**（见 nav_destination.dart），
+  /// app 一启动本页就 bootstrap 完成，故此处预进发生在用户尚未切到笔记页时
+  /// ——「后台直接进入今日日记」；用户横滑到笔记页即落在今日编辑页，无需再
+  /// 点 年→月→日。返回语义不变：返回仍回到年列表（栈形态与手动进入一致）。
+  ///
+  /// 只在 app 打开（进程首启）时发生一次：从后台恢复不会重跑 bootstrap，
+  /// 不会把用户已经导航到的位置顶掉。
+  ///
+  /// 仅生产环境打开（`nav_destination.dart` 按「无测试注入仓储」判定）；
+  /// 测试默认关闭，保持从年列表开始的既有断言基线。
+  final bool preEnterToday;
 
   @override
   State<DiaryPage> createState() => _DiaryPageState();
@@ -124,6 +142,27 @@ class _DiaryPageState extends State<DiaryPage> {
     return Directory('${docs.path}/echo_diary');
   }
 
+  /// [DiaryPage.preEnterToday] 的初始路由栈：年列表在下、今日编辑页在上。
+  ///
+  /// 与用户手动「年→月→日」进入后的栈形态完全一致（返回回到年列表）；
+  /// 「今天」取日记日时钟（04:00 日界），与自动成稿、日页判定同源。
+  List<Route<dynamic>> _initialRoutesWithTodayEditor(
+    NavigatorState navigator,
+    String initialRoute,
+  ) {
+    final today = _clock.today();
+    return [
+      MaterialPageRoute<void>(builder: (_) => const YearListPage()),
+      DiarySlideRoute<void>(
+        builder: (_) =>
+            DayEditorPage(year: today.year, month: today.month, day: today.day),
+        settings: RouteSettings(
+          name: '/day/${today.year}/${today.month}/${today.day}',
+        ),
+      ),
+    ];
+  }
+
   void _syncCanPop() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final canPop = _navigatorKey.currentState?.canPop() ?? false;
@@ -171,6 +210,12 @@ class _DiaryPageState extends State<DiaryPage> {
             child: Navigator(
               key: _navigatorKey,
               observers: [_DiaryStackObserver(_syncCanPop)],
+              // 首帧路由栈：默认只有年列表；[preEnterToday] 时一次性建好
+              // 「年列表 + 今日编辑页」两层（初始路由无转场动画，此时日记页
+              // 还在页面轨道上离屏，用户不可见）。
+              onGenerateInitialRoutes: widget.preEnterToday
+                  ? _initialRoutesWithTodayEditor
+                  : Navigator.defaultGenerateInitialRoutes,
               onGenerateRoute: (settings) {
                 return MaterialPageRoute<void>(
                   settings: settings,

@@ -102,7 +102,14 @@ List<NavDestination> buildDefaultDestinations({
         // 笔记页 M2 起承载日记模块：年→月→日层级 + 块编辑器。
         pageBuilder: (_) => switch (spec.id) {
           'chat' => const ChatPage(),
-          'notes' => DiaryPage(repository: diaryRepository),
+          // 生产环境（无测试注入仓储）开屏预进今日日记编辑页：app 一启动
+          // 日记页就在轨道上离屏 bootstrap，先把今日编辑页压进内层栈，
+          // 用户横滑到笔记页即见今日日记，无需再点 年→月→日。
+          // 测试注入仓储时关闭，保持从年列表开始的既有断言基线。
+          'notes' => DiaryPage(
+            repository: diaryRepository,
+            preEnterToday: diaryRepository == null,
+          ),
           // 仅终端页挂锚点调试面板（新消息/异常模拟与处理，验收用，
           // 正式功能接入后移除）；主页暂不做功能，footer 为 null。
           // kDebugMode 守卫：debug 构建可见，release/profile 构建 footer 为
