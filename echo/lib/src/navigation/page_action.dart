@@ -35,15 +35,19 @@ class PageAction {
 ///
 /// 设计约定（见 [PageAction] 类注释）：把手条竖单显示的是**当前所在
 /// 页面**的操作，各页本应独立、互不相同。本函数按页面 id 分派：
-/// - **笔记页**：只放一个「今日日记」——直接跳进今日日记编辑页，不再
-///   显示刷新 / 分享 / 置顶等占位演示项；
+/// - **笔记页**：两个常驻入口——「今日日记」直接跳进今日日记编辑页、
+///   「补记」弹日期选择器补录过去某天（2026-10-19 从月列表页顶栏的
+///   「+」迁来，改为笔记页常驻），不再显示刷新 / 分享 / 置顶等占位项；
 /// - 其余页面：暂沿用占位演示项 [buildDefaultPageActions]。
 ///
 /// [onOpenTodayDiary]：笔记页「今日日记」项的行为（由导航屏注入，
 /// 内部驱动日记内层栈到今日编辑页）。
+/// [onBackfill]：笔记页「补记」项的行为（由导航屏注入，内部弹日期
+/// 选择器并把日记内层栈带到所选日期的编辑页）。
 List<PageAction> buildPageActions(
   String pageId, {
   required VoidCallback onOpenTodayDiary,
+  required VoidCallback onBackfill,
 }) {
   if (pageId == 'notes') {
     return [
@@ -52,6 +56,12 @@ List<PageAction> buildPageActions(
         icon: Icons.edit_calendar,
         label: '今日日记',
         onSelect: (_) => onOpenTodayDiary(),
+      ),
+      PageAction(
+        id: 'backfill',
+        icon: Icons.add,
+        label: '补记',
+        onSelect: (_) => onBackfill(),
       ),
     ];
   }

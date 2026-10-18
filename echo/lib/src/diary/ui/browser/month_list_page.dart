@@ -2,12 +2,10 @@ import 'package:flutter/material.dart';
 
 import '../../../theme/app_colors.dart';
 import '../../data/diary_repository.dart';
-import '../diary_composer_scope.dart';
 import '../diary_export_scope.dart';
 import '../diary_route.dart';
 import '../widgets/diary_shell.dart';
 import '../widgets/diary_list_row.dart';
-import 'day_editor_page.dart';
 import 'day_list_page.dart';
 
 /// 月级别：只列含日记的月份；当前月由自动成稿保证存在（§5.2 裁定 3）。
@@ -16,8 +14,9 @@ import 'day_list_page.dart';
 /// 所浏览年份即当前年）用强调色，其余月份走默认页名标签色，与日页
 /// 「今天」的强弱口径一致。
 ///
-/// 顶栏「+ 补记」是过去空日的唯一入口：日期选择器可选范围 =
-/// 过去任意日期 + 今天，未来日期禁用；选定后走同一个 ensureDay。
+/// 「补记过去某天」自 2026-10-19 起移入**把手条快捷竖单**（笔记页常驻
+/// 入口，见 `navigation/page_action.dart` 与 `DiaryPageState.startBackfill`），
+/// 本页顶栏不再有「+」。
 ///
 /// 每行 trailing 为**月**增量导出入口（2026-10-18 由年行迁来）：
 /// 打包该月全部 draft 为「日记」笔记本 .sy.zip 并经系统分享送出，
@@ -134,39 +133,6 @@ class _MonthListPageState extends State<MonthListPage> {
     _reload();
   }
 
-  /// 「+ 补记」：选定过去日期后直开编辑器（日页 ensureDay 负责成稿）。
-  Future<void> _startBackfill() async {
-    final today = DiaryComposerScope.of(context).clock.today();
-    // 停留在所浏览年份：当年从今天选，往年从该年 12 月往回选。
-    final initial = widget.year == today.year
-        ? today
-        : DateTime(widget.year, 12, 28);
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: initial,
-      firstDate: DateTime(2000),
-      lastDate: today,
-      helpText: '补记哪一天',
-      selectableDayPredicate: (date) => !date.isAfter(today),
-    );
-    if (picked == null || !mounted) return;
-    // 成稿交给日页 _load() 的同一个 ensureDay：那里还能判定「新开」
-    // 并自动聚焦首个可写空段；选择器已保证不是未来日。
-    await Navigator.of(context).push(
-      DiarySlideRoute(
-        builder: (_) => DayEditorPage(
-          year: picked.year,
-          month: picked.month,
-          day: picked.day,
-        ),
-        settings: RouteSettings(
-          name: '/day/${picked.year}/${picked.month}/${picked.day}',
-        ),
-      ),
-    );
-    _reload();
-  }
-
   Future<_MonthData> _load(DiaryRepository repository) async {
     final months = await repository.monthsOfYear(widget.year);
     final counts = <int, int>{};
@@ -197,19 +163,6 @@ class _MonthListPageState extends State<MonthListPage> {
       kicker: 'DIARY // ${widget.year}',
       title: '${widget.year} 年',
       onBack: () => Navigator.of(context).maybePop(),
-      // 裸图标 + 手势而非 IconButton：头部行统一 28px 中线，见
-      // diary_shell.dart 头部注释；IconButton 最小点击高度会撑高行。
-      trailing: Tooltip(
-        message: '补记',
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: _startBackfill,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 6),
-            child: Icon(Icons.add, size: 17, color: AppColors.pageLabel),
-          ),
-        ),
-      ),
       child: FutureBuilder<_MonthData>(
         future: _dataFuture,
         builder: (context, snapshot) {

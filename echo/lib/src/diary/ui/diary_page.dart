@@ -71,8 +71,9 @@ class DiaryPage extends StatefulWidget {
   State<DiaryPage> createState() => DiaryPageState();
 }
 
-/// 公开 State：供导航屏用 [GlobalKey] 调 [openTodayEditor]（把手竖单的
-/// 「今日日记」快捷入口），与本屏 `_handleMenuKey` / `_aiDialogKey` 同一做法。
+/// 公开 State：供导航屏用 [GlobalKey] 调 [openTodayEditor] / [startBackfill]
+/// （把手竖单的「今日日记」「补记」两个快捷入口），与本屏
+/// `_handleMenuKey` / `_aiDialogKey` 同一做法。
 class DiaryPageState extends State<DiaryPage> {
   final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
 
@@ -227,6 +228,41 @@ class DiaryPageState extends State<DiaryPage> {
     if (navigator == null) return;
     if (_topRouteName == _todayEditorRouteName()) return;
     navigator.push(_todayEditorRoute());
+  }
+
+  /// 把手竖单「补记」快捷：选定过去日期后直开编辑器。
+  ///
+  /// 补记入口常驻笔记页（年/月/日/编辑页各子页的竖单都有，2026-10-19
+  /// 从月列表页顶栏的「+」迁来），日期选择器统一以**今天**为锚点：可选
+  /// 范围 = 过去任意日期 + 今天，未来日期禁用。选定后按标准滑入动画压入
+  /// 该日编辑页——成稿交给日页 `_load()` 的同一个 ensureDay，返回回到
+  /// 跳转前所在的那一层。
+  Future<void> startBackfill() async {
+    final today = _clock.today();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: today,
+      firstDate: DateTime(2000),
+      lastDate: today,
+      helpText: '补记哪一天',
+      selectableDayPredicate: (date) => !date.isAfter(today),
+    );
+    if (picked == null || !mounted) return;
+    // push 前重新取 navigator：等待选择器期间本页可能已被拆装。
+    final navigator = _navigatorKey.currentState;
+    if (navigator == null) return;
+    navigator.push(
+      DiarySlideRoute<void>(
+        builder: (_) => DayEditorPage(
+          year: picked.year,
+          month: picked.month,
+          day: picked.day,
+        ),
+        settings: RouteSettings(
+          name: '/day/${picked.year}/${picked.month}/${picked.day}',
+        ),
+      ),
+    );
   }
 
   /// 导出提醒 · 锚点：按「是否仍有已结束月份存在未导出草稿」上报红锚点。

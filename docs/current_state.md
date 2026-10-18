@@ -128,7 +128,8 @@
   一次）。测试默认 `preEnterToday: false`，保持从年列表开始的既有断言基线。
 - **自动成稿**：进笔记页 bootstrap 时 `ensureDay(clock.today())`，
   日模板 `daily-default-v2` 为**单空段落骨架**（2026-10-18 日模板重设，
-  旧六块骨架废弃）；月页「+」补记，日期选择器禁未来日。
+  旧六块骨架废弃）；补记入口在**把手条竖单**（笔记页常驻，2026-10-19
+  自月页右上「+」迁来），日期选择器禁未来日。
 - **自动数据与心情（2026-10-18 重设）**：温度/湿度/天气/日程与心情写
   文档根 `custom-*`——`composer.fetchCustomPatch(date)` 三源并发取数
   （单源失败不连坐、null 删键），`controller.applyCustomPatch(patch)`

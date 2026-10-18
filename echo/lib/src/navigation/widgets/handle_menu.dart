@@ -26,7 +26,7 @@ class HandleMenu extends StatefulWidget {
     required this.onDismissed,
   });
 
-  /// 竖单内的操作（条数按页面而定：笔记页为 1 个「今日日记」，
+  /// 竖单内的操作（条数按页面而定：笔记页为 2 个「今日日记 / 补记」，
   /// 其余页面暂为 3 个占位项；几何按 [actions] 条数自动适配）。
   final List<PageAction> actions;
 

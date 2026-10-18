@@ -771,6 +771,7 @@ class _SmartNavScreenState extends State<SmartNavScreen>
   List<PageAction> _currentPageActions() => buildPageActions(
     _destinations[_nav.activePage].id,
     onOpenTodayDiary: _openTodayDiary,
+    onBackfill: _openBackfill,
   );
 
   /// 「今日日记」快捷：直接进今日日记编辑页。
@@ -778,6 +779,12 @@ class _SmartNavScreenState extends State<SmartNavScreen>
   /// 用户此刻就在笔记页上（竖单按当前页取用），无需切换轨道页；
   /// 由日记页自己把内层栈带到今日编辑页（见 [DiaryPageState.openTodayEditor]）。
   void _openTodayDiary() => _diaryKey.currentState?.openTodayEditor();
+
+  /// 「补记」快捷：弹日期选择器补录过去某天（入口自月列表页顶栏「+」迁来）。
+  ///
+  /// 同为笔记页常驻入口：用户此刻就在笔记页上，由日记页自己弹日期选择器并
+  /// 把内层栈带到所选日期的编辑页（见 [DiaryPageState.startBackfill]）。
+  void _openBackfill() => _diaryKey.currentState?.startBackfill();
 
   /// 打开 AI 对话框（按压外观到松手时自然复位）。
   void _openAiDialog() {

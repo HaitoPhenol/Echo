@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
@@ -242,7 +243,6 @@ void main() {
       // 时钟固定 2026-06-15：6 月即含今天的月份，走强调色。
       expect(row.highlight, isTrue);
       expect(find.text('本月'), findsNothing);
-      expect(find.byTooltip('补记'), findsOneWidget);
     });
 
     testWidgets('年列表倒序 + 当前年强调：2026→2025→2024，仅 2026 高亮', (tester) async {
@@ -319,12 +319,23 @@ void main() {
 
   group('M4 补记', () {
     testWidgets('未来日期禁选（点 16 无效，OK 仍为初始 15）；选 10 成稿', (tester) async {
-      await tester.pumpWidget(app());
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('2026 年'));
+      // 补记入口 2026-10-19 自月列表页顶栏「+」迁入把手条快捷竖单；
+      // 竖单由 SmartNavScreen 承载，本测试直接挂 DiaryPage，故直接驱动
+      // [DiaryPageState.startBackfill]（与点按竖单「补记」项等价）。
+      final key = GlobalKey<DiaryPageState>();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: DiaryPage(
+            key: key,
+            clock: fixedClock(),
+            dataProvider: FakeDiaryDataProvider(),
+            repository: emptyRepo(),
+          ),
+        ),
+      );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byTooltip('补记'));
+      unawaited(key.currentState!.startBackfill());
       await tester.pumpAndSettle();
       expect(find.text('补记哪一天'), findsOneWidget);
 
@@ -339,7 +350,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // 再补记 10 日（过去）：选择器 → 成稿 → 直开编辑器。
-      await tester.tap(find.byTooltip('补记'));
+      unawaited(key.currentState!.startBackfill());
       await tester.pumpAndSettle();
       await tester.tap(find.text('10'));
       await tester.pumpAndSettle();
@@ -353,8 +364,12 @@ void main() {
 
       await tester.binding.handlePopRoute();
       await tester.pumpAndSettle();
-      // 补记从月页直开编辑器，pop 回到月页：当月篇数变 2。
+      // 补记直开编辑器，pop 回到跳转前所在的年列表：仓储新增 15/10 两篇，
+      // 月列表 6 月行篇数变 2。
+      expect(find.byType(YearListPage), findsOneWidget);
       expect(find.byType(DayListPage), findsNothing);
+      await tester.tap(find.text('2026 年'));
+      await tester.pumpAndSettle();
       final monthRow = tester.widget<DiaryListRow>(
         find.widgetWithText(DiaryListRow, '6 月'),
       );
