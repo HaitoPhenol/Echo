@@ -5,11 +5,13 @@ import '../../../theme/app_colors.dart';
 /// 层级列表通用行：左侧大字标签、右侧辅助信息与箭头，
 /// 下方 tone1 细线。
 ///
-/// 三档文字亮度（就近对齐亮度阶梯）：
-/// · [highlight] 强调（主文字色）——含今天的项：日页「今天」、
+/// 行首亮度**只两档**（均取自现有亮度阶梯，不自造透明度）：
+/// · [highlight] 亮（主文字色 · 阶 4）——含今天的项：日页「今天」、
 ///   当前年行、当前月行；
-/// · 默认（[AppColors.pageLabel]）——其余年/月/日项；
-/// · [dim] 弱化（[AppColors.mechInkDim]）——已归档（正文已清理）。
+/// · 默认 暗（[AppColors.pageLabel] · 阶 3）——其余年 / 月 / 日项
+///   （含已归档）。
+/// 已归档（正文已清理）不再另占行首色档，改由「已归档」徽标与
+/// [dim] 降档的副文案 / 箭头标识。
 class DiaryListRow extends StatelessWidget {
   const DiaryListRow({
     super.key,
@@ -32,7 +34,8 @@ class DiaryListRow extends StatelessWidget {
 
   final VoidCallback onTap;
 
-  /// 弱化显示（已归档：正文已从本机清理）。
+  /// 降档弱化副文案与箭头（已归档：正文已从本机清理）。
+  /// 不影响行首亮度——行首只分「含今天 / 不含今天」两档。
   final bool dim;
 
   /// 强调显示（含今天的项：今天 / 当前年 / 当前月）。
@@ -40,11 +43,8 @@ class DiaryListRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final headColor = dim
-        ? AppColors.mechInkDim
-        : highlight
-        ? AppColors.textPrimary
-        : AppColors.pageLabel;
+    // 行首只两档：亮 = 含今天（主文字色），暗 = 其余（页名标签色）。
+    final headColor = highlight ? AppColors.textPrimary : AppColors.pageLabel;
     final subColor = dim
         ? AppColors.mechInkDim.withValues(alpha: 0.55)
         : AppColors.textMuted;

@@ -202,6 +202,19 @@ void main() {
         find.widgetWithText(DiaryListRow, '13日'),
       );
       expect(archivedRow.dim, isTrue);
+      // 行首亮度只两档：已归档不再另占第三档灰，与普通往日行同色
+      // （暗），只在与「含今天」的亮档之间区分。
+      Color? headColorOf(String headText) => tester
+          .widget<Text>(
+            find.descendant(
+              of: find.widgetWithText(DiaryListRow, headText),
+              matching: find.text(headText),
+            ),
+          )
+          .style
+          ?.color;
+      expect(headColorOf('13日'), headColorOf('14日'));
+      expect(headColorOf('13日'), isNot(headColorOf('今天')));
 
       // 点归档行：SnackBar 拦截，不进编辑器。
       await tester.tap(find.widgetWithText(DiaryListRow, '13日'));
