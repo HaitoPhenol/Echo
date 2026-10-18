@@ -4,7 +4,8 @@ import '../../../theme/app_colors.dart';
 import '../../../theme/mechanical_style.dart';
 
 /// 日记层级页共用骨架：透明底（透背景机械纹理）、安全区、
-/// 底部停靠条避让、机能风 kicker + 大标题 + 1px 分隔线。
+/// 底部停靠条避让、机能风 kicker + 大标题（无分隔线，背景网格
+/// 承担视觉分隔）。
 ///
 /// 不提供 AppBar：返回键是标题区左侧的自定义小按钮，与整页
 /// 「无标题栏」语言一致（见 ChatPage）。
@@ -102,9 +103,7 @@ class DiaryShell extends StatelessWidget {
                       height: 1.05,
                     ),
                   ),
-                  const SizedBox(height: 14),
-                  Container(height: 1, color: AppColors.tone1),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 20),
                   Expanded(child: child),
                   SizedBox(
                     height:
