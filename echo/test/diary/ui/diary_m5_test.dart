@@ -90,7 +90,7 @@ void main() {
   }
 
   Future<void> openMonth(WidgetTester tester) async {
-    await tester.tap(find.text('2026'));
+    await tester.tap(find.text('2026 年'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('6 月'));
     await tester.pumpAndSettle();

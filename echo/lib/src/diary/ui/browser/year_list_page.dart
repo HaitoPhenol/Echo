@@ -10,6 +10,9 @@ import 'month_list_page.dart';
 
 /// 年级别：只列含日记的年份；当前年由进模块自动成稿保证出现。
 ///
+/// 列表**倒序**（最新年份在上）；含今天的年份（即当前年）用强调色，
+/// 其余年份走默认页名标签色，与日页「今天」的强弱口径一致。
+///
 /// M5 起每行 trailing 为年增量导出入口：打包该年全部 draft 为
 /// 「日记」笔记本 .sy.zip 并经系统分享送出，用户在「确认已发送」
 /// 对话框确认后批量置 exported；否认则保留 draft 可再次导出。
@@ -93,6 +96,8 @@ class _YearListPageState extends State<YearListPage> {
     // 依赖仓储：草稿落盘 / 状态迁移通知会让本页随 InheritedNotifier
     // 自动重建，FutureBuilder 取到新 future，列表即时刷新。
     final repository = DiaryRepositoryScope.of(context);
+    // 「今天」以仓储同源时钟为准（04:00 日界）：当前年行用强调色。
+    final todayYear = repository.today().year;
 
     return DiaryShell(
       kicker: 'DIARY // YEAR',
@@ -103,7 +108,8 @@ class _YearListPageState extends State<YearListPage> {
           if (!snapshot.hasData) {
             return const SizedBox.shrink();
           }
-          final years = snapshot.data!;
+          // 仓储按升序返回，列表倒序展示（最新年份在上）。
+          final years = [...snapshot.data!]..sort((a, b) => b.compareTo(a));
           if (years.isEmpty) {
             return const Center(
               child: Padding(
@@ -122,7 +128,8 @@ class _YearListPageState extends State<YearListPage> {
               final year = years[index];
               final exporting = _exportingYear == year;
               return DiaryListRow(
-                head: '$year',
+                head: '$year 年',
+                highlight: year == todayYear,
                 onTap: () => Navigator.of(context).push(
                   DiarySlideRoute(
                     builder: (_) => MonthListPage(year: year),

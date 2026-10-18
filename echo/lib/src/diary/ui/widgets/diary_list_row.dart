@@ -3,7 +3,13 @@ import 'package:flutter/material.dart';
 import '../../../theme/app_colors.dart';
 
 /// 层级列表通用行：左侧大字标签、右侧辅助信息与箭头，
-/// 下方 tone1 细线。dim 态用于整月枚举中尚无草稿的日期。
+/// 下方 tone1 细线。
+///
+/// 三档文字亮度（就近对齐亮度阶梯）：
+/// · [highlight] 强调（主文字色）——含今天的项：日页「今天」、
+///   当前年行、当前月行；
+/// · 默认（[AppColors.pageLabel]）——其余年/月/日项；
+/// · [dim] 弱化（[AppColors.mechInkDim]）——已归档（正文已清理）。
 class DiaryListRow extends StatelessWidget {
   const DiaryListRow({
     super.key,
@@ -26,10 +32,10 @@ class DiaryListRow extends StatelessWidget {
 
   final VoidCallback onTap;
 
-  /// 弱化显示（无草稿的日期）。
+  /// 弱化显示（已归档：正文已从本机清理）。
   final bool dim;
 
-  /// 强调显示（今天）。
+  /// 强调显示（含今天的项：今天 / 当前年 / 当前月）。
   final bool highlight;
 
   @override

@@ -11,6 +11,10 @@ import 'day_list_page.dart';
 
 /// 月级别：只列含日记的月份；当前月由自动成稿保证存在（§5.2 裁定 3）。
 ///
+/// 列表**倒序**（最新月份在上，当年的 12→1）；含今天的月份（仅当
+/// 所浏览年份即当前年）用强调色，其余月份走默认页名标签色，与日页
+/// 「今天」的强弱口径一致。
+///
 /// 顶栏「+ 补记」是过去空日的唯一入口：日期选择器可选范围 =
 /// 过去任意日期 + 今天，未来日期禁用；选定后走同一个 ensureDay。
 class MonthListPage extends StatefulWidget {
@@ -104,6 +108,10 @@ class _MonthListPageState extends State<MonthListPage> {
 
   @override
   Widget build(BuildContext context) {
+    // 「今天」以仓储同源时钟为准（04:00 日界）：所浏览年份即当前年
+    // 时，当前月行用强调色。
+    final today = DiaryRepositoryScope.of(context).today();
+
     return DiaryShell(
       kicker: 'DIARY // ${widget.year}',
       title: '${widget.year} 年',
@@ -125,8 +133,12 @@ class _MonthListPageState extends State<MonthListPage> {
         future: _dataFuture,
         builder: (context, snapshot) {
           if (!snapshot.hasData) return const SizedBox.shrink();
-          final months = snapshot.data!.months;
+          // 仓储按升序返回，列表倒序展示（最新月份在上）。
+          final months = [...snapshot.data!.months]
+            ..sort((a, b) => b.compareTo(a));
           final counts = snapshot.data!.counts;
+          // 仅当所浏览年份即当前年时，当前月才是「含今天的月份」。
+          final isCurrentYear = widget.year == today.year;
           if (months.isEmpty) {
             return const Center(
               child: Padding(
@@ -146,6 +158,7 @@ class _MonthListPageState extends State<MonthListPage> {
               return DiaryListRow(
                 head: '$month 月',
                 sub: '${counts[month] ?? 0} 篇',
+                highlight: isCurrentYear && month == today.month,
                 onTap: () => _openMonth(month),
               );
             },

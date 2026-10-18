@@ -64,7 +64,7 @@ void main() {
     await tester.pumpWidget(app());
     await tester.pumpAndSettle();
     // 年 → 月 → 日。
-    await tester.tap(find.text('2026'));
+    await tester.tap(find.text('2026 年'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('6 月'));
     await tester.pumpAndSettle();
@@ -124,7 +124,7 @@ void main() {
     testWidgets('点数据胶囊重新取数：天气更新且落盘', (tester) async {
       await tester.pumpWidget(app(provider: _SwitchWeatherProvider()));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('2026'));
+      await tester.tap(find.text('2026 年'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('6 月'));
       await tester.pumpAndSettle();
@@ -151,7 +151,7 @@ void main() {
     testWidgets('日列表只显真实日记：无空日弱化行、无置顶特例', (tester) async {
       await tester.pumpWidget(app());
       await tester.pumpAndSettle();
-      await tester.tap(find.text('2026'));
+      await tester.tap(find.text('2026 年'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('6 月'));
       await tester.pumpAndSettle();
@@ -168,7 +168,7 @@ void main() {
     testWidgets('月列表只有含日记的月份，标篇数，无「本月」弱化文案', (tester) async {
       await tester.pumpWidget(app());
       await tester.pumpAndSettle();
-      await tester.tap(find.text('2026'));
+      await tester.tap(find.text('2026 年'));
       await tester.pumpAndSettle();
 
       final rows = find.byType(DiaryListRow);
@@ -176,9 +176,65 @@ void main() {
       final row = tester.widget<DiaryListRow>(rows);
       expect(row.head, '6 月');
       expect(row.dim, isFalse);
-      expect(row.highlight, isFalse);
+      // 时钟固定 2026-06-15：6 月即含今天的月份，走强调色。
+      expect(row.highlight, isTrue);
       expect(find.text('本月'), findsNothing);
       expect(find.byTooltip('补记'), findsOneWidget);
+    });
+
+    testWidgets('年列表倒序 + 当前年强调：2026→2025→2024，仅 2026 高亮', (tester) async {
+      final repo = emptyRepo();
+      addTearDown(repo.dispose);
+      final ids = SyIdGenerator(random: Random(3), now: () => fixedNow);
+      // 三年各落一篇**有正文**的草稿（空稿会被跨天清理删掉）。
+      for (final year in [2024, 2025, 2026]) {
+        await repo.upsertDraft(
+          DiaryDocument(
+            id: SyIdGenerator.dayContainer(DateTime(year, 3, 5)),
+            date: DateTime(year, 3, 5),
+            title: '$year-03-05',
+            blocks: [DiaryBlock(id: ids.next(), text: '$year 年写的')],
+          ),
+        );
+      }
+
+      await tester.pumpWidget(app(repository: repo));
+      await tester.pumpAndSettle();
+
+      final rows = tester
+          .widgetList<DiaryListRow>(find.byType(DiaryListRow))
+          .toList();
+      expect(rows.map((r) => r.head).toList(), ['2026 年', '2025 年', '2024 年']);
+      // 时钟固定 2026-06-15：仅当前年（含今天）走强调色。
+      expect(rows.map((r) => r.highlight).toList(), [true, false, false]);
+    });
+
+    testWidgets('月列表倒序 + 当前月强调：6→5→3，仅 6 月高亮', (tester) async {
+      final repo = emptyRepo();
+      addTearDown(repo.dispose);
+      final ids = SyIdGenerator(random: Random(4), now: () => fixedNow);
+      for (final month in [3, 5]) {
+        await repo.upsertDraft(
+          DiaryDocument(
+            id: SyIdGenerator.dayContainer(DateTime(2026, month, 5)),
+            date: DateTime(2026, month, 5),
+            title: '2026-$month-05',
+            blocks: [DiaryBlock(id: ids.next(), text: '$month 月写的')],
+          ),
+        );
+      }
+
+      await tester.pumpWidget(app(repository: repo));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('2026 年'));
+      await tester.pumpAndSettle();
+
+      // 6 月由进模块自动成稿产生；仓储升序 → 列表倒序 6→5→3。
+      final rows = tester
+          .widgetList<DiaryListRow>(find.byType(DiaryListRow))
+          .toList();
+      expect(rows.map((r) => r.head).toList(), ['6 月', '5 月', '3 月']);
+      expect(rows.map((r) => r.highlight).toList(), [true, false, false]);
     });
 
     testWidgets('空仓：年/月/日都有空态，不兜底当前年月', (tester) async {
@@ -202,7 +258,7 @@ void main() {
     testWidgets('未来日期禁选（点 16 无效，OK 仍为初始 15）；选 10 成稿', (tester) async {
       await tester.pumpWidget(app());
       await tester.pumpAndSettle();
-      await tester.tap(find.text('2026'));
+      await tester.tap(find.text('2026 年'));
       await tester.pumpAndSettle();
 
       await tester.tap(find.byTooltip('补记'));
@@ -264,7 +320,7 @@ void main() {
       await tester.pumpWidget(app(clock: clock, repository: repo));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('2026'));
+      await tester.tap(find.text('2026 年'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('6 月'));
       await tester.pumpAndSettle();
@@ -294,7 +350,7 @@ void main() {
 
       await tester.pumpWidget(app(clock: clock, repository: repo));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('2026'));
+      await tester.tap(find.text('2026 年'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('6 月'));
       await tester.pumpAndSettle();
