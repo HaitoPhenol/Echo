@@ -57,33 +57,40 @@ class DiaryShell extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const SizedBox(height: 10),
-                  Row(
-                    children: [
-                      if (onBack != null)
-                        GestureDetector(
-                          behavior: HitTestBehavior.opaque,
-                          onTap: onBack,
-                          child: Padding(
-                            padding: const EdgeInsets.only(right: 10),
-                            child: Icon(
-                              Icons.arrow_back_ios_new,
-                              size: 14,
-                              color: AppColors.pageLabel,
+                  // 头部行统一 28px 高、内容垂直居中：返回箭头与 kicker
+                  // 的绝对位置在年/月/日/编辑四页完全一致，不随 trailing
+                  // （补记/心情/撤销/保存/归档）自身高度浮动。各 trailing
+                  // 控件高度必须 ≤ 28，超出会把行重新撑高造成错位。
+                  SizedBox(
+                    height: 28,
+                    child: Row(
+                      children: [
+                        if (onBack != null)
+                          GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: onBack,
+                            child: Padding(
+                              padding: const EdgeInsets.only(right: 10),
+                              child: Icon(
+                                Icons.arrow_back_ios_new,
+                                size: 14,
+                                color: AppColors.pageLabel,
+                              ),
+                            ),
+                          ),
+                        Expanded(
+                          child: Text(
+                            kicker,
+                            style: const TextStyle(
+                              fontSize: MechanicalStyle.kickerFontSize,
+                              letterSpacing: MechanicalStyle.kickerLetterSpacing,
+                              color: AppColors.mechInkDim,
                             ),
                           ),
                         ),
-                      Expanded(
-                        child: Text(
-                          kicker,
-                          style: const TextStyle(
-                            fontSize: MechanicalStyle.kickerFontSize,
-                            letterSpacing: MechanicalStyle.kickerLetterSpacing,
-                            color: AppColors.mechInkDim,
-                          ),
-                        ),
-                      ),
-                      ?trailing,
-                    ],
+                        ?trailing,
+                      ],
+                    ),
                   ),
                   const SizedBox(height: 12),
                   Text(

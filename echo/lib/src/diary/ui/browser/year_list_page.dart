@@ -164,21 +164,24 @@ class _YearExportButton extends StatelessWidget {
     final color = enabled
         ? AppColors.pageLabel
         : AppColors.mechInkDim.withValues(alpha: 0.45);
-    return IconButton(
-      onPressed: enabled && !exporting ? onPressed : null,
-      icon: exporting
-          ? SizedBox(
-              width: 16,
-              height: 16,
-              child: CircularProgressIndicator(strokeWidth: 2, color: color),
-            )
-          : Icon(Icons.ios_share, size: 17, color: color),
-      iconSize: 17,
-      visualDensity: VisualDensity.compact,
-      constraints: const BoxConstraints(minWidth: 32, minHeight: 28),
-      padding: const EdgeInsets.symmetric(horizontal: 4),
-      splashRadius: 14,
-      tooltip: '导出 $year 年草稿',
+    // 裸图标 + 手势而非 IconButton：头部行统一 28px 中线，见
+    // diary_shell.dart 头部注释；IconButton 最小点击高度会撑高行。
+    return Tooltip(
+      message: '导出 $year 年草稿',
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: enabled && !exporting ? onPressed : null,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 6),
+          child: exporting
+              ? SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: color),
+                )
+              : Icon(Icons.ios_share, size: 17, color: color),
+        ),
+      ),
     );
   }
 }

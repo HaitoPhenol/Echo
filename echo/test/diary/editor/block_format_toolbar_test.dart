@@ -184,29 +184,31 @@ void main() {
       );
       await tester.pump();
 
-      IconButton undo() => tester.widget<IconButton>(
-        find.widgetWithIcon(IconButton, Icons.undo),
+      // 撤销/重做入口是裸图标 + GestureDetector（非 IconButton），
+      // 启用态以 onTap 可空性表达。
+      GestureDetector undo() => tester.widget<GestureDetector>(
+        find.ancestor(of: find.byIcon(Icons.undo), matching: find.byType(GestureDetector)).first,
       );
-      IconButton redo() => tester.widget<IconButton>(
-        find.widgetWithIcon(IconButton, Icons.redo),
+      GestureDetector redo() => tester.widget<GestureDetector>(
+        find.ancestor(of: find.byIcon(Icons.redo), matching: find.byType(GestureDetector)).first,
       );
 
       expect(editor.canUndo, isFalse);
-      expect(undo().onPressed, isNull);
-      expect(redo().onPressed, isNull);
+      expect(undo().onTap, isNull);
+      expect(redo().onTap, isNull);
 
       // 直接走控制器命令（等价于浮层 H1）。
       editor.turnInto(editor.blocks.single, DiaryBlockKind.heading, level: 1);
       await tester.pump();
       expect(editor.blocks.single.block.kind, DiaryBlockKind.heading);
-      expect(undo().onPressed, isNotNull);
+      expect(undo().onTap, isNotNull);
 
-      await tester.tap(find.widgetWithIcon(IconButton, Icons.undo));
+      await tester.tap(find.byIcon(Icons.undo));
       await tester.pump();
       expect(editor.blocks.single.block.kind, DiaryBlockKind.paragraph);
-      expect(redo().onPressed, isNotNull);
+      expect(redo().onTap, isNotNull);
 
-      await tester.tap(find.widgetWithIcon(IconButton, Icons.redo));
+      await tester.tap(find.byIcon(Icons.redo));
       await tester.pump();
       expect(editor.blocks.single.block.kind, DiaryBlockKind.heading);
     });

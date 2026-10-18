@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../theme/app_colors.dart';
 import '../../data/diary_repository.dart';
 import '../diary_composer_scope.dart';
 import '../diary_route.dart';
@@ -107,11 +108,18 @@ class _MonthListPageState extends State<MonthListPage> {
       kicker: 'DIARY // ${widget.year}',
       title: '${widget.year}',
       onBack: () => Navigator.of(context).maybePop(),
-      trailing: IconButton(
-        tooltip: '补记',
-        icon: const Icon(Icons.add, size: 20),
-        onPressed: _startBackfill,
-        visualDensity: VisualDensity.compact,
+      // 裸图标 + 手势而非 IconButton：头部行统一 28px 中线，见
+      // diary_shell.dart 头部注释；IconButton 最小点击高度会撑高行。
+      trailing: Tooltip(
+        message: '补记',
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: _startBackfill,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 6),
+            child: Icon(Icons.add, size: 17, color: AppColors.pageLabel),
+          ),
+        ),
       ),
       child: FutureBuilder<_MonthData>(
         future: _dataFuture,

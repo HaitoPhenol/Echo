@@ -59,15 +59,18 @@ class _HistoryIcon extends StatelessWidget {
     final color = enabled
         ? AppColors.pageLabel
         : AppColors.mechInkDim.withValues(alpha: 0.45);
-    return IconButton(
-      onPressed: enabled ? onTap : null,
-      icon: Icon(icon, size: 17, color: color),
-      iconSize: 17,
-      visualDensity: VisualDensity.compact,
-      constraints: const BoxConstraints(minWidth: 32, minHeight: 28),
-      padding: const EdgeInsets.symmetric(horizontal: 4),
-      splashRadius: 14,
-      tooltip: semanticLabel,
+    // 裸图标 + 手势而非 IconButton：后者最小点击高度会把 DiaryShell
+    // 头部行撑过 28px 统一中线（见 diary_shell.dart 头部注释）。
+    return Tooltip(
+      message: semanticLabel,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: enabled ? onTap : null,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 6),
+          child: Icon(icon, size: 17, color: color),
+        ),
+      ),
     );
   }
 }
