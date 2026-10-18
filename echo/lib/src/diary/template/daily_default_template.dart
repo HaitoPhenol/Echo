@@ -6,7 +6,8 @@ import '../sy/sy_serializer.dart';
 import 'diary_template.dart';
 import 'diary_template_json.dart';
 
-/// 默认日模板（2026-10-18 重设）：单空段落骨架。
+/// 默认日模板（2026-10-18 重设）：首块「一句话概述今日」段（12 号底色）
+/// + 一个空正文段。
 ///
 /// 自动数据（温度/湿度/天气/日程条数）与心情**不再是块**：它们写进文档根
 /// `custom-*` 属性，由编辑页的胶囊行 UI 呈现并随正文滚动。
@@ -44,10 +45,12 @@ class DailyDefaultTemplate implements DiaryTemplate {
             kind: DiaryBlockKind.heading,
             level: b.level,
             text: b.text,
+            background: b.background,
           ),
           DiaryTemplateBlockType.paragraph => DiaryBlock(
             id: ids.next(),
             text: b.text,
+            background: b.background,
           ),
         },
     ];

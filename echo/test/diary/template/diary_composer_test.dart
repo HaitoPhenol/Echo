@@ -16,6 +16,7 @@ const _json = '''
 {
   "id": "daily-default-v2",
   "blocks": [
+    { "type": "paragraph", "background": 12 },
     { "type": "paragraph" }
   ]
 }
@@ -85,16 +86,19 @@ void main() {
   );
 
   group('DiaryComposer.ensureDay 成稿', () {
-    test('空日成稿：单空段骨架 + 四个 custom-* + 立即落盘', () async {
+    test('空日成稿：概述段 + 空正文段骨架 + 四个 custom-* + 立即落盘', () async {
       final provider = _CountingProvider();
       final composer = buildComposer(provider: provider);
       final repo = buildRepo();
 
       final doc = await composer.ensureDay(today, repo);
 
-      expect(doc.blocks, hasLength(1));
-      expect(doc.blocks.single.kind, DiaryBlockKind.paragraph);
-      expect(doc.blocks.single.text, isEmpty);
+      expect(doc.blocks, hasLength(2));
+      expect(doc.blocks.first.background, DiaryComposer.summaryBackground);
+      expect(doc.blocks.first.text, isEmpty);
+      expect(doc.blocks.last.kind, DiaryBlockKind.paragraph);
+      expect(doc.blocks.last.background, isNull);
+      expect(doc.blocks.last.text, isEmpty);
 
       expect(doc.custom, {
         'custom-iot-temp': '21',
@@ -228,13 +232,13 @@ void main() {
       expect(patch.values, everyElement(isNull));
     });
 
-    test('全源异常成稿：单空段骨架，文档无 custom-* 数据键', () async {
+    test('全源异常成稿：概述段 + 空正文段骨架，文档无 custom-* 数据键', () async {
       final composer = buildComposer(
         provider: FakeDiaryDataProvider(throwOnCall: StateError('down')),
       );
       final doc = await composer.ensureDay(today, buildRepo());
-      expect(doc.blocks, hasLength(1));
-      expect(doc.blocks.single.text, isEmpty);
+      expect(doc.blocks, hasLength(2));
+      expect(doc.blocks.every((b) => b.text.isEmpty), isTrue);
       expect(doc.custom, isEmpty);
     });
 
@@ -261,13 +265,14 @@ void main() {
       expect(composer.isUserEmpty(doc), isTrue);
     });
 
-    test('磁盘往返后 custom-* 与单空段骨架保持一致，仍判空', () async {
+    test('磁盘往返后 custom-* 与骨架（概述段+空正文段）保持一致，仍判空', () async {
       final doc = await composer.ensureDay(today, buildRepo());
       final restored = const SySerializer()
           .decodeBytes(const SySerializer().encodeBytes(doc))
           .document;
-      expect(restored.blocks, hasLength(1));
-      expect(restored.blocks.single.text, isEmpty);
+      expect(restored.blocks, hasLength(2));
+      expect(restored.blocks.first.background, DiaryComposer.summaryBackground);
+      expect(restored.blocks.every((b) => b.text.isEmpty), isTrue);
       expect(restored.custom['custom-iot-temp'], '21');
       expect(composer.isUserEmpty(restored), isTrue);
     });
@@ -325,22 +330,24 @@ void main() {
   });
 
   group('成稿序列化落在金标准子集内', () {
-    test('单空段编码为 NodeParagraph，custom 仅四数据键、骨架无底色', () async {
+    test('概述段+空段编码为 NodeParagraph：概述段带 12 号底色、无超级块', () async {
       final composer = buildComposer(provider: _CountingProvider());
       final doc = await composer.ensureDay(today, buildRepo());
       final json = const SySerializer().encodeJson(doc);
 
       expect(json, contains('NodeParagraph'));
-      expect(json, isNot(contains('var(--b3-font-background')));
-      expect(json, isNot(contains('custom-echo')));
+      expect(json, contains('var(--b3-font-background12)'));
+      expect(json, isNot(contains('NodeSuperBlock')));
+      expect(json, isNot(contains('custom-echo-stamp')));
       expect(json, contains('custom-iot-temp'));
       expect(json, contains('custom-schedule-count'));
 
       final decoded = const SySerializer().decode(json);
       expect(decoded.skippedTypes, isEmpty);
       expect(decoded.document.custom['custom-weather'], '多云');
-      expect(decoded.document.blocks, hasLength(1));
-      expect(decoded.document.blocks.single.kind, DiaryBlockKind.paragraph);
+      expect(decoded.document.blocks, hasLength(2));
+      expect(decoded.document.blocks.first.background, 12);
+      expect(decoded.document.blocks.last.kind, DiaryBlockKind.paragraph);
     });
   });
 
@@ -354,11 +361,20 @@ void main() {
       now: () => nowValue,
     );
 
+    /// 「一句话概述今日」段（12 号底色，恒在文档首位）。
+    DiaryBlock summaryBlock(String id) =>
+        DiaryBlock(id: id, background: DiaryComposer.summaryBackground);
+
     DiaryDocument buildDoc({List<DiaryBlock>? blocks}) => DiaryDocument(
       id: SyIdGenerator.dayContainer(DateTime(2026, 10, 18)),
       date: DateTime(2026, 10, 18),
       title: '10月18日 周日',
-      blocks: blocks ?? [DiaryBlock(id: '20261018080000-aaaaaaa')],
+      blocks:
+          blocks ??
+          [
+            summaryBlock('20261018080000-zzzzzz1'),
+            DiaryBlock(id: '20261018080000-aaaaaaa'),
+          ],
       updatedAt: DateTime(2026, 10, 18, 8),
     );
 
@@ -371,26 +387,46 @@ void main() {
 
     setUp(() => nowValue = DateTime(2026, 10, 18, 10, 0));
 
-    test('无时间戳：插到索引 0，文本 yyyy-MM-dd HH:mm，带 custom 标志，保留正文行', () {
+    test('无时间戳：概述段后插时间戳，文本 yyyy-MM-dd HH:mm，带 custom 标志，保留正文行', () {
       final composer = stampComposer();
       final doc = buildDoc();
 
       expect(composer.ensureStamp(doc), isTrue);
 
-      final stamp = doc.blocks.first;
+      expect(doc.blocks, hasLength(3));
+      // 概述段恒在首位（非时间戳）。
+      expect(doc.blocks[0].background, DiaryComposer.summaryBackground);
+      expect(doc.blocks[0].isStamp, isFalse);
+      // 时间戳紧随概述段。
+      final stamp = doc.blocks[1];
       expect(stamp.isStamp, isTrue);
       expect(stamp.text, '2026-10-18 10:00');
       expect(stamp.custom[kEchoStampAttr], '1');
       // 模板原有空段落落在时间戳之后，成为本段正文行。
-      expect(doc.blocks, hasLength(2));
-      expect(doc.blocks[1].isStamp, isFalse);
-      expect(doc.blocks[1].text, isEmpty);
+      expect(doc.blocks[2].isStamp, isFalse);
+      expect(doc.blocks[2].text, isEmpty);
+    });
+
+    test('旧稿缺概述段：复用时间戳时补建概述段并返回 true（不新建时间戳）', () {
+      final composer = stampComposer();
+      final doc = buildDoc(
+        blocks: [
+          stampBlock(DateTime(2026, 10, 18, 10, 0), '20261018100000-ssssss7'),
+          DiaryBlock(id: '20261018100001-hhhhhhh', text: '正文'),
+        ],
+      );
+      nowValue = DateTime(2026, 10, 18, 10, 10); // 距上次 10 分钟：复用
+
+      expect(composer.ensureStamp(doc), isTrue);
+      expect(doc.blocks.first.background, DiaryComposer.summaryBackground);
+      expect(doc.blocks.where((b) => b.isStamp), hasLength(1));
     });
 
     test('距上次 < 30 分钟：复用不新建，返回 false 且文档不变', () {
       final composer = stampComposer();
       final doc = buildDoc(
         blocks: [
+          summaryBlock('20261018080000-zzzzzz2'),
           stampBlock(DateTime(2026, 10, 18, 10, 0), '20261018100000-ssssss1'),
           DiaryBlock(id: '20261018100001-bbbbbbb', text: '正文'),
         ],
@@ -398,7 +434,7 @@ void main() {
       nowValue = DateTime(2026, 10, 18, 10, 29);
 
       expect(composer.ensureStamp(doc), isFalse);
-      expect(doc.blocks, hasLength(2));
+      expect(doc.blocks, hasLength(3));
       expect(doc.blocks.where((b) => b.isStamp), hasLength(1));
     });
 
@@ -406,6 +442,7 @@ void main() {
       final composer = stampComposer();
       final doc = buildDoc(
         blocks: [
+          summaryBlock('20261018080000-zzzzzz3'),
           stampBlock(DateTime(2026, 10, 18, 10, 0), '20261018100000-ssssss2'),
           DiaryBlock(id: '20261018100001-ddddddd', text: '正文'),
         ],
@@ -413,12 +450,12 @@ void main() {
       nowValue = DateTime(2026, 10, 18, 10, 30);
 
       expect(composer.ensureStamp(doc), isTrue);
-      expect(doc.blocks, hasLength(4));
-      final newStamp = doc.blocks[2];
+      expect(doc.blocks, hasLength(5));
+      final newStamp = doc.blocks[3];
       expect(newStamp.isStamp, isTrue);
       expect(newStamp.text, '2026-10-18 10:30');
-      expect(doc.blocks[3].isStamp, isFalse);
-      expect(doc.blocks[3].text, isEmpty);
+      expect(doc.blocks[4].isStamp, isFalse);
+      expect(doc.blocks[4].text, isEmpty);
     });
 
     test('已导出（locked）文档：不生成时间戳，返回 false', () {

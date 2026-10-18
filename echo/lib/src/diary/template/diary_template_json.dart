@@ -15,11 +15,17 @@ class DiaryTemplateBlockSpec {
     required this.type,
     this.level,
     this.text = '',
+    this.background,
   });
 
   final DiaryTemplateBlockType type;
   final int? level;
   final String text;
+
+  /// 块底色号（1..13，思源 `--b3-font-background{n}`）；缺省表示无底色。
+  ///
+  /// 「一句话概述今日」段用 12 号底色（参考模板口径）。
+  final int? background;
 }
 
 /// 声明式日模板（assets/diary/templates/*.json 的内存表示）。
@@ -89,8 +95,18 @@ class DiaryTemplateSpec {
         throw FormatException('第 $i 个块 text 必须是字符串');
       }
 
+      final background = readOptInt('background');
+      if (background != null && (background < 1 || background > 13)) {
+        throw FormatException('第 $i 个块 background 必须在 1..13');
+      }
+
       blocks.add(
-        DiaryTemplateBlockSpec(type: type, level: level, text: text),
+        DiaryTemplateBlockSpec(
+          type: type,
+          level: level,
+          text: text,
+          background: background,
+        ),
       );
     }
 

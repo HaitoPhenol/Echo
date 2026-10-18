@@ -125,6 +125,12 @@ Echo 生成器必须输出。
 在思源里只保留其原本的（`code`）行内标记样式；同一块的键序为
 `custom-* < id < style < updated`。
 
+**「一句话概述今日」段（2026-10-18 新增，模板骨架首块）**：日模板骨架的首块是一个
+**普通可编辑段落**，`style` 即 **12 号底色**
+（`background-color: var(--b3-font-background12); --b3-parent-background: var(--b3-font-background12);`），
+无 `custom-*` 标志、非时间戳、非只读，恒在文档首位、首个时间戳段之前；其
+Properties 键序为 `id < style < updated`。
+
 ## 5. Echo 支持的块子集（生成范围）
 
 ### 5.1 段落 NodeParagraph
@@ -163,6 +169,8 @@ Echo 生成器必须输出。
 - 用变量而非 hex 的收益：导入后随思源深/浅色主题自动反色；
 - Echo 调色板按色号映射（编辑期显示的 RGB 从思源主题 CSS 取色，
   见技术方案 M3），导出期写变量名。
+- **模板骨架首块**「一句话概述今日」段固定用 **12 号底色**（Echo 模板
+  `daily-default.json` 声明 `background: 12`），是普通可编辑段落。
 
 > 注意：实测部分从浏览器版复制的块 style 中混入了 DarkReader 扩展注入的
 > `--darkreader-*` 声明。思源照单全收（style 不校验），但 Echo **不得生成**
@@ -170,8 +178,9 @@ Echo 生成器必须输出。
 
 ### 5.4 导出编码专属生成（时间戳段与超级块，2026-10-18）
 
-以下两类结构**仅在导出编码**（`SySerializer.encodeExportJson` /
-`encodeExportBytes`）中叠加生成，用于对齐思源目标结构；**落盘、撤销快照仍走
+以下 ①② 两类结构**仅在导出编码**（`SySerializer.encodeExportJson` /
+`encodeExportBytes`）中叠加生成，用于对齐思源目标结构（③ 概述段是普通块，
+仅在导出时以顶层段落输出）；**落盘、撤销快照仍走
 扁平编码**（`encodeJson` / `encodeBytes`），扁平编码不含任何超级块与行内标记。
 
 **① 时间戳块（段落 + `NodeTextMark(code)`）**：每段首行为一个段落，其
@@ -205,8 +214,24 @@ Echo 生成器必须输出。
 ```
 
 导出结构总览：文档**首行**一个 `col` 超级块，把文档根 `custom-*` 中有值的
-胶囊槽位写成带 `code` 标记的段落（全空则不生成）；其后每个「时间戳段」包成
-一个 `row` 超级块（首块为上述时间戳段落）。
+胶囊槽位写成带 `code` 标记的段落（全空则不生成）；`col` 超级块与首个 `row`
+段之间是**顶层**「一句话概述今日」段（普通 `NodeParagraph`，12 号底色，见
+下 ③）；其后每个「时间戳段」包成一个 `row` 超级块（首块为上述时间戳段落）。
+
+**③「一句话概述今日」段（顶层普通段落）**：位于 `col` 超级块之后、首个 `row`
+超级块之前，以**顶层 `NodeParagraph`** 输出（不包超级块），`style` 携带
+`var(--b3-font-background12)`（12 号底色），是普通可编辑段落：
+
+```json
+{"ID":"20261018123000-echo003","Type":"NodeParagraph",
+ "Properties":{"id":"20261018123000-echo003",
+  "style":"background-color: var(--b3-font-background12); --b3-parent-background: var(--b3-font-background12);",
+  "updated":"20261018123000"},
+ "Children":[{"Type":"NodeText","Data":"一句话概述今日。"}]}
+```
+
+Properties 键序 `id < style < updated`；该段不属于任何超级块，故落在
+`col` 超级块与首个 `row` 超级块之间的文档顶层。
 
 ## 6. 子集外节点（解析时降级，不生成）
 

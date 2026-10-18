@@ -101,7 +101,7 @@ echo/
 │   ├── diary/                             # 日记：sy 金标准/时钟/仓储/成稿/编辑器/导出/浏览 widget（15 个文件）
 │   └── control/                           # ECP：协议/鉴权/七域/slash/事件/作业/播种/MCP 边界/手册一致性（441 总测试中的 control 部分）
 ├── assets/
-│   └── diary/templates/                   # 每日模板 JSON（daily-default.json 单空段骨架）
+│   └── diary/templates/                   # 每日模板 JSON（daily-default.json 概述段 + 空正文段骨架）
 └── README.md                              # Flutter 默认工程说明
 docs/
 ├── architecture.md                        # 本文档：架构与接口
@@ -605,8 +605,9 @@ ui/（年/月/日浏览、编辑页）
   调用方删键）；是"进笔记页自动成稿"与月页补记的共同入口。
   `isUserEmpty` 跨天清理判定按模板骨架等价块。
 - **模板层（`template/daily_default_template.dart`）**：`daily-default-v2`
-  单空段落骨架（2026-10-18 日模板重设取代旧六块骨架；旧稿整机清空、
-  不做兼容）。
+  双块骨架——首块「一句话概述今日」段（普通可编辑段落、固定 12 号底色、恒在
+  文档首位，`DiaryComposer.summaryBackground` / `isSummaryBlock` 收口）+ 一个
+  空正文段（2026-10-18 日模板重设取代旧六块骨架；旧稿整机清空、不做兼容）。
 - **编辑期控制器 `BlockEditorController`（editor/）**：除块编辑/撤销/底色
   命令外，暴露 `documentCustom` 读写（`setDocumentCustom` /
   `applyCustomPatch`，均不压撤销快照）；块级只读统一由文档级 `locked`

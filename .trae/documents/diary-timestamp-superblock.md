@@ -201,6 +201,9 @@ List<DiaryCapsuleItem> buildDiaryCapsuleItems(Map<String, String> custom);
 | 17 | 每个段至少保留一个正文行（禁止删到只剩 stamp） | 否则文档尾部无任何可输入位置，用户被锁死 |
 | 18 | 分支期不改版本号、不推送、不打 tag | 项目铁律 |
 
+> **批注（决策 12）**：2026-10-18 用户当场覆盖——按参考模板补上「一句话概述今日」段
+> （12 号底色，模板首块，时间戳插其之后）。
+
 ## 5. 验证步骤（Verification）
 
 1. **静态门禁**：`cd echo && flutter analyze`（零告警）；`flutter test`（全量 ≥ 现基线 469，新增导出编码/时间戳/守卫用例）。

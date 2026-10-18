@@ -138,6 +138,35 @@ void main() {
       expect(children[1]['Type'], 'NodeParagraph');
       expect(children[1]['ID'], '20261018120000-ppppppp');
     });
+
+    test('概述段（12 号底色）在胶囊行之后、首个 row 段之前顶层输出', () {
+      final doc = sampleDoc(
+        custom: {kCapsuleTempKey: '21'},
+        blocks: [
+          DiaryBlock(
+            id: '20261018080000-summary',
+            background: 12,
+            updatedAt: now,
+          ),
+          stamp(
+            '20261018100000-ssssss1',
+            '2026-10-18 10:00',
+            DateTime(2026, 10, 18, 10, 0),
+          ),
+          para('20261018100001-aaaaaaa', '第一段正文'),
+        ],
+      );
+      final children = childrenOf(exportRoot(doc));
+      // 0 = 首行 col 胶囊超级块；1 = 概述段（顶层段落）；2 = 首个 row 段。
+      expect(childrenOf(children[0])[1]['Data'], 'col');
+      expect(children[1]['Type'], 'NodeParagraph');
+      expect(children[1]['ID'], '20261018080000-summary');
+      final style =
+          (children[1]['Properties'] as Map)['style'] as String;
+      expect(style, contains('var(--b3-font-background12)'));
+      expect(children[2]['Type'], 'NodeSuperBlock');
+      expect(childrenOf(children[2])[1]['Data'], 'row');
+    });
   });
 
   group('每段垂直超级块', () {

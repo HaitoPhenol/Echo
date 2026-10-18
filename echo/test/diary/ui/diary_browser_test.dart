@@ -156,8 +156,9 @@ void main() {
       expect(find.byIcon(Icons.mood_outlined), findsOneWidget);
       expect(find.text('心情'), findsOneWidget);
 
-      // 正文单空段：仅 1 个可写 TextField，旧骨架标题与 ↻ 入口都不在。
-      expect(find.byType(TextField), findsOneWidget);
+      // 正文：概述段 + 时间戳下的正文段 = 2 个可写 TextField；
+      // 旧骨架标题与 ↻ 入口都不在。
+      expect(find.byType(TextField), findsNWidgets(2));
       expect(find.text('📈 自动记录'), findsNothing);
       expect(find.text('💭 今天'), findsNothing);
       expect(find.text('🌙 睡前'), findsNothing);
@@ -178,17 +179,20 @@ void main() {
       final label = (stampChip.evaluate().single.widget as DiaryCapsuleChip).label;
       expect(label, matches(RegExp(r'^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$')));
 
-      // 时间戳块不渲染可输入控件：仅下一行的正文 TextField 存在。
-      expect(find.byType(TextField), findsOneWidget);
-      // 光标已自动落到时间戳的下一行（正文 TextField 获得焦点）。
-      final field = tester.widget<TextField>(find.byType(TextField));
-      expect(field.focusNode!.hasFocus, isTrue);
+      // 时间戳块不渲染可输入控件：概述段 + 正文段共 2 个 TextField。
+      expect(find.byType(TextField), findsNWidgets(2));
+      // 光标已自动落到时间戳的下一行（正文 TextField 获得焦点，唯一）。
+      final focused = tester
+          .widgetList<TextField>(find.byType(TextField))
+          .where((f) => f.focusNode?.hasFocus ?? false)
+          .toList();
+      expect(focused, hasLength(1));
     });
 
     testWidgets('写作后重进：用户文字保留，胶囊数据不被二次成稿覆盖', (tester) async {
       await drillToToday(tester);
 
-      await tester.enterText(find.byType(TextField).first, '今天写的内容');
+      await tester.enterText(find.byType(TextField).last, '今天写的内容');
       await tester.pump();
       await tester.binding.handlePopRoute();
       await tester.pumpAndSettle();

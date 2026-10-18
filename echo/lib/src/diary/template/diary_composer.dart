@@ -44,13 +44,27 @@ class DiaryComposer {
   //  时间戳段编排（2026-10-18 进入编辑页时触发）
   // ================================================================
 
-  /// 确保文档存在「当前段」的时间戳块；**距上次时间戳 ≥ 30 分钟**才新建。
+  /// 「一句话概述今日」段底色号（参考模板 12 号底色）。
   ///
-  /// * 取文档中**最后一个** [DiaryBlock.isStamp] 块：
-  ///   - 不存在 → 新建 stamp 并**插到索引 0**（模板原有的那个空段落即
-  ///     成为本段正文行，见 plan 决策 13）；
-  ///   - 存在且 `_now() - last.updatedAt < [stampReuseWindow]` → 复用，
-  ///     返回 `false`（不改动文档）；
+  /// 该段是模板骨架的首块（普通可编辑段落，非时间戳），导出时落在首行
+  /// 胶囊超级块与首个时间戳段之间（`SySerializer._rowSegments` 的
+  /// 「首个 stamp 前散块」路径）。
+  static const int summaryBackground = 12;
+
+  /// 判定某块是否为「一句话概述今日」段：首块位置上的 12 号底色段落。
+  static bool isSummaryBlock(DiaryBlock block) =>
+      !block.isStamp &&
+      block.kind == DiaryBlockKind.paragraph &&
+      block.background == summaryBackground;
+
+  /// 确保文档存在「一句话概述今日」段与「当前段」的时间戳块。
+  ///
+  /// * 「概述段」（[summaryBackground] 段落）恒在文档首位：模板骨架自带，
+  ///   旧稿（早于本机制）缺失时在此补建；
+  /// * 时间戳：取文档中**最后一个** [DiaryBlock.isStamp] 块——
+  ///   - 不存在 → 新建 stamp **插到索引 1**（概述段之后，模板原有的那个
+  ///     空段落即成为本段正文行，见 plan 决策 13）；
+  ///   - 存在且 `_now() - last.updatedAt < [stampReuseWindow]` → 复用；
   ///   - 存在但已超窗 → 新建 stamp **追加到文档末尾**（开新段），并在其
   ///     后补一个空段落作为新段正文行。
   /// * 无论哪条分支，都保证该 stamp 之后至少有一个非 stamp 块（否则文档
@@ -59,21 +73,37 @@ class DiaryComposer {
   /// 触发点在**编辑页入口**（用户原话「进入编辑页时会自动生成」）；
   /// [ensureDay] 保持纯成稿语义、不生成时间戳（plan 决策 14）。
   ///
-  /// 返回 `true` 表示本次确实新建了时间戳（调用方需落盘并跳焦），
-  /// `false` 表示复用未改动。
+  /// 返回 `true` 表示本次确实改动了文档（新建时间戳，或补齐了缺失的概述
+  /// 段）——调用方需落盘并跳焦；`false` 表示复用未改动。
   bool ensureStamp(DiaryDocument document) {
     // 已导出（只读锁定）文档不自动生成时间戳：导出后正文只读、禁止改动，
     // 且仓储禁止覆盖 exported 态（否则 upsertDraft 抛 StateError）。
     if (document.locked) return false;
 
     final now = _now();
+    var changed = false;
 
+    // 1. 确保「一句话概述今日」段恒在首位（模板骨架自带，旧稿补建）。
+    if (document.blocks.isEmpty || !isSummaryBlock(document.blocks.first)) {
+      document.blocks.insert(
+        0,
+        DiaryBlock(
+          id: _ids.next(),
+          background: summaryBackground,
+          updatedAt: now,
+        ),
+      );
+      changed = true;
+    }
+
+    // 2. 当前段的时间戳：距上次 < 30 分钟则复用。
     DiaryBlock? last;
     for (final block in document.blocks) {
       if (block.isStamp) last = block;
     }
     if (last != null && now.difference(last.updatedAt) < stampReuseWindow) {
-      return false;
+      if (changed) document.updatedAt = now;
+      return changed;
     }
 
     final stamp = DiaryBlock(
@@ -82,11 +112,8 @@ class DiaryComposer {
       custom: {kEchoStampAttr: '1'},
       updatedAt: now,
     );
-    if (last == null) {
-      document.blocks.insert(0, stamp);
-    } else {
-      document.blocks.add(stamp);
-    }
+    // 首段插在概述段之后（索引 1）；换段追加到文档末尾。
+    document.blocks.insert(last == null ? 1 : document.blocks.length, stamp);
 
     final index = document.blocks.indexOf(stamp);
     final hasBodyRow =
@@ -168,8 +195,9 @@ class DiaryComposer {
   /// 构造一篇「骨架态空稿」：与 [ensureDay] 走**同一**模板实例化
   /// （只差未拉 custom-*），故 [isUserEmpty] 必判为空。
   ///
-  /// 注：模板骨架只有正文段落，**不含时间戳块**——时间戳由编辑页入口
-  /// 调 [ensureStamp] 生成（用户原话「进入编辑页时会自动生成」）。
+  /// 注：模板骨架为「一句话概述今日」段（12 号底色）+ 一个空正文段，
+  /// **不含时间戳块**——时间戳由编辑页入口调 [ensureStamp] 生成
+  /// （用户原话「进入编辑页时会自动生成」）。
   ///
   /// `diary.seed` 造空稿专用——保证「空稿形状」与 prune 判定同源，
   /// 命令层不得自创「空」定义（否则 prune 认不得，端到端验证失效）。

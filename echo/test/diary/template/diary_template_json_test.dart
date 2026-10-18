@@ -11,19 +11,24 @@ void main() {
 {
   "id": "daily-default-v2",
   "blocks": [
+    { "type": "paragraph", "background": 12 },
     { "type": "paragraph" }
   ]
 }
 ''';
 
   group('DiaryTemplateSpec.fromJson', () {
-    test('单空段落骨架解析为 1 个声明', () {
+    test('概述段 + 空正文段骨架解析为 2 个声明（首块带 12 号底色）', () {
       final spec = DiaryTemplateSpec.fromJson(validJson);
       expect(spec.id, 'daily-default-v2');
-      expect(spec.blocks, hasLength(1));
-      expect(spec.blocks.single.type, DiaryTemplateBlockType.paragraph);
-      expect(spec.blocks.single.level, isNull);
-      expect(spec.blocks.single.text, isEmpty);
+      expect(spec.blocks, hasLength(2));
+      expect(spec.blocks.first.type, DiaryTemplateBlockType.paragraph);
+      expect(spec.blocks.first.level, isNull);
+      expect(spec.blocks.first.text, isEmpty);
+      expect(spec.blocks.first.background, 12);
+      expect(spec.blocks.last.type, DiaryTemplateBlockType.paragraph);
+      expect(spec.blocks.last.text, isEmpty);
+      expect(spec.blocks.last.background, isNull);
     });
 
     test('paragraph 可带预填文本，缺省为空串', () {
@@ -31,6 +36,14 @@ void main() {
         '{"id":"t","blocks":[{"type":"paragraph","text":"预置"}]}',
       );
       expect(spec.blocks.single.text, '预置');
+      expect(spec.blocks.single.background, isNull);
+    });
+
+    test('paragraph 可带 1..13 底色号', () {
+      final spec = DiaryTemplateSpec.fromJson(
+        '{"id":"t","blocks":[{"type":"paragraph","background":7}]}',
+      );
+      expect(spec.blocks.single.background, 7);
     });
 
     test('heading 解析 level 与预填标题', () {
@@ -59,6 +72,14 @@ void main() {
         'paragraph 带 level',
         '{"id":"t","blocks":[{"type":"paragraph","level":1}]}',
       ],
+      [
+        'background 越界',
+        '{"id":"t","blocks":[{"type":"paragraph","background":14}]}',
+      ],
+      [
+        'background 非整数',
+        '{"id":"t","blocks":[{"type":"paragraph","background":"12"}]}',
+      ],
       ['块非对象', '{"id":"t","blocks":[1]}'],
       ['JSON 语法错误', '{not json'],
       ['根是数组', '[]'],
@@ -82,15 +103,18 @@ void main() {
       return template.instantiate(date, ids);
     }
 
-    test('单空段落骨架：确定性日容器 ID + 金标准标题 + 一个空段落', () {
+    test('骨架：确定性日容器 ID + 金标准标题 + 概述段(12 号底色) + 空正文段', () {
       final doc = build();
       expect(doc.id, SyIdGenerator.dayContainer(date));
       expect(doc.title, '10月10日 周六');
-      expect(doc.blocks, hasLength(1));
-      expect(doc.blocks.single.kind, DiaryBlockKind.paragraph);
-      expect(doc.blocks.single.level, isNull);
-      expect(doc.blocks.single.text, isEmpty);
-      expect(doc.blocks.single.background, isNull); // 无底色骨架
+      expect(doc.blocks, hasLength(2));
+      expect(doc.blocks.first.kind, DiaryBlockKind.paragraph);
+      expect(doc.blocks.first.level, isNull);
+      expect(doc.blocks.first.text, isEmpty);
+      expect(doc.blocks.first.background, 12); // 「一句话概述今日」段
+      expect(doc.blocks.last.kind, DiaryBlockKind.paragraph);
+      expect(doc.blocks.last.text, isEmpty);
+      expect(doc.blocks.last.background, isNull); // 空正文段无底色
     });
 
     test('所有块 ID 合 22 位规范', () {
@@ -98,15 +122,15 @@ void main() {
       expect(doc.blocks.every((b) => SyIdGenerator.isValid(b.id)), isTrue);
     });
 
-    test('同日可重复实例化：每次都产出单空段骨架', () {
+    test('同日可重复实例化：每次都产出概述段 + 空正文段骨架', () {
       final spec = DiaryTemplateSpec.fromJson(validJson);
       final t = DailyDefaultTemplate(spec: spec);
       final a = t.instantiate(date, SyIdGenerator(random: Random(1)));
       final b = t.instantiate(date, SyIdGenerator(random: Random(2)));
-      expect(a.blocks, hasLength(1));
-      expect(b.blocks, hasLength(1));
-      expect(a.blocks.single.kind, DiaryBlockKind.paragraph);
-      expect(b.blocks.single.kind, DiaryBlockKind.paragraph);
+      expect(a.blocks, hasLength(2));
+      expect(b.blocks, hasLength(2));
+      expect(a.blocks.first.background, 12);
+      expect(b.blocks.first.background, 12);
       // 容器 ID 确定（同一自然日同一路径）；块 ID 随机故不同。
       expect(a.id, b.id);
     });

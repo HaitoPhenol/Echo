@@ -1,6 +1,7 @@
 {
   "id": "daily-default-v2",
   "blocks": [
+    { "type": "paragraph", "background": 12 },
     { "type": "paragraph" }
   ]
 }
