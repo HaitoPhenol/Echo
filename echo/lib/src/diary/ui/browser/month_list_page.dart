@@ -106,7 +106,7 @@ class _MonthListPageState extends State<MonthListPage> {
   Widget build(BuildContext context) {
     return DiaryShell(
       kicker: 'DIARY // ${widget.year}',
-      title: '${widget.year}',
+      title: '${widget.year} 年',
       onBack: () => Navigator.of(context).maybePop(),
       // 裸图标 + 手势而非 IconButton：头部行统一 28px 中线，见
       // diary_shell.dart 头部注释；IconButton 最小点击高度会撑高行。
