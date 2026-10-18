@@ -95,6 +95,12 @@ class DiaryShell extends StatelessWidget {
                   // 2026-10-18 紧凑化：头部→标题间距由 12 收到 2，同时把
                   // 上移量由 -13 收到 -3，两处等量相抵——标题**画的**位置
                   // 不变，只让标题的布局盒（及其后的正文区上沿）上移 10dp。
+                  //
+                  // 2026-10-18 跨页统一下沿：挂固定高度 strut 强制大标题行盒
+                  // 恒为 48 × pageTitleLineHeight ≈ 56.26dp——纯中文标题
+                  // （年页「日记」）与含数字标题（「2026 年」/「10 月」）的
+                  // 行盒不再随字体回退浮动，四页「标题→列表首行」距离一致。
+                  // 详见 mechanical_style.dart 的 pageTitleLineHeight 注释。
                   Transform.translate(
                     offset: const Offset(0, -3),
                     child: Text(
@@ -104,7 +110,13 @@ class DiaryShell extends StatelessWidget {
                         fontWeight: MechanicalStyle.pageTitleFontWeight,
                         letterSpacing: 1.2,
                         color: AppColors.textPrimary,
-                        height: 1.05,
+                        // height 仅作兜底排印，行盒统一由下方 strut 强制。
+                        height: MechanicalStyle.pageTitleLineHeight,
+                      ),
+                      strutStyle: const StrutStyle(
+                        fontSize: MechanicalStyle.pageTitleFontSize,
+                        height: MechanicalStyle.pageTitleLineHeight,
+                        forceStrutHeight: true,
                       ),
                     ),
                   ),
