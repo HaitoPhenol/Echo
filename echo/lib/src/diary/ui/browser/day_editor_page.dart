@@ -297,7 +297,10 @@ class _DayEditorPageState extends State<DayEditorPage>
   }
 }
 
-/// 右上角保存状态：编辑中 / 已保存时间 / 只读。
+/// 右上角保存状态：固定 16×16 图标位——灰圈=草稿、转圈=编辑中、
+/// 绿圈打钩=已保存（tooltip 带保存时刻）。宽度不随状态变化，
+/// 同一行的心情/撤销/重做按钮不会被挤得左右移动。
+/// 只读态是静态文本，不参与编辑期状态轮换，无动态位移。
 class _SaveChip extends StatelessWidget {
   const _SaveChip({
     required this.loaded,
@@ -313,30 +316,47 @@ class _SaveChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final String label;
-    final Color color;
     if (readOnly) {
-      label = '只读';
-      color = AppColors.textMuted;
-    } else if (!loaded) {
-      label = '';
-      color = AppColors.textMuted;
-    } else if (dirty) {
-      label = '编辑中';
-      color = AppColors.accentBlue;
-    } else if (savedAt != null) {
+      return Text(
+        '只读',
+        style: TextStyle(
+          fontSize: 11,
+          letterSpacing: 1.5,
+          color: AppColors.textMuted,
+        ),
+      );
+    }
+    if (!loaded) {
+      return const SizedBox(width: 16, height: 16);
+    }
+    if (dirty) {
+      return const SizedBox(
+        width: 16,
+        height: 16,
+        child: Center(
+          child: SizedBox(
+            width: 14,
+            height: 14,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              color: AppColors.accentBlue,
+            ),
+          ),
+        ),
+      );
+    }
+    if (savedAt != null) {
       final hh = savedAt!.hour.toString().padLeft(2, '0');
       final mm = savedAt!.minute.toString().padLeft(2, '0');
-      label = '已保存 $hh:$mm';
-      color = AppColors.textMuted;
-    } else {
-      label = '草稿';
-      color = AppColors.textMuted;
+      return Tooltip(
+        message: '已保存 $hh:$mm',
+        child: Icon(Icons.check_circle, size: 16, color: AppColors.anchorGreen),
+      );
     }
-
-    return Text(
-      label,
-      style: TextStyle(fontSize: 11, letterSpacing: 1.5, color: color),
+    return Icon(
+      Icons.radio_button_unchecked,
+      size: 16,
+      color: AppColors.textMuted,
     );
   }
 }
