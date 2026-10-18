@@ -41,17 +41,21 @@ class DiaryExportEmptyException implements Exception {
 /// 生产实现走 share_plus；测试注入假实现捕获 [XFile]，不碰平台通道。
 typedef DiaryShareChannel = Future<void> Function(List<XFile> files);
 
-/// 一次年导出的结果。
+/// 一次**月**导出的结果。
 class DiaryExportOutcome {
   const DiaryExportOutcome({
     required this.year,
+    required this.month,
     required this.exportedCount,
     this.userDenied = false,
   });
 
   final int year;
 
-  /// 本次打包并标记 exported 的篇数；0 表示当年没有 draft，
+  /// 导出月份（1..12）。
+  final int month;
+
+  /// 本次打包并标记 exported 的篇数；0 表示当月没有 draft，
   /// 未生成 zip、未触发分享；用户在确认对话框否认发送时也是 0
   /// （此时 [userDenied] 为 true，draft 全部保留）。
   final int exportedCount;
@@ -71,8 +75,11 @@ class DiaryExportOutcome {
 /// 正常完成 Future——故由 UI 弹二次确认兜底；iOS 同理保持一致交互。
 typedef DiaryExportConfirm = Future<bool> Function();
 
-/// 年行增量导出编排：取当年 draft → 打 .sy.zip → 系统分享 →
+/// 月行增量导出编排：取当月 draft → 打 .sy.zip → 系统分享 →
 /// 用户确认已发送后批量 draft→exported。
+///
+/// 导出粒度已于 2026-10-18 由年改月（用户裁定）；包内月标签为
+/// `yyyy-MM`，包名 `日记-yyyy-MM-<时间戳>.sy.zip`。
 ///
 /// 状态语义：分享 Future 正常完成只代表系统分享面板流程结束
 /// （share_plus 平台语义，不保证对方已收到），Android 取消分享同样
@@ -101,20 +108,21 @@ class DiaryExportService {
   final Future<Directory> Function() _tempDirectory;
   final DateTime Function() _now;
 
-  /// 导出指定年份的全部草稿。
+  /// 导出指定年月的全部草稿。
   ///
   /// 无 draft 时返回 [DiaryExportOutcome.exportedCount] 为 0，不分享；
-  /// 分享流程结束后调 [confirmShared]（生产由年列表弹「确认已发送」
+  /// 分享流程结束后调 [confirmShared]（生产由月列表弹「确认已发送」
   /// 对话框）：确认后才批量迁移为 exported 并删除临时 zip；否认则
   /// 保留全部 draft、清理临时 zip，返回 userDenied=true。
   /// 为 null 时默认确认（仅供测试 / 无 UI 调用方）。
-  Future<DiaryExportOutcome> exportYear(
-    int year, {
+  Future<DiaryExportOutcome> exportMonth(
+    int year,
+    int month, {
     DiaryExportConfirm? confirmShared,
   }) async {
-    final diaries = await repository.draftDocumentsOfYear(year);
+    final diaries = await repository.draftDocumentsOfMonth(year, month);
     if (diaries.isEmpty) {
-      return DiaryExportOutcome(year: year, exportedCount: 0);
+      return DiaryExportOutcome(year: year, month: month, exportedCount: 0);
     }
 
     final exportedAt = _now();
@@ -125,8 +133,9 @@ class DiaryExportService {
     );
 
     final tempDir = await _tempDirectory();
+    final mm = month.toString().padLeft(2, '0');
     final zipFile = File(
-      '${tempDir.path}/$notebookName-$year-${_stamp(exportedAt)}.sy.zip',
+      '${tempDir.path}/$notebookName-$year-$mm-${_stamp(exportedAt)}.sy.zip',
     );
     // flush: true 确保内容落地后再交给分享目标读取。
     await zipFile.writeAsBytes(bytes, flush: true);
@@ -148,7 +157,12 @@ class DiaryExportService {
       } catch (_) {
         // 清理失败不影响结论（系统缓存目录会自行回收）。
       }
-      return DiaryExportOutcome(year: year, exportedCount: 0, userDenied: true);
+      return DiaryExportOutcome(
+        year: year,
+        month: month,
+        exportedCount: 0,
+        userDenied: true,
+      );
     }
 
     // 确认已发送后才迁移状态；markExported 整批校验，
@@ -163,16 +177,23 @@ class DiaryExportService {
       // 临时文件清理失败不影响导出结论（系统缓存目录会自行回收）。
     }
 
-    return DiaryExportOutcome(year: year, exportedCount: diaries.length);
+    return DiaryExportOutcome(
+      year: year,
+      month: month,
+      exportedCount: diaries.length,
+    );
   }
 
   /// 只打包、不分享、不迁移状态（ECP `diary.export` 的同路入口）：
   ///
   /// 收集 [year]（null = 全部年份）下的 draft 交给同一个
   /// [SyZipExporter] 打成一个 `.sy.zip`，写入 [outputDirectory]。
-  /// 与 UI 的 [exportYear] 区别仅在「不触发系统分享、不做 draft→
+  /// 与 UI 的 [exportMonth] 区别仅在「不触发系统分享、不做 draft→
   /// exported 迁移」——分享确认流属于 UI 流程；打包链路完全一致，
   /// 因此产物可重复生成。
+  ///
+  /// 导出粒度已改月；[month] 可选（须与 [year] 同时给出），给出时
+  /// scope 为 `yyyy-MM`，否则为 `yyyy` / `all`。
   ///
   /// [notebookName] 缺省或空白时回落 UI 固定名 [DiaryExportService
   /// .notebookName]（用户裁定：命令侧该参数可选）。无任何 draft 时
@@ -180,18 +201,22 @@ class DiaryExportService {
   Future<DiaryZipBuild> buildDraftZip({
     String? notebookName,
     int? year,
+    int? month,
     required Directory outputDirectory,
   }) async {
     final name = (notebookName == null || notebookName.trim().isEmpty)
         ? DiaryExportService.notebookName
         : notebookName.trim();
 
-    final years = year == null
-        ? await repository.availableYears()
-        : <int>[year];
     final diaries = <DiaryDocument>[];
-    for (final y in years) {
-      diaries.addAll(await repository.draftDocumentsOfYear(y));
+    if (year == null) {
+      for (final y in await repository.availableYears()) {
+        diaries.addAll(await repository.draftDocumentsOfYear(y));
+      }
+    } else if (month == null) {
+      diaries.addAll(await repository.draftDocumentsOfYear(year));
+    } else {
+      diaries.addAll(await repository.draftDocumentsOfMonth(year, month));
     }
     if (diaries.isEmpty) throw const DiaryExportEmptyException();
 
@@ -203,7 +228,11 @@ class DiaryExportService {
     );
 
     await outputDirectory.create(recursive: true);
-    final scope = year?.toString() ?? 'all';
+    final scope = year == null
+        ? 'all'
+        : (month == null
+              ? '$year'
+              : '$year-${month.toString().padLeft(2, '0')}');
     final zipFile = File(
       '${outputDirectory.path}/$name-$scope-${_stamp(exportedAt)}.sy.zip',
     );

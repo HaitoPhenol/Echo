@@ -83,6 +83,16 @@ class InMemoryDiaryRepository extends DiaryRepository {
       .length;
 
   @override
+  Future<bool> isMonthFullyExported(int year, int month) async {
+    final inMonth = _entries.values
+        .where((e) => e.date.year == year && e.date.month == month)
+        .toList();
+    // 无记录不算「已导出」；有任何 draft 即未（全部）导出。
+    return inMonth.isNotEmpty &&
+        inMonth.every((e) => e.state != DiaryDocState.draft);
+  }
+
+  @override
   Future<DiaryDocument?> findDay(DateTime date) async {
     final entry = _entries[_keyOf(date)];
     final doc = entry?.doc;
@@ -128,6 +138,36 @@ class InMemoryDiaryRepository extends DiaryRepository {
             .toList()
           ..sort((a, b) => a.date.compareTo(b.date));
     return list;
+  }
+
+  @override
+  Future<List<DiaryDocument>> draftDocumentsOfMonth(int year, int month) async {
+    final list =
+        _entries.values
+            .where(
+              (e) =>
+                  e.state == DiaryDocState.draft &&
+                  e.date.year == year &&
+                  e.date.month == month,
+            )
+            .map((e) => e.doc!)
+            .toList()
+          ..sort((a, b) => a.date.compareTo(b.date));
+    return list;
+  }
+
+  @override
+  Future<DateTime?> oldestDraftBefore(DateTime cutoff) async {
+    final cutoffDay = _dayOnly(cutoff);
+    final candidates =
+        _entries.values
+            .where(
+              (e) =>
+                  e.state == DiaryDocState.draft && e.date.isBefore(cutoffDay),
+            )
+            .toList()
+          ..sort((a, b) => a.date.compareTo(b.date));
+    return candidates.isEmpty ? null : _dayOnly(candidates.first.date);
   }
 
   @override

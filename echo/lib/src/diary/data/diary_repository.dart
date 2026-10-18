@@ -159,6 +159,14 @@ abstract class DiaryRepository extends ChangeNotifier {
   /// 月列表行做篇数视觉层级用）。
   Future<int> draftCountOfMonth(int year, int month);
 
+  /// 该月是否**已全部导出**——月行「已导出」徽标的判据：
+  /// 该月存在记录，且没有任何 `draft`（即所有笔记都无未导出）。
+  ///
+  /// `exported` 与 `archived` 都算「已导出」（archived 必先经历
+  /// exported，状态机保证）；无记录的月份返回 false（月列表本就只
+  /// 列含日记的月份，不会显示空月）。
+  Future<bool> isMonthFullyExported(int year, int month);
+
   /// 取某日可打开的文档；无 meta 或正文已清除（archived）返回 null。
   /// exported 文档返回时 `locked == true`（调用方随后走只读 UI；
   /// 新建路径走 composer.ensureDay）。
@@ -182,6 +190,19 @@ abstract class DiaryRepository extends ChangeNotifier {
   /// 指定年份的全部 draft 文档（日期升序），供增量导出打包。
   /// exported/archived 不重复入包。
   Future<List<DiaryDocument>> draftDocumentsOfYear(int year);
+
+  /// 指定月份的全部 draft 文档（日期升序），供**月**增量导出打包
+  /// （导出粒度已由年改月，见 DiaryExportService.exportMonth）。
+  /// exported/archived 不重复入包。
+  Future<List<DiaryDocument>> draftDocumentsOfMonth(int year, int month);
+
+  /// 最早一篇**早于** [cutoff]（按自然日比较，不含 cutoff 当天）的
+  /// draft 日期；无则 null。
+  ///
+  /// 「导出提醒」的唯一判定来源：cutoff 取**本月 1 日**，非空即表示
+  /// 还有已结束月份存在未导出草稿。返回的日期同时给提醒对话框提供
+  /// 跳转目标（其年月所在的月份列表）。
+  Future<DateTime?> oldestDraftBefore(DateTime cutoff);
 
   /// 批量 draft→exported：要求每个日期当前均为 draft，否则
   /// [StateError]（整批不迁移）；落 exportedAt 并把文档置只读。

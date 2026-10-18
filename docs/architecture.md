@@ -47,7 +47,7 @@ echo/
 │       │   ├── data/                      # Repository 抽象 + 内存/sqflite 实现、04:00 时钟、数据 Provider
 │       │   ├── template/                  # 每日模板：JSON 解析、成稿器（幂等/并发去重）
 │       │   ├── editor/                    # 分块编辑器：命令、控制器（撤销重做）、块视图/浮层
-│       │   ├── export/                    # 年行增量导出服务
+│       │   ├── export/                    # 月行增量导出服务
 │       │   └── ui/                        # 年/月/日浏览页、编辑页、三态 UI（含 widgets/）
 │       ├── services/                      # 与界面无关的能力层
 │       │   ├── chat_store.dart            # 聊天会话数据：增删/已读未读 + 未读聚合
@@ -586,7 +586,8 @@ ui/（年/月/日浏览、编辑页）
   两实现平替换：`InMemoryDiaryRepository`（测试/早期）与
   `PersistentDiaryRepository`（M5 起生产装配：sqflite meta 表 +
   原子写 `.sy` 正文文件）。浏览三页只用反范式摘要
-  （`availableYears / monthsOfYear / daysOfMonth / draftCountOfMonth`），
+  （`availableYears / monthsOfYear / daysOfMonth / draftCountOfMonth /
+  isMonthFullyExported`），
   编辑器用 `findDay / upsertDraft`；状态流转
   `markExported / archiveDay / pruneEmptyBefore`。
   仓储构造可注入 idGenerator、clock、dbFactory（测试 FFI + 临时目录）。
@@ -618,6 +619,17 @@ ui/（年/月/日浏览、编辑页）
   角色 ID 已随 2026-10-18 模板重设退役），序列化只覆盖思源子集（跳过
   子集外块类型，结果带 skippedTypes），`SyZipExporter` 打思源 3.8.6
   可导入的 .sy.zip。金标准单测锁格式位级行为。
+- **导出与每月提醒（2026-10-18）**：`DiaryExportService.exportMonth`
+  按**月**收集 draft（`draftDocumentsOfMonth`）→ 打包 → 分享 → 人工
+  确认后 `markExported`；ECP `diary.export` 走同路 `buildDraftZip`
+  （可选 `year`/`month` 收紧范围）。`DiaryPage` 监听仓储变更，用
+  `oldestDraftBefore(本月 1 日)` 判定「有已结束月份未导出」→
+  `NavBadgeService.reportException` 红色锚点；冷启动首次进笔记页时
+  `maybeShowExportReminder()` 弹一次对话框。锚点走 exception 语义——
+  `markViewed` 不解，只有数据侧真正导出（仓储 notify → 重算 → 无欠账）
+  才自动清；`badgeDestinationId` 由装配层注入（不硬编码页名）。
+  月行另按 `isMonthFullyExported` 在导出按钮左侧显「已导出」徽标，
+  与日行共用 [DiaryStateBadge]（widgets/diary_list_row.dart）。
 - **生命周期注意**：`DiaryPage` State 在主屏 Row 中常驻，bootstrap
   （打开仓储、自动成稿、prune）与编辑器防抖 flush 都挂在它上面；
   未来若做页面窗口化懒加载（问题清单 Q3），必须先迁移这些假设。

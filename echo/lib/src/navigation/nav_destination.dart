@@ -114,6 +114,8 @@ List<NavDestination> buildDefaultDestinations({
             key: diaryPageKey,
             repository: diaryRepository,
             preEnterToday: diaryRepository == null,
+            // 导出提醒红锚点按稳定目的地 id 上报（页序/页名调整不失真）。
+            badgeDestinationId: spec.id,
           ),
           // 仅终端页挂锚点调试面板（新消息/异常模拟与处理，验收用，
           // 正式功能接入后移除）；主页暂不做功能，footer 为 null。

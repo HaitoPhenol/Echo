@@ -13,7 +13,9 @@ import '../export/diary_export_service.dart';
 import '../template/daily_default_template.dart';
 import '../template/diary_composer.dart';
 import '../../control/bootstrap.dart';
+import '../../services/nav_badge_service.dart';
 import 'browser/day_editor_page.dart';
+import 'browser/month_list_page.dart';
 import 'browser/year_list_page.dart';
 import 'diary_composer_scope.dart';
 import 'diary_export_scope.dart';
@@ -35,6 +37,7 @@ class DiaryPage extends StatefulWidget {
     this.repository,
     this.exportService,
     this.preEnterToday = false,
+    this.badgeDestinationId = 'notes',
   });
 
   /// 测试注入缝：固定时钟/数据源/仓储/导出服务；生产环境全部走真实装配。
@@ -42,6 +45,12 @@ class DiaryPage extends StatefulWidget {
   final DiaryDataProvider? dataProvider;
   final DiaryRepository? repository;
   final DiaryExportService? exportService;
+
+  /// 本页在导航锚点服务中的目的地 id（由 `nav_destination.dart` 的
+  /// notes 分支注入 `spec.id`）：导出提醒据此上报红锚点。
+  ///
+  /// 由外部注入而非本页硬编码页名，页序/页名调整时不会失真。
+  final String badgeDestinationId;
 
   /// 开屏预进今日编辑页：为 true 时内层路由栈首帧即
   /// 「年列表 → 今日编辑页」两层（初始路由一次性建好、无入场动画）。
@@ -80,10 +89,36 @@ class DiaryPageState extends State<DiaryPage> {
   /// 内层栈顶路由名（由 [_DiaryStackObserver] 同步；不触发重建）。
   String? _topRouteName;
 
+  /// 导航锚点服务（页面在 `NavBadgeScope` 子树内；脱离时为 null）。
+  NavBadgeService? _badges;
+
+  /// 本进程是否已被导航屏请求过弹导出提醒（每次冷启动仅一次）。
+  bool _reminderRequested = false;
+
+  /// 本进程是否已真正弹出过提醒对话框（防重复）。
+  bool _reminderShown = false;
+
   @override
   void initState() {
     super.initState();
     _bootstrap();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final badges = NavBadgeScope.maybeOf(context);
+    if (!identical(badges, _badges)) {
+      _badges = badges;
+      // 捕获（或更换）锚点服务后立即按当前数据同步一次红锚点。
+      _syncExportReminder();
+    }
+  }
+
+  @override
+  void dispose() {
+    _repository?.removeListener(_syncExportReminder);
+    super.dispose();
   }
 
   Future<void> _bootstrap() async {
@@ -130,6 +165,12 @@ class DiaryPageState extends State<DiaryPage> {
         _composer = composer;
         _exportService = exportService;
       });
+      // 数据驱动红锚点：仓储任何变更（成稿 / 导出迁移）都重算一次。
+      repository.addListener(_syncExportReminder);
+      unawaited(_syncExportReminder());
+      // 导航屏在 bootstrap 完成前请求过提醒（如冷启动即切到笔记页）：
+      // 此时仓储才就绪，补弹一次。
+      if (_reminderRequested) unawaited(maybeShowExportReminder());
       // 进模块即自动成稿今天；并发点进由 ensureDay 的 in-flight 去重兜底。
       unawaited(composer.ensureDay(_clock.today(), repository));
       // 顺手清掉此前所有「什么都没写」的跨天空稿；今天的空稿保留。
@@ -186,6 +227,84 @@ class DiaryPageState extends State<DiaryPage> {
     if (navigator == null) return;
     if (_topRouteName == _todayEditorRouteName()) return;
     navigator.push(_todayEditorRoute());
+  }
+
+  /// 导出提醒 · 锚点：按「是否仍有已结束月份存在未导出草稿」上报红锚点。
+  ///
+  /// 判定口径统一为 [DiaryRepository.oldestDraftBefore]（cutoff = 本月
+  /// 1 日）：非空 → `reportException`（红闪烁），为空 → `resolveException`
+  /// 自动解除。exception 级不受 `markViewed` 影响，天然满足「到真正完成
+  /// 有效导出才消」，且消除时机完全由数据驱动、接口干净。
+  ///
+  /// 由仓储变更通知（成稿 / 导出迁移）与锚点服务捕获时触发。
+  Future<void> _syncExportReminder() async {
+    final repository = _repository;
+    final badges = _badges;
+    if (repository == null || badges == null) return;
+    final today = repository.today();
+    final oldest = await repository.oldestDraftBefore(
+      DateTime(today.year, today.month, 1),
+    );
+    if (!mounted) return;
+    if (oldest == null) {
+      badges.resolveException(widget.badgeDestinationId);
+    } else {
+      badges.reportException(widget.badgeDestinationId);
+    }
+  }
+
+  /// 导出提醒 · 对话框：每次冷启动**首次进入笔记页**时调用一次。
+  ///
+  /// 导航屏只请求一次（`_reminderRequested`）；若请求时仓储尚未就绪
+  /// （bootstrap 在途），本方法会先记下请求，待装配完成后由 [_bootstrap]
+  /// 补弹。无待导出 / 本进程已弹过则直接返回。
+  ///
+  /// 「去导出」只负责跳转到最早待导出月份所在的月列表（用户在其中点
+  /// 月行导出按钮触发实际导出），不代替用户执行导出。
+  Future<void> maybeShowExportReminder() async {
+    _reminderRequested = true;
+    if (_reminderShown) return;
+    final repository = _repository;
+    if (repository == null) return; // 仓储未就绪：bootstrap 完成后补弹
+    final today = repository.today();
+    final oldest = await repository.oldestDraftBefore(
+      DateTime(today.year, today.month, 1),
+    );
+    if (oldest == null || !mounted) return;
+
+    _reminderShown = true;
+    final goExport = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('日记还没导出'),
+        content: Text(
+          '按月导出更稳妥：还有 ${oldest.year} 年 ${oldest.month} 月的日记'
+          '未导出，建议尽快分享到思源归档。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('稍后'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('去导出'),
+          ),
+        ],
+      ),
+    );
+    if (goExport != true || !mounted) return;
+
+    // 把内层栈变成 [年列表, 最早待导出月份的月列表]：返回仍回年列表。
+    final navigator = _navigatorKey.currentState;
+    if (navigator == null) return;
+    navigator.pushAndRemoveUntil(
+      DiarySlideRoute<void>(
+        builder: (_) => MonthListPage(year: oldest.year),
+        settings: RouteSettings(name: '/year/${oldest.year}'),
+      ),
+      (route) => route.isFirst,
+    );
   }
 
   void _syncCanPop() {

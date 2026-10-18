@@ -146,6 +146,32 @@ void main() {
       expect(await repo.draftCountOfMonth(2026, 5), 0);
     });
 
+    test('isMonthFullyExported：无 draft 才算已导出，空月为 false', () async {
+      final repo = repoAt(fixedNow);
+      await repo.upsertDraft(doc(DateTime(2026, 3, 2), ['a']));
+      await repo.upsertDraft(doc(DateTime(2026, 3, 20), ['b']));
+
+      // 尚有 draft → 未全部导出；空月 → false（不应显徽标）。
+      expect(await repo.isMonthFullyExported(2026, 3), isFalse);
+      expect(await repo.isMonthFullyExported(2026, 5), isFalse);
+
+      // 全部迁移为 exported → true。
+      await repo.markExported(
+        [DateTime(2026, 3, 2), DateTime(2026, 3, 20)],
+        exportedAt: fixedNow,
+      );
+      expect(await repo.isMonthFullyExported(2026, 3), isTrue);
+    });
+
+    test('isMonthFullyExported：archived 视同已导出', () async {
+      final repo = repoAt(fixedNow);
+      final date = DateTime(2026, 3, 9);
+      await repo.upsertDraft(doc(date, ['a']));
+      await repo.markExported([date], exportedAt: fixedNow);
+      await repo.archiveDay(date);
+      expect(await repo.isMonthFullyExported(2026, 3), isTrue);
+    });
+
     test('多日按日期升序返回', () async {
       final repo = repoAt(fixedNow);
       await repo.upsertDraft(doc(DateTime(2026, 3, 20), ['late']));

@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../../theme/app_colors.dart';
 import '../../data/diary_repository.dart';
 import '../diary_composer_scope.dart';
 import '../diary_route.dart';
@@ -136,11 +135,11 @@ class _DayListPageState extends State<DayListPage> {
                         ? '$weekday（空稿）'
                         : weekday,
                 trailing: switch (summary.state) {
-                  DiaryDocState.archived => const _StateBadge(
+                  DiaryDocState.archived => const DiaryStateBadge(
                     text: '已归档',
                     dim: true,
                   ),
-                  DiaryDocState.exported => const _StateBadge(text: '已导出'),
+                  DiaryDocState.exported => const DiaryStateBadge(text: '已导出'),
                   DiaryDocState.draft => Text(
                     '${summary.blockCount} 块',
                     style: const TextStyle(
@@ -154,31 +153,6 @@ class _DayListPageState extends State<DayListPage> {
             },
           );
         },
-      ),
-    );
-  }
-}
-
-/// 日行尾部状态徽标（已导出 / 已归档）。
-class _StateBadge extends StatelessWidget {
-  const _StateBadge({required this.text, this.dim = false});
-
-  final String text;
-  final bool dim;
-
-  @override
-  Widget build(BuildContext context) {
-    final color = dim ? AppColors.mechInkDim : AppColors.pageLabel;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-      decoration: BoxDecoration(
-        color: AppColors.tone1,
-        borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: AppColors.tone1),
-      ),
-      child: Text(
-        text,
-        style: TextStyle(fontSize: 10, letterSpacing: 1.2, color: color),
       ),
     );
   }

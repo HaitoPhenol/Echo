@@ -200,6 +200,21 @@ CREATE TABLE $_table(
   }
 
   @override
+  Future<bool> isMonthFullyExported(int year, int month) async {
+    // 一条聚合查询同时取总篇数与 draft 篇数：total==0 无记录（false）、
+    // drafts==0 即全部已导出（true）。SUM 在无行时返回 null，故判空。
+    final rows = await _db.rawQuery(
+      'SELECT COUNT(*) AS total, '
+      "SUM(CASE WHEN state = 'draft' THEN 1 ELSE 0 END) AS drafts "
+      'FROM $_table WHERE (date / 100) = ?',
+      [year * 100 + month],
+    );
+    final total = rows.first['total'] as int? ?? 0;
+    final drafts = rows.first['drafts'] as int? ?? 0;
+    return total > 0 && drafts == 0;
+  }
+
+  @override
   Future<DiaryDocument?> findDay(DateTime date) async {
     final row = await _metaRow(date);
     if (row == null) return null;
@@ -257,6 +272,42 @@ CREATE TABLE $_table(
       }
     }
     return docs;
+  }
+
+  @override
+  Future<List<DiaryDocument>> draftDocumentsOfMonth(
+    int year,
+    int month,
+  ) async {
+    // 月粒度：date 形如 yyyymmdd，除以 100 得 yyyymm。
+    final rows = await _db.query(
+      _table,
+      where: "state = 'draft' AND (date / 100) = ?",
+      whereArgs: [year * 100 + month],
+      orderBy: 'date ASC',
+    );
+    final docs = <DiaryDocument>[];
+    for (final row in rows) {
+      final relative = row['file_path']! as String;
+      final file = File('${root.path}/$relative');
+      if (await file.exists()) {
+        docs.add(_serializer.decodeBytes(await file.readAsBytes()).document);
+      }
+    }
+    return docs;
+  }
+
+  @override
+  Future<DateTime?> oldestDraftBefore(DateTime cutoff) async {
+    // 导出提醒判定：早于 cutoff（按自然日，不含当天）的最早 draft。
+    final rows = await _db.rawQuery(
+      "SELECT MIN(date) AS d FROM $_table WHERE state = 'draft' AND date < ?",
+      [_keyOf(cutoff)],
+    );
+    final value = rows.first['d'] as int?;
+    if (value == null) return null;
+    // yyyymmdd 整数解码回 DateTime。
+    return DateTime(value ~/ 10000, (value ~/ 100) % 100, value % 100);
   }
 
   // ---- 写 / 状态迁移 ------------------------------------------------------

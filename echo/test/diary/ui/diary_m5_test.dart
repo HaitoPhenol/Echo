@@ -19,7 +19,7 @@ import 'package:echo/src/diary/ui/widgets/diary_list_row.dart';
 /// 不碰平台通道 / 文件 IO 的假导出服务（widget 测试专用；
 /// 真实打包链路由 diary_export_service_test.dart 覆盖）。
 ///
-/// 默认行为模拟生产服务的确认编排：先回调 confirmShared（由年列表
+/// 默认行为模拟生产服务的确认编排：先回调 confirmShared（由月列表
 /// 弹「确认已发送」对话框），否认返回 userDenied，确认则把今天的
 /// bootstrap 草稿迁移为 exported。
 class _FakeExportService extends DiaryExportService {
@@ -27,27 +27,34 @@ class _FakeExportService extends DiaryExportService {
 
   final Future<DiaryExportOutcome> Function(
     int year,
+    int month,
     DiaryExportConfirm? confirmShared,
   )?
   handler;
   int calls = 0;
 
   @override
-  Future<DiaryExportOutcome> exportYear(
-    int year, {
+  Future<DiaryExportOutcome> exportMonth(
+    int year,
+    int month, {
     DiaryExportConfirm? confirmShared,
   }) async {
     calls++;
     final h = handler;
-    if (h != null) return h(year, confirmShared);
+    if (h != null) return h(year, month, confirmShared);
     final confirmed = await confirmShared?.call() ?? false;
     if (!confirmed) {
-      return DiaryExportOutcome(year: year, exportedCount: 0, userDenied: true);
+      return DiaryExportOutcome(
+        year: year,
+        month: month,
+        exportedCount: 0,
+        userDenied: true,
+      );
     }
     await repository.markExported([
       DateTime(2026, 6, 15),
     ], exportedAt: DateTime(2026, 6, 15, 12));
-    return DiaryExportOutcome(year: year, exportedCount: 1);
+    return DiaryExportOutcome(year: year, month: month, exportedCount: 1);
   }
 }
 
@@ -97,17 +104,25 @@ void main() {
     expect(find.byType(DayListPage), findsOneWidget);
   }
 
-  group('M5 年行导出入口', () {
+  /// 从年列表进入月份列表（导出入口现在月行）。
+  Future<void> openMonthList(WidgetTester tester) async {
+    await tester.tap(find.text('2026 年'));
+    await tester.pumpAndSettle();
+    expect(find.text('6 月'), findsOneWidget);
+  }
+
+  group('M5 月行导出入口', () {
     testWidgets('点分享：进行中转圈，完成 SnackBar 反馈', (tester) async {
       final repo = emptyRepo();
       addTearDown(repo.dispose);
       final completer = Completer<DiaryExportOutcome>();
       final export = _FakeExportService(
         repository: repo,
-        handler: (_, _) => completer.future,
+        handler: (_, _, _) => completer.future,
       );
       await tester.pumpWidget(app(repository: repo, exportService: export));
       await tester.pumpAndSettle();
+      await openMonthList(tester);
 
       expect(find.byIcon(Icons.ios_share), findsOneWidget);
       await tester.tap(find.byIcon(Icons.ios_share));
@@ -117,29 +132,30 @@ void main() {
       expect(find.byType(CircularProgressIndicator), findsOneWidget);
 
       completer.complete(
-        const DiaryExportOutcome(year: 2026, exportedCount: 1),
+        const DiaryExportOutcome(year: 2026, month: 6, exportedCount: 1),
       );
       await tester.pumpAndSettle();
       expect(find.text('已分享 1 篇 · 标记为已导出'), findsOneWidget);
       expect(find.byType(CircularProgressIndicator), findsNothing);
     });
 
-    testWidgets('当年无草稿：SnackBar 提示且不分享文案正确', (tester) async {
+    testWidgets('当月无草稿：SnackBar 提示且不分享文案正确', (tester) async {
       final repo = emptyRepo();
       addTearDown(repo.dispose);
       // 假实现返回 exportedCount=0（bootstrap 自动成稿的今天是
       // 空稿但仍属 draft——这里假服务按 0 模拟「无待导出」口径）。
       final export = _FakeExportService(
         repository: repo,
-        handler: (_, _) async =>
-            const DiaryExportOutcome(year: 2026, exportedCount: 0),
+        handler: (_, _, _) async =>
+            const DiaryExportOutcome(year: 2026, month: 6, exportedCount: 0),
       );
       await tester.pumpWidget(app(repository: repo, exportService: export));
       await tester.pumpAndSettle();
+      await openMonthList(tester);
 
       await tester.tap(find.byIcon(Icons.ios_share));
       await tester.pumpAndSettle();
-      expect(find.text('2026 年没有待导出的草稿'), findsOneWidget);
+      expect(find.text('2026 年 6 月没有待导出的草稿'), findsOneWidget);
     });
 
     testWidgets('分享后确认对话框：否认保留 draft，确认才置 exported', (tester) async {
@@ -149,6 +165,7 @@ void main() {
       final export = _FakeExportService(repository: repo);
       await tester.pumpWidget(app(repository: repo, exportService: export));
       await tester.pumpAndSettle(); // bootstrap 自动成稿今天（draft）
+      await openMonthList(tester);
 
       // 第一次：点分享 → 确认对话框 → 否认。
       await tester.tap(find.byIcon(Icons.ios_share));
@@ -174,6 +191,41 @@ void main() {
         DiaryDocState.exported,
       );
       expect(export.calls, 2);
+    });
+
+    testWidgets('月行「已导出」徽标：该月全部笔记无未导出时才显示', (tester) async {
+      final clock = fixedClock();
+      final repo = emptyRepo();
+      addTearDown(repo.dispose);
+      final composer = await composerFor(repo);
+      // 5 月两篇全部导出；6 月由 bootstrap 成稿今天（draft）→ 不显徽标。
+      await composer.ensureDay(DateTime(2026, 5, 10), repo);
+      await composer.ensureDay(DateTime(2026, 5, 11), repo);
+      await repo.markExported(
+        [DateTime(2026, 5, 10), DateTime(2026, 5, 11)],
+        exportedAt: fixedNow,
+      );
+
+      await tester.pumpWidget(app(clock: clock, repository: repo));
+      await tester.pumpAndSettle();
+      await openMonthList(tester);
+
+      expect(
+        find.descendant(
+          of: find.widgetWithText(DiaryListRow, '5 月'),
+          matching: find.text('已导出'),
+        ),
+        findsOneWidget,
+        reason: '5 月全部已导出，应显徽标',
+      );
+      expect(
+        find.descendant(
+          of: find.widgetWithText(DiaryListRow, '6 月'),
+          matching: find.text('已导出'),
+        ),
+        findsNothing,
+        reason: '6 月含今天的 draft，不应显徽标',
+      );
     });
   });
 

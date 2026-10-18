@@ -342,6 +342,25 @@ void main() {
       expect(await reopened.draftCountOfMonth(2026, 10), 1);
       expect(await reopened.draftCountOfMonth(2026, 9), 0);
     });
+
+    test('isMonthFullyExported：draft→全导出→归档 的状态演进', () async {
+      final root = await tempRoot();
+      addTearDown(() => root.delete(recursive: true));
+      final repo = await open(root, now: fixedNow);
+      addTearDown(repo.close);
+
+      // 空月（无 meta 行）→ false。
+      expect(await repo.isMonthFullyExported(2026, 9), isFalse);
+      // 有 draft → false。
+      await repo.upsertDraft(doc(DateTime(2026, 9, 3), ['a']));
+      expect(await repo.isMonthFullyExported(2026, 9), isFalse);
+      // 全部 exported → true。
+      await repo.markExported([DateTime(2026, 9, 3)], exportedAt: fixedNow);
+      expect(await repo.isMonthFullyExported(2026, 9), isTrue);
+      // 归档（必先经历 exported）仍算已导出 → true。
+      await repo.archiveDay(DateTime(2026, 9, 3));
+      expect(await repo.isMonthFullyExported(2026, 9), isTrue);
+    });
   });
 
   group('PersistentDiaryRepository debug 种子', () {

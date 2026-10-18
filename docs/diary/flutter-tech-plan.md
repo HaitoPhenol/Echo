@@ -420,9 +420,15 @@ M4 反转。**
   回到「与模板骨架声明等价的块忽略、其余块无 trim 非空文本即为空」，
   见 §5.3。）
 - **裁定 B（分享确认）**：share_plus 在 Android 拿不到发送成功回执，
-  `exportYear` 增 `confirmShared` 回调——分享面板返回后弹确认对话框，
+  `exportMonth` 增 `confirmShared` 回调——分享面板返回后弹确认对话框，
   用户确认才批量 markExported，选「尚未发送」则全部保留 draft（zip 缓存
   两种路径返回后都立即删除）。
+- **导出粒度改月 + 每月提醒（2026-10-18）**：导出入口由年行下移到
+  **月列表每行**（`exportMonth(year, month)`，`DiaryExportOutcome` 带
+  year/month；ECP `diary.export` 增 `--month`）。只要存在早于**本月 1 日**
+  的未导出草稿（`DiaryRepository.oldestDraftBefore`），笔记页锚点走
+  exception（红闪），冷启动首次进笔记页弹一次对话框，直到所有已结束
+  月份补齐有效导出才由仓储变更驱动自动解除。
 - **思源 Android 端导入路径**：v3.8.6 不响应 `ACTION_SEND`，分享面板无
   思源目标；实际路径为 App 内 Documents → ＋ → Import → SiYuan .sy.zip
   → SAF 选 Downloads 中的 zip。导入时思源重新生成全部块 ID；同名笔记本

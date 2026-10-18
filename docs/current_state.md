@@ -91,7 +91,7 @@
 | `data/` | `DiaryRepository` 抽象 + 内存实现 / **sqflite 持久实现**、`DiaryClock`（04:00 日界）、`DiaryDataProvider`（现为 Fake 常量）、debug 种子 |
 | `template/` | 模板 JSON 解析、每日成稿 `DiaryComposer`（幂等/并发去重/custom-* 数据面填充） |
 | `editor/` | 分块编辑器：命令、控制器（50 步撤销重做、`applyCustomPatch` 批量写文档根 custom-*）、块视图（`header` 可挂滚动区首项）、块标浮层 |
-| `export/` | 导出服务（年行增量导出 .sy.zip） |
+| `export/` | 导出服务（月行增量导出 .sy.zip，`exportMonth`） |
 | `ui/` | 年→月→日浏览页、日记编辑页、三态 UI、胶囊行（`diary_capsule_row.dart`，心情入口）、分享确认流 |
 
 - **生产装配用持久仓储**（M5 起）：sqflite 库
@@ -147,8 +147,19 @@
 - **04:00 日界**：`DiaryClock.diaryDate`，hour<4 归前一自然日；
   测试注入时钟，生产取墙钟。
 - **空稿清理**：进模块 prune 早于今天的空草稿（meta+.sy 双删）。
-- **导出**：share_plus 调系统分享；Android 思源不响应 ACTION_SEND，
-  实际走思源内 SAF 导入；分享返回后人工「确认已发送」才置 exported。
+- **导出**（2026-10-18 起改为**按月**）：入口在**月列表每行右侧**
+  （年列表不再有年导出），打该月 draft 成一个 zip → share_plus 调系统
+  分享 → 返回后人工「确认已发送」才把该月 draft 批量置 exported；否认
+  保留草稿可再次导出。Android 思源不响应 ACTION_SEND，实际走思源内
+  SAF 导入。该月所有笔记都无未导出（`isMonthFullyExported`）时，
+  导出按钮左侧显「已导出」徽标（与日行同款 `DiaryStateBadge`）。
+- **每月导出提醒**：存在早于**本月 1 日**的未导出草稿（`oldestDraftBefore`）
+  时，笔记页导航锚点走 **exception（红闪）**，且每次冷启动**首次**
+  切到笔记页由 `DiaryPageState.maybeShowExportReminder()` 弹一次对话框
+  （「去导出」直接压入最早待导出月份的月列表）；漏月持续提醒，直到
+  `markExported` 把全部已结束月份的草稿迁出后由数据驱动自动解除
+  （`_syncExportReminder` 监听仓储变更重算，`markViewed` 对 exception
+  无效，只有真正导出才清）。
 - debug 包空库灌种子两篇（上月 28 日 + 昨天，今天不种）；
   release 空仓。测试可注入仓储/时钟。
 

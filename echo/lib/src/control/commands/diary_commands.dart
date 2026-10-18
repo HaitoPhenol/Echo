@@ -395,6 +395,11 @@ final CommandSpec diaryExport = CommandSpec(
   params: [
     ParamSpec('notebook', type: ArgType.string, summary: '思源笔记本名，缺省固定「日记」'),
     ParamSpec('year', type: ArgType.integer, summary: '只打某年，缺省全部年份'),
+    ParamSpec(
+      'month',
+      type: ArgType.integer,
+      summary: '与 --year 同给出时收紧到某月（1-12），实现按月导出',
+    ),
   ],
   handler: (ctx) async {
     final exporter = ctx.requireService<DiaryExportService>('日记导出服务');
@@ -411,6 +416,7 @@ final CommandSpec diaryExport = CommandSpec(
       final build = await exporter.buildDraftZip(
         notebookName: ctx.optionalArg<String>('notebook'),
         year: ctx.optionalArg<int>('year'),
+        month: ctx.optionalArg<int>('month'),
         outputDirectory: paths.diaryExports,
       );
       final result = {

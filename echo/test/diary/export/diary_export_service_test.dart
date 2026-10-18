@@ -77,17 +77,17 @@ void main() {
     }
   });
 
-  group('DiaryExportService.exportYear', () {
-    test('打包当年 draft 分享成功：zip 结构正确、状态批量迁移、临时文件清理', () async {
+  group('DiaryExportService.exportMonth', () {
+    test('打包当月 draft 分享成功：zip 结构正确、状态批量迁移、临时文件清理', () async {
       final d1 = DateTime(2026, 6, 14);
       final d2 = DateTime(2026, 6, 15);
-      // 去年一篇不应入包。
-      final otherYear = DateTime(2025, 12, 31);
+      // 上月一篇不应入包（导出粒度为月）。
+      final otherMonth = DateTime(2026, 5, 31);
       await repo.upsertDraft(draft(d1, mood: '🙂', text: '昨天写的'));
       await repo.upsertDraft(draft(d2, mood: '😄', text: '今天写的'));
-      await repo.upsertDraft(draft(otherYear, mood: '😢'));
+      await repo.upsertDraft(draft(otherMonth, mood: '😢'));
 
-      final outcome = await service.exportYear(2026);
+      final outcome = await service.exportMonth(2026, 6);
       expect(outcome.exportedCount, 2);
       expect(outcome.didShare, isTrue);
       expect(share.calls, hasLength(1));
@@ -95,9 +95,9 @@ void main() {
       expect(files, hasLength(1));
       expect(files.single.mimeType, 'application/zip');
 
-      // 文件名：日记-{年}-{yyyyMMdd-HHmmss}.sy.zip。
+      // 文件名：日记-{年}-{月}-{yyyyMMdd-HHmmss}.sy.zip。
       final fileName = files.single.path.split(Platform.pathSeparator).last;
-      expect(fileName, '日记-2026-20260615-203000.sy.zip');
+      expect(fileName, '日记-2026-06-20260615-203000.sy.zip');
 
       final archive = ZipDecoder().decodeBytes(share.payloads.single);
       final names = archive.files.map((f) => f.name).toList();
@@ -141,30 +141,30 @@ void main() {
       ) as Map;
       expect(conf['name'], '日记');
 
-      // 分享成功后两篇 draft → exported，去年草稿不受影响。
+      // 分享成功后两篇 draft → exported，上月草稿不受影响（月隔离）。
       expect(await repo.stateOfDay(d1), DiaryDocState.exported);
       expect(await repo.stateOfDay(d2), DiaryDocState.exported);
-      expect(await repo.stateOfDay(otherYear), DiaryDocState.draft);
+      expect(await repo.stateOfDay(otherMonth), DiaryDocState.draft);
       // 临时 zip 已清理。
       expect(await File(files.single.path).exists(), isFalse);
     });
 
-    test('当年无 draft：不分享、不迁移，返回 exportedCount=0', () async {
+    test('当月无 draft：不分享、不迁移，返回 exportedCount=0', () async {
       await repo.upsertDraft(draft(DateTime(2025, 1, 1)));
-      final outcome = await service.exportYear(2026);
+      final outcome = await service.exportMonth(2026, 6);
       expect(outcome.exportedCount, 0);
       expect(outcome.didShare, isFalse);
       expect(share.calls, isEmpty);
       expect(tempDir.listSync(), isEmpty);
     });
 
-    test('第二次导出：已 exported 不再入包，当年待导出为 0', () async {
+    test('第二次导出：已 exported 不再入包，当月待导出为 0', () async {
       final d = DateTime(2026, 6, 15);
       await repo.upsertDraft(draft(d, mood: '🙂'));
-      final first = await service.exportYear(2026);
+      final first = await service.exportMonth(2026, 6);
       expect(first.exportedCount, 1);
 
-      final second = await service.exportYear(2026);
+      final second = await service.exportMonth(2026, 6);
       expect(second.exportedCount, 0);
       expect(share.calls, hasLength(1));
       expect(await repo.stateOfDay(d), DiaryDocState.exported);
@@ -175,7 +175,7 @@ void main() {
       await repo.upsertDraft(draft(d));
       share.shouldThrow = true;
 
-      await expectLater(service.exportYear(2026), throwsStateError);
+      await expectLater(service.exportMonth(2026, 6), throwsStateError);
       expect(await repo.stateOfDay(d), DiaryDocState.draft);
       // 临时 zip 保留作排查。
       final zips = tempDir.listSync().whereType<File>().where(
@@ -188,8 +188,9 @@ void main() {
       final d = DateTime(2026, 6, 15);
       await repo.upsertDraft(draft(d, text: '写好的正文'));
 
-      final denied = await service.exportYear(
+      final denied = await service.exportMonth(
         2026,
+        6,
         confirmShared: () async => false,
       );
       expect(denied.userDenied, isTrue);
@@ -207,8 +208,9 @@ void main() {
       expect(zips, isEmpty);
 
       // 再次导出并确认：重新打包、状态迁移成功。
-      final confirmed = await service.exportYear(
+      final confirmed = await service.exportMonth(
         2026,
+        6,
         confirmShared: () async => true,
       );
       expect(confirmed.userDenied, isFalse);

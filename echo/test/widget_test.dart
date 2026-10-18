@@ -28,13 +28,20 @@ Future<void> pumpFramesMs(WidgetTester tester, int ms) async {
 }
 
 void main() {
-  // 全应用用例共享一个内存日记仓储（与 M4 行为一致：debug 种子）。
+  // 全应用用例共享一个内存日记仓储（**不装种子**）。
+  //
   // 生产持久装配（path_provider+sqflite 的真实文件 I/O）无法在
   // testWidgets 的 fake-async 区完成，其覆盖由 persistent 仓储
   // 单测（FFI）与真机验收承担。
+  //
+  // 2026-10-18 起不装种子：种子含「上月一篇」draft，会触发
+  // DiaryPage 的「有未导出日记」提醒——红色 notes 锚点 + 进笔记页
+  // 弹对话框，干扰本文件聚焦的导航/手势/锚点用例（翻页途中落到
+  // 笔记页即被对话框挡住）。导出提醒的集成覆盖见
+  // test/diary/ui/diary_export_reminder_test.dart。
   late final InMemoryDiaryRepository diaryRepo;
   setUpAll(() {
-    diaryRepo = InMemoryDiaryRepository(seedDebugData: true);
+    diaryRepo = InMemoryDiaryRepository(seedDebugData: false);
     addTearDown(diaryRepo.dispose);
   });
 

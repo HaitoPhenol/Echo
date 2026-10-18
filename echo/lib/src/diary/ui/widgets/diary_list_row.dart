@@ -100,3 +100,32 @@ class DiaryListRow extends StatelessWidget {
     );
   }
 }
+
+/// 行尾状态徽标（「已导出」/「已归档」）：胶囊底 [AppColors.tone1]，
+/// 小号字 + 字距。年 / 月 / 日三层列表共用同一外观。
+///
+/// · 日行：exported 显「已导出」、archived 显「已归档」（[dim] 降档）；
+/// · 月行：该月全部笔记无未导出时显「已导出」，置于导出按钮左侧。
+class DiaryStateBadge extends StatelessWidget {
+  const DiaryStateBadge({super.key, required this.text, this.dim = false});
+
+  final String text;
+  final bool dim;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = dim ? AppColors.mechInkDim : AppColors.pageLabel;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+      decoration: BoxDecoration(
+        color: AppColors.tone1,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: AppColors.tone1),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(fontSize: 10, letterSpacing: 1.2, color: color),
+      ),
+    );
+  }
+}

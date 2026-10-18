@@ -106,6 +106,12 @@ class _SmartNavScreenState extends State<SmartNavScreen>
   /// 聊天目的地在页面轨道中的下标（驱动锚点联动；-1 表示未配置）。
   int _chatPageIndex = -1;
 
+  /// 笔记（日记）目的地在页面轨道中的下标（-1 表示未配置）。
+  int _notesPageIndex = -1;
+
+  /// 本进程是否已向日记页请求过导出提醒（每次冷启动首次进笔记页弹一次）。
+  bool _diaryReminderRequested = false;
+
   /// 当前页停留满阈值后标为已读的延迟计时器（离开页面即取消）。
   Timer? _readTimer;
 
@@ -241,6 +247,7 @@ class _SmartNavScreenState extends State<SmartNavScreen>
     _chatStore = ChatStore();
     _chatSession = ChatSessionController(_chatStore);
     _chatPageIndex = _destinations.indexWhere((d) => d.id == 'chat');
+    _notesPageIndex = _destinations.indexWhere((d) => d.id == 'notes');
     // 锚点联动：聊天页锚点不再由「停留 700ms」清除，而完全由
     // 会话未读数据驱动——存在未读即通知（绿呼吸），全部已读才
     // 恢复默认；左滑「设为未读」同样会重新点亮锚点。
@@ -277,6 +284,12 @@ class _SmartNavScreenState extends State<SmartNavScreen>
             _readDwell,
             () => _badges.markViewed(_destinations[page].id),
           );
+        }
+        // 导出提醒：每次冷启动**首次**切到笔记页时请求日记页弹一次
+        // 对话框（弹框/跳转编排在 DiaryPageState 内，数据驱动判定）。
+        if (page == _notesPageIndex && !_diaryReminderRequested) {
+          _diaryReminderRequested = true;
+          _diaryKey.currentState?.maybeShowExportReminder();
         }
       }
     });

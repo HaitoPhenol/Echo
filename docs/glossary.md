@@ -170,7 +170,8 @@
 | **三态** | `draft` 草稿（可写）/ `exported` 已导出（只读横幅）/ `archived` 已归档（删本机正文留索引、列表弱化） | `data/diary_repository.dart`（DiaryDocState） |
 | **日记日时钟 / 04:00 日界** | 凌晨 4 点前算前一天的日记；全模块取日唯一入口 | `data/diary_clock.dart`（DiaryClock） |
 | **空稿清理 / prune** | 进笔记页时删除早于今天的空草稿（meta 与正文文件同生共死），写过字的保留 | `DiaryRepository.pruneEmptyBefore` |
-| **年行导出** | 年列表每行右侧入口：该年全部 draft 打成一个「日记」笔记本 .sy.zip，经系统分享送出，返回后人工确认才置 exported | `export/diary_export_service.dart`、`year_list_page.dart` |
+| **月行导出** | 月列表每行右侧入口（2026-10-18 起取代年行导出）：该月全部 draft 打成一个「日记」笔记本 .sy.zip，经系统分享送出，返回后人工确认才置 exported；该月无未导出时按钮左侧显「已导出」徽标 | `export/diary_export_service.dart`（`exportMonth`）、`month_list_page.dart` |
+| **每月导出提醒** | 存在早于本月 1 日的未导出草稿时，笔记页锚点走 exception（红闪）+ 每次冷启动首次进笔记页弹一次对话框，直到补齐有效导出才由数据驱动解除 | `diary/ui/diary_page.dart`（`maybeShowExportReminder`）、`navigation/smart_nav_screen.dart` |
 | **块标浮层** | 编辑器点块左侧块标弹出的工具浮层：转正文/H1–H3、13 色底色、无色 | `editor/block_widget.dart` 等 |
 | **金标准** | 思源 3.8.6 实采的 .sy/.sy.zip 格式对照基准（字段、ID、CSS 变量、conf/sort），格式层测试锁定 | [diary/sy-format-golden-3.8.6.md](diary/sy-format-golden-3.8.6.md) |
 | **ECP（控制面）** | 应用控制协议（P1–P4 已交付 v0.13.0）：命令经总线裁决（级别/确认/审计）后调 UI 同源 API。七域 35 条（release 30）；两通道在用——adb（仅 debug，`scripts/echo-cmd` 入口，slow 命令作业化轮询）与 slash 指令台（搜索栏 `/`）；MCP 仅有只读边界假通道，真实传输未立项 | [ecp/ecp-design.md](ecp/ecp-design.md)、[ecp/ecp-commands.md](ecp/ecp-commands.md) |
