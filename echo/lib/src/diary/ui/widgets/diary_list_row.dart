@@ -58,9 +58,14 @@ class DiaryListRow extends StatelessWidget {
           child: Row(
             children: [
               SizedBox(
-                width: 76,
+                // 行首定宽列：各层列表内行首与副文案起点对齐。宽度按最长
+                // 行首「2026 年」（4 位数字 + 空格 + 汉字，22px/w600）留
+                // 余量；maxLines=1 兜住极大字号下的折行。
+                width: 96,
                 child: Text(
                   head,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     fontSize: 22,
                     fontWeight: FontWeight.w600,
