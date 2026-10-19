@@ -7,19 +7,29 @@ import 'block_editor_controller.dart';
 import 'diary_capsule_chip.dart';
 import 'editor_scope.dart';
 
-/// 单个日记块：48dp 块标 + 多行输入区，支持段落/H1–H3 排印与块底色。
+/// 单个日记块：左侧「类型图标 + 拖拽把手」纵向簇 + 多行输入区，支持
+/// 段落/H1–H3 排印与块底色。
 ///
 /// 键位拦截不走 Focus 冒泡（EditableText 在块首退格时会把空删除
 /// 标记为 handled，冒泡到不了祖先），而是利用 EditableText 刻意暴露的
 /// `Action.overridable` 机制：祖先 [Actions] 覆盖删除/纵向移动两个
 /// intent，不满足块级语义时经 `callingAction` 回落给框架默认行为。
 ///
-/// 块标点击选中后，经 [OverlayPortal] 在块标锚点浮出排版工具条
+/// 把手点击选中后，经 [OverlayPortal] 在块标锚点浮出排版工具条
 /// （转段落/标题、13 档底色）；选中态与浮层共生，点屏障处取消。
+/// 把手同时包在 `ReorderableDelayedDragStartListener` 内：长按起拖，
+/// 松手由 `SliverReorderableList` 落位（见 [BlockEditorView]）。
 class BlockWidget extends StatefulWidget {
-  const BlockWidget({super.key, required this.state});
+  const BlockWidget({
+    super.key,
+    required this.state,
+    required this.index,
+  });
 
   final BlockState state;
+
+  /// 本块在块列表中的下标（`SliverReorderableList` 拖拽起点用）。
+  final int index;
 
   @override
   State<BlockWidget> createState() => _BlockWidgetState();
@@ -145,10 +155,20 @@ class _BlockWidgetState extends State<BlockWidget> {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                _BlockHandle(
-                  selected: selected,
-                  readOnly: readOnly,
-                  onTap: () => editor.selectBlock(selected ? null : block.id),
+                _BlockTypeIcon(
+                  key: ValueKey<String>('diary-type-${block.id}'),
+                  block: block,
+                  color: _gutterInk(selected),
+                ),
+                ReorderableDelayedDragStartListener(
+                  index: widget.index,
+                  enabled: !readOnly,
+                  child: _BlockHandle(
+                    selected: selected,
+                    readOnly: readOnly,
+                    onTap: () =>
+                        editor.selectBlock(selected ? null : block.id),
+                  ),
                 ),
                 Expanded(child: textField),
                 const SizedBox(width: 2),
@@ -458,7 +478,42 @@ class _BlockVerticalMoveAction
   }
 }
 
-/// 48dp 块标：点击选中并浮出排版工具条。
+/// 块左侧纵向簇（类型图标 + 拖拽把手）的统一着色：选中取强调蓝，常态取
+/// 机能风暗灰——沿用把手既有取值，让同簇两项读数一致。
+Color _gutterInk(bool selected) => selected
+    ? AppColors.accentBlue
+    : AppColors.mechInkDim.withValues(alpha: 0.7);
+
+/// 拖拽把手左侧的**当前块类型**图标：段落取 `notes`，H1–H3 取
+/// `looks_one/two/3`（Material 图标名 1/2 为英文、3 起为数字；回读的
+/// H4–H6 与 H3 同字号，退化为通用标题图标）。
+class _BlockTypeIcon extends StatelessWidget {
+  const _BlockTypeIcon({super.key, required this.block, required this.color});
+
+  final DiaryBlock block;
+  final Color color;
+
+  IconData get _icon {
+    if (block.kind != DiaryBlockKind.heading) return Icons.notes;
+    return switch (block.level) {
+      1 => Icons.looks_one,
+      2 => Icons.looks_two,
+      3 => Icons.looks_3,
+      _ => Icons.title,
+    };
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 18,
+      child: Center(child: Icon(_icon, size: 14, color: color)),
+    );
+  }
+}
+
+/// 24dp 块标：点击选中并浮出排版工具条。长按起拖由外层
+/// [ReorderableDelayedDragStartListener] 识别，本组件只负责选中与外观。
 class _BlockHandle extends StatelessWidget {
   const _BlockHandle({
     required this.selected,
@@ -472,16 +527,17 @@ class _BlockHandle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = selected
-        ? AppColors.accentBlue
-        : AppColors.mechInkDim.withValues(alpha: 0.7);
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: readOnly ? null : onTap,
       child: SizedBox(
         width: 24,
         child: Center(
-          child: Icon(Icons.drag_indicator, size: 16, color: color),
+          child: Icon(
+            Icons.drag_indicator,
+            size: 16,
+            color: _gutterInk(selected),
+          ),
         ),
       ),
     );
