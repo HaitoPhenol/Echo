@@ -184,4 +184,96 @@ void main() {
     await tester.pump();
     expect(clips.single, '{"a": 1}');
   });
+
+  testWidgets('补全条恒贴消息列表底部；层内无嵌套滚动体（滚不到顶回归）', (tester) async {
+    late final ControlHarness h;
+    late final SlashConsoleController c;
+    await tester.runAsync(() async {
+      h = await ControlHarness.create();
+    });
+    addTearDown(() async {
+      await tester.runAsync(h.dispose);
+      c.dispose();
+    });
+
+    final tc = TextEditingController();
+    final fn = FocusNode();
+    addTearDown(tc.dispose);
+    addTearDown(fn.dispose);
+    c = SlashConsoleController(
+      bus: h.bus,
+      auth: h.auth,
+      onEditText: (v) => tc.value = v,
+    );
+
+    // 生产同构：浮层以 left/right/bottom 定位在输入框上方（松散高度约束），
+    // 加高表面避免内容被 0.45 高度上限压缩而走反滚。
+    tester.view
+      ..devicePixelRatio = 1.0
+      ..physicalSize = const Size(400, 1200);
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Stack(
+            children: [
+              Positioned(
+                left: 14,
+                right: 14,
+                bottom: 120,
+                child: SlashCommandLayer(controller: c),
+              ),
+              Positioned(
+                left: 14,
+                right: 14,
+                bottom: 40,
+                child: TextField(
+                  controller: tc,
+                  focusNode: fn,
+                  onChanged: c.onInputChanged,
+                  onSubmitted: (v) => c.submit(v),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    // 先制造一条历史结果（guest 级 /sys.ping 经若干微任务即时成功）。
+    await tester.enterText(find.byType(TextField), '/sys.ping');
+    await tester.pump();
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    for (var i = 0; i < 20; i++) {
+      await tester.pump(const Duration(milliseconds: 4));
+      if (c.core.entries.isNotEmpty && c.core.entries.last.ok) break;
+    }
+    expect(find.byType(SlashResultCard), findsOneWidget);
+
+    // 再输入 /di 展开命名空间候选：补全条与结果流同屏。
+    await tester.enterText(find.byType(TextField), '/di');
+    await tester.pump();
+    expect(find.text('命名空间'), findsOneWidget);
+
+    // 1) 预测提示指令框（补全条）必须完整落在消息列表（结果流）下方，
+    //    而非浮在列表顶端被历史结果顶离视线。
+    final resultCard = tester.getRect(find.byType(SlashResultCard));
+    final completionLabel = tester.getRect(find.text('命名空间'));
+    expect(
+      completionLabel.top,
+      greaterThanOrEqualTo(resultCard.bottom),
+      reason: '补全条应贴消息列表底部',
+    );
+
+    // 2) 层内不得再有嵌套滚动体：结果流旧用 shrinkWrap/reverse ListView，
+    //    竖直拖拽在手势竞技场被它抢先胜出却零可滚范围 → 整层滚不到顶。
+    expect(
+      find.descendant(
+        of: find.byType(SlashCommandLayer),
+        matching: find.byType(ListView),
+      ),
+      findsNothing,
+    );
+  });
 }

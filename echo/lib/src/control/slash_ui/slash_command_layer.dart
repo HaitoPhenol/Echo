@@ -58,9 +58,10 @@ class SlashCommandLayer extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // 可压缩区（Flexible + 内部滚动）：补全条/结果流/多行入口
-              // 争用剩余高度，最坏可被压到 0；reverse 使溢出时最新结果
-              // 与多行入口（紧邻卡片一侧）优先可见。
+              // 可压缩区（Flexible + 内部滚动）：结果流/多行入口/补全条
+              // 争用剩余高度，最坏可被压到 0（G4-BUG-3：模态卡必须完整，
+              // 故此区必须可压缩，补全条不能钉在 Flexible 外）；reverse 使
+              // 溢出时整层默认停在最底，底部的补全条优先可见。
               Flexible(
                 child: SingleChildScrollView(
                   reverse: true,
@@ -68,14 +69,17 @@ class SlashCommandLayer extends StatelessWidget {
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      if (controller.active)
-                        _CompletionBar(controller: controller),
                       _ResultsList(controller: controller),
                       if (controller.active && controller.canOpenMultiline)
                         Align(
                           alignment: Alignment.centerRight,
                           child: _MultilineToggle(controller: controller),
                         ),
+                      // 补全候选条恒置于消息列表（结果流）**底部**：reverse
+                      // 滚动默认停在最底，候选贴着输入框始终首先可见，不再
+                      // 被历史结果顶到列表顶端而离开视线。
+                      if (controller.active)
+                        _CompletionBar(controller: controller),
                     ],
                   ),
                 ),
@@ -212,19 +216,20 @@ class _ResultsList extends StatelessWidget {
   Widget build(BuildContext context) {
     final entries = controller.core.entries;
     if (entries.isEmpty) return const SizedBox.shrink();
-    return ListView.builder(
-      reverse: true,
-      shrinkWrap: true,
-      padding: const EdgeInsets.only(bottom: 8),
-      itemCount: entries.length,
-      itemBuilder: (context, i) {
-        // reverse + builder：i=0 对应最新一条。
-        final entry = entries[entries.length - 1 - i];
-        return Padding(
-          padding: const EdgeInsets.only(bottom: 8),
-          child: _EntryCard(entry: entry),
-        );
-      },
+    // 用普通 Column 而非 shrinkWrap/reverse 的 ListView：本区已身处外层
+    // SingleChildScrollView 之内，嵌套的滚动体会在竖直拖拽的手势竞技场
+    // 抢先胜出却零可滚范围（内容 == 视口），使整层「拖不动、滚不到顶」。
+    // 项序与旧 reverse ListView 一致：最新一条在最底。
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (var i = entries.length - 1; i >= 0; i--)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: _EntryCard(entry: entries[i]),
+          ),
+      ],
     );
   }
 }
