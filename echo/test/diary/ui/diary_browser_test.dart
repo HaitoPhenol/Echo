@@ -101,6 +101,31 @@ void main() {
       expect(find.byType(DayEditorPage), findsNothing);
       expect(find.byType(YearListPage), findsOneWidget);
     });
+
+    testWidgets('预进编辑器不自动跳焦——冷启动不凭空唤醒软键盘', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: DiaryPage(
+            clock: fixedClock(),
+            dataProvider: FakeDiaryDataProvider(),
+            repository: emptyRepo(),
+            preEnterToday: true,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // 编辑页已离屏挂载，但其自动跳焦被关掉：App 不请求 IME，
+      // 软键盘不弹出（回归：曾因离屏预进跳焦导致冷启动即弹键盘）。
+      expect(find.byType(DayEditorPage), findsOneWidget);
+      expect(tester.testTextInput.isVisible, isFalse);
+    });
+
+    testWidgets('用户主动进入编辑器仍自动跳焦——光标落在正文行', (tester) async {
+      await drillToToday(tester);
+      // 主动进入（年→月→日）保持既有行为：焦点落到最新段正文行，IME 可见。
+      expect(tester.testTextInput.isVisible, isTrue);
+    });
   });
 
   group('把手竖单「今日日记」快捷', () {

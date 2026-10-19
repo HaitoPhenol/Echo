@@ -65,6 +65,9 @@ class DiaryPage extends StatefulWidget {
   /// 只在 app 打开（进程首启）时发生一次：从后台恢复不会重跑 bootstrap，
   /// 不会把用户已经导航到的位置顶掉。
   ///
+  /// 预进发生在离屏状态，故预进的编辑页**不自动跳焦**（`autoFocus: false`）
+  /// ——否则会在冷启动时主动请求 IME、凭空弹出软键盘。
+  ///
   /// 仅生产环境打开（`nav_destination.dart` 按「无测试注入仓储」判定）；
   /// 测试默认关闭，保持从年列表开始的既有断言基线。
   final bool preEnterToday;
@@ -197,13 +200,16 @@ class DiaryPageState extends State<DiaryPage> implements DiaryNavigatorControlle
   ///
   /// 与用户手动「年→月→日」进入后的栈形态完全一致（返回回到年列表）；
   /// 「今天」取日记日时钟（04:00 日界），与自动成稿、日页判定同源。
+  ///
+  /// 预进发生在**冷启动、笔记页仍离屏**时，故编辑页传 `autoFocus: false`
+  /// ——否则离屏页会在用户还停在首页时主动请求 IME、凭空弹出软键盘。
   List<Route<dynamic>> _initialRoutesWithTodayEditor(
     NavigatorState navigator,
     String initialRoute,
   ) {
     return [
       MaterialPageRoute<void>(builder: (_) => const YearListPage()),
-      _todayEditorRoute(),
+      _editorRouteFor(_clock.today(), autoFocus: false),
     ];
   }
 
@@ -336,9 +342,19 @@ class DiaryPageState extends State<DiaryPage> implements DiaryNavigatorControlle
       );
 
   /// 某日编辑页路由（[预进] 与命令跳转共用同一构造）。
-  DiarySlideRoute<void> _editorRouteFor(DateTime day) => DiarySlideRoute<void>(
-    builder: (_) =>
-        DayEditorPage(year: day.year, month: day.month, day: day.day),
+  ///
+  /// [autoFocus] 透传给 [DayEditorPage]：仅冷启动离屏预进传 false，
+  /// 其余（手动进入、快捷、补记、ECP 跳转）保持 true 的既有跳焦行为。
+  DiarySlideRoute<void> _editorRouteFor(
+    DateTime day, {
+    bool autoFocus = true,
+  }) => DiarySlideRoute<void>(
+    builder: (_) => DayEditorPage(
+      year: day.year,
+      month: day.month,
+      day: day.day,
+      autoFocus: autoFocus,
+    ),
     settings: RouteSettings(
       name: '/day/${day.year}/${day.month}/${day.day}',
     ),

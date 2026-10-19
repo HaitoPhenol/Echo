@@ -31,6 +31,7 @@ class DayEditorPage extends StatefulWidget {
     required this.month,
     required this.day,
     this.unsupportedBlockTypes = const [],
+    this.autoFocus = true,
   });
 
   final int year;
@@ -40,6 +41,16 @@ class DayEditorPage extends StatefulWidget {
   /// 回读含子集外块类型时传入（M5 导入链路使用；M2 恒空），
   /// 页面顶部出只读提示横幅。参数先就位，避免未来改构造签名。
   final List<String> unsupportedBlockTypes;
+
+  /// 载入完成后是否把光标落到最新段正文行（[requestFocus] 会主动
+  /// 请求 IME、弹出软键盘）。
+  ///
+  /// 冷启动时笔记页在导航轨道上**离屏**预进今日编辑页（见
+  /// [DiaryPage.preEnterToday]），若此处照常跳焦，App 会在用户还停在
+  /// 首页时就凭空唤醒输入法。故预进路线传 false；用户主动进入
+  /// （年→月→日、今日日记快捷、补记、ECP 跳转）保持 true，沿用
+  /// 「进编辑页光标即落在正文行」的既有行为。
+  final bool autoFocus;
 
   @override
   State<DayEditorPage> createState() => _DayEditorPageState();
@@ -118,11 +129,13 @@ class _DayEditorPageState extends State<DayEditorPage>
     if (stampAdded) {
       // 即时落盘，但走「空段时间戳不写文件」清洗：待启用的空时间戳只存在
       // 于 UI，不进 .sy（2026-10-19 用户裁定）；旧稿补建概述段等真实改动
-      // 仍即时落盘，不等 1.5s 防抖。随后光标落到该时间戳块的下一行。
+      // 仍即时落盘，不等 1.5s 防抖。随后（用户主动进入时）光标落到该
+      // 时间戳块的下一行；离屏预进（[DayEditorPage.autoFocus] 为 false）
+      // 不跳焦，避免冷启动凭空弹出软键盘。
       await repository.upsertDraft(
         composer.prunedForPersist(_controller.snapshotDocument()),
       );
-      _focusAfterLastStamp();
+      if (widget.autoFocus) _focusAfterLastStamp();
     }
   }
 
