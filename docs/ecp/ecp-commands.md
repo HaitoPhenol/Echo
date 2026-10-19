@@ -320,6 +320,30 @@
   成稿只写文档根 `custom-*`，原 `--wait-snapshot` 占位参数已删除。**
 - 返回：`{"created": bool, "document": {…同 diary.get 摘要…}}`。
 
+### `diary.goto`
+- 类 写 · 级 2 · 幂等 · 起始 P5
+- 参数：
+  - `--date YYYY-MM-DD`（可选，给出即**直达该日编辑页**，与 `--level` 互斥）；
+  - `--level year|month|day|editor`（可选，缺省且无 `--date` 时=`year`）；
+  - `--year`（可选，`level=month/day/editor` 时必给）；
+  - `--month`（可选，`level=day/editor` 时必给，1-12）；
+  - `--day`（可选，`level=editor` 时必给，1-31）。
+- 作用：驱动笔记页**内层**路由栈（年→月→日→编辑页），经
+  `DiaryNavigatorController` 调与用户手动点击**完全相同**的栈操作
+  （同路原则）；并先把顶层导航 snap 到 notes 页（导航控制器未注册时
+  跳过，仅驱动内层栈）。
+- 返回：`{"page":"notes","level":"…",…}`，editor 级另含 `date`。
+- 约束：目标日历日期/年份不得晚于日记日时钟今天（**不提供未来入口**，
+  越界 `USAGE`）；`--date` 与 `--level` 同时给出 `USAGE`；层级所需
+  分量缺失 `USAGE`；非法日期组合（如 02-31）`USAGE`。
+- 备注：命令运行在 widget 树外，需 App **已进入笔记页完成装配**
+  （服务未注册时 `NOT_READY`）。
+- 示例：
+  ```bash
+  scripts/echo-cmd diary.goto --date 2026-10-18   # 直达该日编辑页
+  scripts/echo-cmd diary.goto --level day --year 2026 --month 10
+  ```
+
 ### `diary.prune`
 - 类 写 · 级 **3**（破坏性，需解锁+`--confirm`）· 幂等 · 起始 P1
 - 参数：`--before YYYY-MM-DD`（可选，缺省=日记日时钟今天，语义同
@@ -370,13 +394,65 @@
 - 参数：`--notebook <名>`（可选，思源笔记本名，缺省「日记」）、
   `--year YYYY`（可选，缺省导出全部年份）、
   `--month M`（可选，须与 `--year` 同给，1-12，收紧到某月——对应 UI
-  的按月导出）；**不再需要 `--confirm`**
+  的按月导出）、
+  `--date YYYY-MM-DD`（可选，**P5 新增**，只打该日——按日导出；与
+  `--year`/`--month` 互斥，同时给出 `USAGE`）；**不再需要 `--confirm`**
 - 作用：跳过 UI 直接走 M5 导出服务生成 `.sy.zip`，写入沙盒导出目录。
+  scope 命名：`all`（全部）/`yyyy`/`yyyy-MM`/`yyyy-MM-dd`（按日）。
 - 返回：`{"path":"…","entries":n,"sizeBytes":n,"notebook":"…"}`；
   内容不外带，只回路径。
 - 后续：人工/agent 经 SAF 或 adb pull 喂思源 3.8.6 做导入验收。
 - 备注：share_plus 的"确认已发送"状态流转属于 UI 流程，不在本命令
   范围（导出产物本身可重复生成）。
+
+### `diary.state.set`
+- 类 写 · 级 2 · 非幂等 · 起始 P5
+- 参数：`--date YYYY-MM-DD`（必填）、`--state draft|exported`（必填）
+- 作用：在 **draft↔exported** 两态间迁移某日日记状态（**面向 MCP 的
+  「恢复导出状态」入口**）：
+  - `--state exported`：draft→exported（标记已导出、正文转只读）；
+  - `--state draft`：exported→draft（**恢复导出状态**、正文解锁）。
+- 返回：`{"date":"…","from":"…","to":"…","document":{…}}`。
+- 错误：目标不存在 `NOT_FOUND`（5）；非法迁移（如 exported→archived
+  以外的越权、archive 后复活）`CONFLICT`（4）。`archived` 为终态、
+  归档流程走 UI，本命令**不暴露** `archived` 目标态。
+
+### `diary.block.set`
+- 类 写 · 级 2 · 非幂等 · 起始 P5
+- 参数：`--date YYYY-MM-DD`（必填）、`--json`（必填，块对象或块数组）
+- `--json` 每项字段（均可选）：`id` / `kind`(paragraph|heading) /
+  `level`(1..6) / `text` / `background`(1..13 或 `null`) /
+  `custom`(对象，键须 `custom-` 前缀，值 `null` 删键) / `index`(新块
+  插入位置)。
+- 作用：
+  - 带 `id`：按 id 就地补丁（仅改补丁出现的字段），块不存在 `NOT_FOUND`；
+  - 无 `id`：新建块，追加末尾；给 `index` 则插入该位置（越界夹取）。
+- 约束：仅 **draft** 可写（exported/archived 抛 `CONFLICT`）；段落会
+  清空 `level`，标题块 `level` 必须 1..6；`background` 越界 `USAGE`。
+- 返回：修改后的**完整文档** JSON（同 `diary.get` 摘要口径）。
+- 备注：`--json` 标注 `auditRedact`——正文内容**不写审计流水**（只记
+  长度）。
+
+### `diary.document.set`
+- 类 写 · 级 2 · 非幂等 · 起始 P5
+- 参数：`--date YYYY-MM-DD`（必填）、`--json`（必填，对象）
+- `--json` 字段（均可选）：`title`(字符串) / `blocks`(块对象数组，
+  **整体替换**现有块；每项字段同 `diary.block.set`，`id` 缺省自动
+  生成思源 22 位块 ID) / `custom`(对象，按 `diary.custom.set` 规则合并)。
+- 作用：全文替换某日草稿内容。
+- 约束：仅 **draft** 可写（`CONFLICT`）；`id` 非法（不符 22 位规范）
+  或被显式给出但格式错误 → `USAGE`。
+- 返回：修改后的**完整文档** JSON。`--json` 标注 `auditRedact`。
+
+### `diary.custom.set`
+- 类 写 · 级 2 · **幂等** · 起始 P5
+- 参数：`--date YYYY-MM-DD`（必填）、`--json`（必填，对象）
+- 作用：**合并**（非整体替换）某日草稿的文档级 `custom-*` 自定义
+  属性：键须以 `custom-` 开头且非空；值为 `null` → 删除该键；值为
+  字符串/数字/布尔 → 统一转字符串落库（思源自定义属性皆文本）。
+- 约束：仅 **draft** 可写（`CONFLICT`）；键前缀非法或值类型非法
+  （嵌套对象/数组）→ `USAGE`。
+- 返回：修改后的**完整文档** JSON。`--json` 标注 `auditRedact`。
 
 ---
 

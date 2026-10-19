@@ -204,6 +204,20 @@ class InMemoryDiaryRepository extends DiaryRepository {
   }
 
   @override
+  Future<void> restoreDraft(DateTime date) async {
+    final entry = _entries[_keyOf(date)];
+    if (entry == null) throw StateError('恢复目标不存在：$date');
+    if (entry.state != DiaryDocState.exported) {
+      throw StateError('仅 exported 可恢复为 draft（当前 ${entry.state}）：$date');
+    }
+    entry
+      ..state = DiaryDocState.draft
+      ..exportedAt = null;
+    entry.doc!.locked = false; // 解锁：恢复后正文可再编辑
+    notifyListeners();
+  }
+
+  @override
   Future<DiaryPruneResult> pruneEmptyBefore(
     DateTime cutoff,
     bool Function(DiaryDocument document) isEmpty, {

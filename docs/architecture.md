@@ -648,13 +648,22 @@ ui/（年/月/日浏览、编辑页）
   （clock/repository/composer/exportService），diary.list/get/ensure/
   prune/seed/reset/export 与 UI 完全同路，不存在第二套测试实现；
   `sys.clock.set` 只覆盖 `DiaryClock` 注入值（不碰系统时间）。
+- **笔记页控制（P5，`feat/ecp-diary-control`）**：内层路由导航经**纯 Dart**
+  `DiaryNavigatorController` 接口收口（`diary/diary_navigator.dart`），
+  `DiaryPageState` 实现并注册进 ECP 注册表，命令层不触达 Widget——
+  `diary.goto` 按 `--date`/`--level` 驱动年/月/日/编辑四层栈（先把顶层
+  导航 snap 到 notes）；`diary.export --date` 增日粒度；
+  仓储增 `restoreDraft`（exported→draft）供 `diary.state.set` 恢复导出
+  状态；内容写入 `diary.block.set`（块级补丁/新建）/`diary.document.set`
+  （整体替换）/`diary.custom.set`（文档根 custom-* 合并）仅对 draft 生效，
+  参数标 `auditRedact`。
 
-### 3.13 ECP 控制面（P1–P4 已交付，v0.13.0）
+### 3.13 ECP 控制面（P1–P4 已交付 v0.13.0；P5 笔记页控制分支开发中）
 
 - **分层**：`protocol/`（信封、错误码→退出码、`CommandSpec` 受控动词表、
   `ControlBus` 注册/解析/裁决/审计）→ `auth/`（PinStore PBKDF2、
   AuthManager 三通道级别矩阵、5 次失败退避、paused 即焚会话、AuditLog）
-  → `commands/`（sys/auth/nav/diary/chat/console/badge 七域 35 条，
+  → `commands/`（sys/auth/nav/diary/chat/console/badge 七域 40 条，
   其中 5 条 debugOnly 在 release 物理不注册）；另有 `events/`
   （内存环+长轮询）、`jobs/`（后台作业表）、`slash/`（指令台核心）。
 - **同路原则**：命令不持有业务逻辑，全部经 `ControlRegistry` 调 UI

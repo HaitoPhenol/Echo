@@ -215,6 +215,14 @@ abstract class DiaryRepository extends ChangeNotifier {
   /// 非 exported 状态调用抛 [StateError]。
   Future<void> archiveDay(DateTime date);
 
+  /// exported→draft：把「已导出」日记恢复为可编辑草稿（撤销导出）。
+  ///
+  /// 仅 exported 可恢复（draft 本就草稿、archived 正文已物理清除，
+  /// 二者均抛 [StateError]）。恢复后清空 exportedAt、文档解锁，
+  /// 正文文件保持原样（exported 阶段不删正文，故无需重建）。
+  /// 供 ECP `diary.state.set` 的「恢复导出状态」路径复用。
+  Future<void> restoreDraft(DateTime date);
+
   /// 删除日记日**早于** [cutoff]（按自然日比较，不含 cutoff 当天）
   /// 且 [isEmpty] 判定为「什么都没写」的 **draft** 草稿
   /// （tech-plan §5.2 第 4 条）。
