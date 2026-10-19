@@ -673,10 +673,7 @@ class _SmartNavScreenState extends State<SmartNavScreen>
 
   /// 把手手势结束：横向拖 → 就近/按速吸附；未移动点按 → 开竖单，
   /// 抽屉开着时点按 → 关抽屉；竖直死区不做任何事。
-  void _releaseHandleGesture(
-    HandleGesture gesture, {
-    required bool cancelled,
-  }) {
+  void _releaseHandleGesture(HandleGesture gesture, {required bool cancelled}) {
     if (gesture.horizontal) {
       _settleDrawer(open: _drawerAnim.value > 0.5);
       return;
@@ -1065,8 +1062,21 @@ class _SmartNavScreenState extends State<SmartNavScreen>
   Widget build(BuildContext context) {
     final screenSize = MediaQuery.sizeOf(context);
     final safeBottom = MediaQuery.paddingOf(context).bottom;
+    // 软键盘高度。**必须在本 State 的 context（Scaffold 之上）读取**：
+    // Scaffold 在自动避让时会把 body 的 viewInsets.bottom 归零，
+    // body 内部（含 _buildOverlays 拿到的 Builder context）读到的恒为 0。
+    final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
 
     final scaffold = Scaffold(
+      // 底部停靠件（把手条 / AI 条 / 导航胶囊 / 页码指示器 / 竖单 /
+      // AI 对话框）一律钉在物理屏底边，**不随软键盘上浮**。
+      // 关掉 Scaffold 的自动避让后 body 保持全屏高，这些底边锚点
+      // （bottom: 常量 + safeBottom）也就固定在原位，被键盘遮住即可。
+      // 真正需要避让键盘的只有两处，各自手动补偿：
+      // - 页面轨道（日记编辑页光标）：_buildPageTrack 垫 keyboardInset；
+      // - 搜索胶囊与 slash 层（输入框在胶囊里）：_buildOverlays 垫
+      //   keyboardInset，且仅在搜索态（非搜索态胶囊就是导航条，须留原位）。
+      resizeToAvoidBottomInset: false,
       // Builder 让本页操作配置能拿到 Scaffold 之下的 context
       // （ScaffoldMessenger/SnackBar）。
       body: Builder(
@@ -1081,8 +1091,13 @@ class _SmartNavScreenState extends State<SmartNavScreen>
             child: Stack(
               children: [
                 ..._buildStaticBackdrop(context),
-                _buildPageTrack(context, screenSize),
-                ..._buildOverlays(context, screenSize, safeBottom),
+                _buildPageTrack(context, screenSize, keyboardInset),
+                ..._buildOverlays(
+                  context,
+                  screenSize,
+                  safeBottom,
+                  keyboardInset,
+                ),
               ],
             ),
           );
@@ -1136,65 +1151,77 @@ class _SmartNavScreenState extends State<SmartNavScreen>
   ];
 
   /// 横向页面轨道：大页码 + 各目的地页面，随导航显示位置横滑。
-  Widget _buildPageTrack(BuildContext context, Size screenSize) =>
-      Positioned.fill(
-        key: const ValueKey<String>('pages'),
-        child: ClipRect(
-          child: AnimatedBuilder(
-            animation: _nav,
-            builder: (context, _) {
-              // 显示位置含橡胶带与磁力吸附曲线。
-              final renderedPosition = _nav.displayPosition;
-              return Stack(
-                children: [
-                  Positioned(
-                    left: -renderedPosition * screenSize.width,
-                    top: 0,
-                    bottom: 0,
-                    width: screenSize.width * _destinations.length,
-                    child: Stack(
-                      children: [
-                        // 机能风大页码：每页一格、页面之下，随轨道横滑。
-                        Row(
-                          children: [
-                            for (var i = 0; i < _destinations.length; i++)
-                              Expanded(
-                                child: Stack(
-                                  children: [MechanicalPageNumber(index: i)],
-                                ),
+  ///
+  /// [keyboardInset] 为软键盘高度：页面内容仍需避让键盘（否则日记编辑页
+  /// 聚焦底部块时光标会藏在键盘后面），而底部停靠件要保持钉在原位，
+  /// 故这里只给页面本身垫出键盘高度，不影响同级的浮层。
+  Widget _buildPageTrack(
+    BuildContext context,
+    Size screenSize,
+    double keyboardInset,
+  ) => Positioned.fill(
+    key: const ValueKey<String>('pages'),
+    child: Padding(
+      padding: EdgeInsets.only(bottom: keyboardInset),
+      child: ClipRect(
+        child: AnimatedBuilder(
+          animation: _nav,
+          builder: (context, _) {
+            // 显示位置含橡胶带与磁力吸附曲线。
+            final renderedPosition = _nav.displayPosition;
+            return Stack(
+              children: [
+                Positioned(
+                  left: -renderedPosition * screenSize.width,
+                  top: 0,
+                  bottom: 0,
+                  width: screenSize.width * _destinations.length,
+                  child: Stack(
+                    children: [
+                      // 机能风大页码：每页一格、页面之下，随轨道横滑。
+                      Row(
+                        children: [
+                          for (var i = 0; i < _destinations.length; i++)
+                            Expanded(
+                              child: Stack(
+                                children: [MechanicalPageNumber(index: i)],
                               ),
-                          ],
-                        ),
-                        Row(
-                          // 页面由导航配置驱动：每个目的地的 pageBuilder
-                          // 经 Builder 注入上下文，全部 Expanded 等宽。
-                          children: [
-                            for (final destination in _destinations)
-                              Expanded(
-                                child: Builder(
-                                  builder: destination.pageBuilder,
-                                ),
-                              ),
-                          ],
-                        ),
-                      ],
-                    ),
+                            ),
+                        ],
+                      ),
+                      Row(
+                        // 页面由导航配置驱动：每个目的地的 pageBuilder
+                        // 经 Builder 注入上下文，全部 Expanded 等宽。
+                        children: [
+                          for (final destination in _destinations)
+                            Expanded(
+                              child: Builder(builder: destination.pageBuilder),
+                            ),
+                        ],
+                      ),
+                    ],
                   ),
-                ],
-              );
-            },
-          ),
+                ),
+              ],
+            );
+          },
         ),
-      );
+      ),
+    ),
+  );
 
   /// 浮层与底部三条：scrim / 快捷弧 / 涟漪 / 页码指示器 / AI 条 /
   /// 把手条 / 胶囊簇 / slash 层 / 抽屉 / 竖单 / AI 对话框。
   ///
   /// 子项顺序与原 Stack 逐字一致（含各 Key 与条件挂载位置）。
+  /// [keyboardInset] 为软键盘高度：只作用于「搜索胶囊」与「slash 层」——
+  /// 搜索态下输入框就在胶囊里，必须抬到键盘之上；非搜索态胶囊就是导航条，
+  /// 须与其余底部停靠件一样留在原位（故只在搜索态补偿，避免键盘顶起）。
   List<Widget> _buildOverlays(
     BuildContext context,
     Size screenSize,
     double safeBottom,
+    double keyboardInset,
   ) {
     // 底部三条几何（全部来自 DockGeometry，不靠运行时测量）。
     final handleWidth = DockGeometry.handleWidthFor(screenSize.width);
@@ -1277,10 +1304,7 @@ class _SmartNavScreenState extends State<SmartNavScreen>
         Positioned(
           key: const ValueKey<String>('ai-bar'),
           left: aiLeft,
-          bottom:
-              DockGeometry.bottomMargin +
-              safeBottom -
-              4, // 光晕上下各溢 4px
+          bottom: DockGeometry.bottomMargin + safeBottom - 4, // 光晕上下各溢 4px
           width: aiWidth,
           height: DockGeometry.barHeight + 8,
           child: AiBar(pressed: _aiPressed),
@@ -1301,14 +1325,16 @@ class _SmartNavScreenState extends State<SmartNavScreen>
 
       // -------- 底部胶囊簇（历史 + 胶囊 + 倒计时边框） --------
       //
-      // 键盘弹出时安卓端 adjustResize 会自动压缩窗口高度，
-      // 胶囊随之自然停在键盘上方，这里不再手动加键盘高度，
-      // 否则会双重补偿导致搜索框飞到过高位置。
+      // 根 Scaffold 已关闭自动避让（body 不再被键盘压缩），因此键盘高度
+      // 必须在这里手动补偿：
+      // - 搜索态（barsHiddenBySearch）：胶囊已 morph 成全宽搜索框、输入框
+      //   就在其中，抬 keyboardInset 使其停在键盘上方；
+      // - 非搜索态：胶囊是常规导航条，与把手/AI 条一样留在原位，不补偿。
       Positioned(
         key: const ValueKey<String>('capsule'),
         left: 14,
         right: 14,
-        bottom: 16 + safeBottom,
+        bottom: 16 + safeBottom + (barsHiddenBySearch ? keyboardInset : 0),
         child: SearchCapsule(
           controller: _nav,
           pageIds: [for (final d in _destinations) d.id],
@@ -1330,12 +1356,14 @@ class _SmartNavScreenState extends State<SmartNavScreen>
 
       // -------- slash 指令态浮层（补全/结果/模态卡） --------
       // 叠在胶囊之上、抽屉与竖单之下；指令态退出时零占位。
+      // 只在搜索态挂载，故与胶囊同步抬 keyboardInset（无双重补偿）。
       if (_slash != null && _nav.isSearching)
         Positioned(
           key: const ValueKey<String>('slash-layer'),
           left: 14,
           right: 14,
-          bottom: 16 + safeBottom + DockGeometry.searchHeight + 8,
+          bottom:
+              16 + safeBottom + DockGeometry.searchHeight + 8 + keyboardInset,
           child: SlashCommandLayer(controller: _slash!),
         ),
 
