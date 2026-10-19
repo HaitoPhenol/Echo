@@ -504,6 +504,27 @@ class BlockEditorController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// 拖动重排：把 [oldIndex] 处的块搬到 [newIndex]（搬移后的目标下标）。
+  ///
+  /// [newIndex] 直接采用 `SliverReorderableList.onReorderItem` 的语义——
+  /// 框架已替调用方扣除「被拖块移除后列表短一位」的偏移，这里只做越界
+  /// 收敛到 `[0, len-1]`。锁定、索引越界或落点未变时 no-op（不压快照、
+  /// 不置脏）；生效时先压一次撤销快照再搬移，块对象（ID / 文本控制器 /
+  /// 焦点节点）整体随位移动、不重建。
+  void moveBlockAt(int oldIndex, int newIndex) {
+    if (locked) return;
+    if (oldIndex < 0 || oldIndex >= _states.length) return;
+    final target = newIndex.clamp(0, _states.length - 1);
+    if (target == oldIndex) return;
+    _pushSnapshot();
+    final state = _states.removeAt(oldIndex);
+    _states.insert(target, state);
+    state.block.updatedAt = _now();
+    _syncDocBlocks();
+    _markDirty();
+    notifyListeners();
+  }
+
   // ================================================================
   //  撤销（结构级；字符级用 TextField 内建 UndoHistory）
   // ================================================================

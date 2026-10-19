@@ -158,9 +158,12 @@ class DiaryBlock {
 ### 4.1 组件映射
 
 ```
-ListView(children: blocks.map(BlockWidget.new))
+CustomScrollView(slivers: [header?, SliverReorderableList(blocks)])
 BlockWidget = Row(
-  GestureDetector(块标，48dp 热区, onTap 选中),
+  _BlockTypeIcon(当前块类型图标，18dp),              // 2026-10-19：类型图标在把手左侧
+  ReorderableDelayedDragStartListener(             // 2026-10-19：长按起拖
+    index, enabled: !readOnly,
+    child: GestureDetector(块标 24dp, onTap 选中)),
   Expanded(TextField(
     controller: block.textController,    // 每块独立
     focusNode: block.focusNode,
@@ -171,7 +174,9 @@ BlockWidget = Row(
 ```
 
 不使用全局 contenteditable 等价物；每块独立持有文本与光标，
-结构与金标准块模型一一对应。
+结构与金标准块模型一一对应。列表由 `ListView.builder` 换为
+`CustomScrollView` + `SliverReorderableList`（2026-10-19），块卡左侧为
+「类型图标 + 拖拽把手」纵向簇，正文相应右移 18dp。
 
 ### 4.2 交互语义（对齐上游 §5.4 与思源行为；括注 M2/M3 实际落地）
 
@@ -182,6 +187,8 @@ BlockWidget = Row(
 | 块首 Backspace | 【已实现】硬件退格经 `Actions` 覆盖 `DeleteCharacterIntent`（利用 EditableText 的 Action.overridable，条件不满足回落默认行为；Focus 冒泡在空删除时不可靠）：offset=0 空块删除（至少留一块）、非空与上一块合并，**保留上一块 ID** |
 | ↑/↓ 越界 | 【已实现，边界版】覆盖 `ExtendSelectionVerticallyToAdjacentLineIntent`，仅首行 offset0 向上 / 末行末尾向下才拦截跳焦；`TextPainter` 逐行判定留待打磨 |
 | 块选中/底色 | 【M3 patch 已接线】块标点击 selectBlock 弹出 OverlayPortal 浮层（正文/H1–H3、13 色+无色，只读禁用；点全屏屏障取消选中并关闭）；`setBackground(1..13/null)`、`turnInto(paragraph/heading 1..3)` 命令只读/locked 时 no-op；13 色为思源 3.8.6 midnight 主题实值，13 号近白底自动切深墨字 |
+| 块类型图标 | 【2026-10-19 已接线】把手左侧 18dp 类型图标，按块种类取形（段落 `notes`、H1–H3 `looks_one/two/3`、回读 H4–H6 退化 `title`），与把手同簇同色（选中强调蓝/常态机能暗灰）；时间戳只读块无图标 |
+| 块拖拽重排 | 【2026-10-19 已接线】把手外包 `ReorderableDelayedDragStartListener`（长按起拖，`enabled: !readOnly`），宿主 `SliverReorderableList.onReorderItem`（该 SDK 已弃 `onReorder`，回调已扣移除偏移）直连 `BlockEditorController.moveBlockAt`：生效先压撤销快照再搬移、块对象整体随位移动不重建、越界收敛、锁定/未变 no-op。`BlockEditorScope` 改 `InheritedTheme` 令拖拽代理摘进 Overlay 后仍可取控制器；代理自带透明 `Material` 撑 TextField 祖先 |
 | 粘贴 | 【已实现】delta 插入文本含多个 `\n` 即一次拆成多块（与分块同通道，无需单独快捷键拦截） |
 | 撤销 | 【M3 patch 已接线】结构操作前压 serializer JSON 快照（50 步，含编辑态光标信息）；编辑页标题栏撤销/重做按钮由 canUndo/canRedo 驱动（只读/locked 禁用）；字符级用 TextField 内建 UndoHistory |
 | 自动保存 | 【M2：内存仓储版】dirty 监听 + 5s 防抖 snapshotDocument→upsertDraft；paused/hidden/inactive 与返回时强制 flush；保存态 chip（编辑中/已保存 HH:mm/草稿/只读）。**写 `.sy` 草稿文件与启动完整性校验在 M5 随持久化落地** |
@@ -555,7 +562,8 @@ M4 反转。**
   浅色主题两套取值仍留待 M6。
 - **控制器能力的 UI 接线状态**：turnInto/setBackground/50 步撤销重做已在
   M3 patch 完成接线——块标浮层（转标题/底色）、标题栏撤销/重做按钮；
-  **Slash 命令面板与块拖拽浮层入口仍未接线**，留下个 patch。
+  块类型图标与**块拖拽重排已接线**（2026-10-19，`SliverReorderableList` +
+  `moveBlockAt`）；**Slash 命令面板 / 块拖拽浮层入口仍未接线**，留下个 patch。
 - **浏览层时钟收口于仓储**：M3 patch 给 `DiaryRepository` 增加 `today()`，
   月/日列表的当年当月可达性与「今天/本月」高亮不再直取 `DateTime.now()`，
   M5 持久化实现须同步提供该方法（内存实现为可注入时钟）。

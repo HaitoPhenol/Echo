@@ -1,5 +1,6 @@
 import 'dart:math';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -272,6 +273,99 @@ void main() {
       await tester.pump();
       expect(find.text('H2'), findsOneWidget);
       expect(editor.selectedBlockId, editor.blocks.last.block.id);
+    });
+  });
+
+  group('块类型图标与拖拽重排（M3 补丁接线）', () {
+    /// 按给定文本挂载多块文档（依次发 ID）。
+    BlockEditorController mountMulti(List<String> texts, {bool locked = false}) {
+      final now = DateTime(2026, 5, 15, 9);
+      final ids = SyIdGenerator(random: Random(7), now: () => now);
+      final date = DateTime(now.year, now.month, now.day);
+      final document = DiaryDocument(
+        id: SyIdGenerator.dayContainer(date),
+        date: date,
+        title: '测试日',
+        locked: locked,
+        blocks: [
+          for (final text in texts) DiaryBlock(id: ids.next(), text: text),
+        ],
+      );
+      return BlockEditorController(idGenerator: ids, now: () => now)
+        ..attach(document);
+    }
+
+    testWidgets('类型图标在把手左侧并随块种类切换：段落 notes → H1 looks_one', (tester) async {
+      final editor = mountMulti(['正文']);
+      addTearDown(editor.dispose);
+      await tester.pumpWidget(harness(editor));
+      await tester.pump();
+
+      final typeIcon = find.byKey(
+        ValueKey<String>('diary-type-${editor.blocks.single.block.id}'),
+      );
+      expect(typeIcon, findsOneWidget);
+      expect(
+        find.descendant(of: typeIcon, matching: find.byIcon(Icons.notes)),
+        findsOneWidget,
+      );
+      // 纵向簇顺序：类型图标在拖拽把手左侧。
+      expect(
+        tester.getCenter(typeIcon).dx,
+        lessThan(tester.getCenter(find.byIcon(Icons.drag_indicator)).dx),
+      );
+
+      editor.turnInto(editor.blocks.single, DiaryBlockKind.heading, level: 1);
+      await tester.pump();
+      expect(
+        find.descendant(of: typeIcon, matching: find.byIcon(Icons.looks_one)),
+        findsOneWidget,
+      );
+      expect(find.byIcon(Icons.notes), findsNothing);
+    });
+
+    testWidgets('把手包在长按拖拽监听内；只读文档禁用起拖', (tester) async {
+      ReorderableDelayedDragStartListener listenerOf() =>
+          tester.widget<ReorderableDelayedDragStartListener>(
+            find.ancestor(
+              of: find.byIcon(Icons.drag_indicator),
+              matching: find.byType(ReorderableDelayedDragStartListener),
+            ),
+          );
+
+      final editor = mountMulti(['正文']);
+      addTearDown(editor.dispose);
+      await tester.pumpWidget(harness(editor));
+      await tester.pump();
+      expect(listenerOf().enabled, isTrue);
+      expect(listenerOf().index, 0);
+
+      // 已导出（locked）文档：把手保留可见，但拖拽起点禁用。
+      final locked = mountMulti(['正文'], locked: true);
+      addTearDown(locked.dispose);
+      await tester.pumpWidget(harness(locked));
+      await tester.pump();
+      expect(listenerOf().enabled, isFalse);
+    });
+
+    testWidgets('长按把手向下拖：块落到末位并压入撤销', (tester) async {
+      final editor = mountMulti(['块0', '块1', '块2']);
+      addTearDown(editor.dispose);
+      await tester.pumpWidget(harness(editor));
+      await tester.pump();
+
+      final gesture = await tester.startGesture(
+        tester.getCenter(find.byIcon(Icons.drag_indicator).first),
+      );
+      // 先熬过长按延迟（DelayedMultiDragGestureRecognizer）才开始拖。
+      await tester.pump(kLongPressTimeout + const Duration(milliseconds: 100));
+      await gesture.moveBy(const Offset(0, 400));
+      await tester.pump();
+      await gesture.up();
+      await tester.pumpAndSettle();
+
+      expect(editor.blocks.map((s) => s.block.text), ['块1', '块2', '块0']);
+      expect(editor.canUndo, isTrue);
     });
   });
 }

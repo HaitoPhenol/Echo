@@ -90,7 +90,7 @@
 | `sy/` | 思源格式层：`DiaryDocument` 模型、确定性 ID 生成器、子集序列化器、.sy.zip 打包 |
 | `data/` | `DiaryRepository` 抽象 + 内存实现 / **sqflite 持久实现**、`DiaryClock`（04:00 日界）、`DiaryDataProvider`（现为 Fake 常量）、debug 种子 |
 | `template/` | 模板 JSON 解析、每日成稿 `DiaryComposer`（幂等/并发去重/custom-* 数据面填充） |
-| `editor/` | 分块编辑器：命令、控制器（50 步撤销重做、`applyCustomPatch` 批量写文档根 custom-*）、块视图（`header` 可挂滚动区首项）、块标浮层 |
+| `editor/` | 分块编辑器：命令、控制器（50 步撤销重做、`applyCustomPatch` 批量写文档根 custom-*、`moveBlockAt` 拖拽重排）、块视图（`CustomScrollView` + `SliverReorderableList`、`header` 可挂滚动区首项）、块左侧「类型图标 + 拖拽把手」纵向簇、块标浮层 |
 | `export/` | 导出服务（月行增量导出 .sy.zip，`exportMonth`） |
 | `ui/` | 年→月→日浏览页、日记编辑页、三态 UI、胶囊行（`diary_capsule_row.dart`，心情入口）、分享确认流 |
 
@@ -150,6 +150,22 @@
   复位、再次输入重新打点。③ 前端时间戳胶囊上方留 `top:12` 间距。④ 导出时每个
   `row` 超级块**之前**插一个顶层空 `NodeParagraph`（`_blankParagraph`），使
   思源里时间戳段与前文留一空行。
+- **块类型图标与拖拽重排（2026-10-19）**：块卡左侧改为**「类型图标 +
+  拖拽把手」纵向簇**（图标 18dp 宽、把手 24dp 宽，正文相应右移 18dp）：
+  类型图标按当前块种类取形（段落 `notes`，H1–H3 `looks_one/two/3`，回读
+  H4–H6 退化为 `title`），选中取强调蓝、常态取机能暗灰，与把手同簇同色。
+  把手外包 `ReorderableDelayedDragStartListener`（长按 `kLongPressTimeout`
+  起拖，`enabled: !readOnly`），宿主由 `ListView.builder` 换成
+  `CustomScrollView` + `SliverReorderableList`，`onReorderItem`（该 SDK
+  已弃用 `onReorder`；其回调已替调用方扣除移除偏移）直连
+  `BlockEditorController.moveBlockAt`——生效先压一次撤销快照再搬移，
+  块对象（ID / 文本控制器 / 焦点节点）整体随位移动不重建，越界收敛到
+  `[0, len-1]`，锁定/未变时 no-op。两处必要收口：①`BlockEditorScope` 由
+  `InheritedNotifier` 改继承 `InheritedTheme`（拖拽代理经
+  `InheritedTheme.capture` 摘进 Overlay 重挂，非 InheritedTheme 不会被
+  捕获）；②纯 sliver 版无默认 `proxyDecorator`，需自带一层透明 `Material`
+  （块内 `TextField` 断言需 Material 祖先）并叠轻微抬升阴影。时间戳只读
+  块无把手、既不可拖也不显示类型图标；`locked`（已导出）文档整篇不可拖。
 - **自动数据与心情（2026-10-18 重设）**：温度/湿度/天气/日程与心情写
   文档根 `custom-*`——`composer.fetchCustomPatch(date)` 三源并发取数
   （单源失败不连坐、null 删键），`controller.applyCustomPatch(patch)`

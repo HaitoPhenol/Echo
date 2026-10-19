@@ -680,4 +680,76 @@ void main() {
       expect(controller.blocks[0].block.text, '2026-10-10 08:00');
     });
   });
+
+  group('T11 拖动重排', () {
+    /// 挂载三块文档（块0/块1/块2），返回控制器（已注册 tearDown）。
+    BlockEditorController mountThree({bool locked = false}) {
+      doc = makeDoc(
+        locked: locked,
+        blocks: [
+          for (var i = 0; i < 3; i++) DiaryBlock(id: ids.next(), text: '块$i'),
+        ],
+      );
+      controller = BlockEditorController(idGenerator: ids, now: () => fixedNow)
+        ..attach(doc);
+      addTearDown(controller.dispose);
+      return controller;
+    }
+
+    List<String> texts() =>
+        controller.blocks.map((s) => s.block.text).toList(growable: false);
+
+    test('下移：moveBlockAt(0, 2) 把首块插到末位，块对象整体搬移', () {
+      final c = mountThree();
+      final moved = c.blocks.first.block;
+
+      c.moveBlockAt(0, 2);
+
+      expect(texts(), ['块1', '块2', '块0']);
+      expect(identical(c.blocks.last.block, moved), isTrue);
+      expect(c.dirty.value, isTrue);
+    });
+
+    test('上移：moveBlockAt(2, 0) 把末块插到首位', () {
+      final c = mountThree();
+      c.moveBlockAt(2, 0);
+      expect(texts(), ['块2', '块0', '块1']);
+    });
+
+    test('目标下标越界收敛到末位', () {
+      final c = mountThree();
+      c.moveBlockAt(0, 99);
+      expect(texts(), ['块1', '块2', '块0']);
+    });
+
+    test('落点未变 / 源下标越界：no-op 不压快照不置脏', () {
+      final c = mountThree();
+      c.moveBlockAt(1, 1);
+      c.moveBlockAt(-1, 0);
+      c.moveBlockAt(9, 0);
+
+      expect(texts(), ['块0', '块1', '块2']);
+      expect(c.canUndo, isFalse);
+      expect(c.dirty.value, isFalse);
+    });
+
+    test('撤销回到原序，重做再回到新序', () {
+      final c = mountThree();
+      c.moveBlockAt(0, 2);
+      expect(c.canUndo, isTrue);
+
+      c.undo();
+      expect(texts(), ['块0', '块1', '块2']);
+
+      c.redo();
+      expect(texts(), ['块1', '块2', '块0']);
+    });
+
+    test('locked 文档：重排 no-op', () {
+      final c = mountThree(locked: true);
+      c.moveBlockAt(0, 2);
+      expect(texts(), ['块0', '块1', '块2']);
+      expect(c.canUndo, isFalse);
+    });
+  });
 }
