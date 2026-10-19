@@ -108,7 +108,7 @@ class DiaryComposer {
 
     final stamp = DiaryBlock(
       id: _ids.next(),
-      text: _formatStamp(now),
+      text: formatDiaryStamp(now),
       custom: {kEchoStampAttr: '1'},
       updatedAt: now,
     );
@@ -130,13 +130,36 @@ class DiaryComposer {
     return true;
   }
 
-  /// 时间戳文本：`yyyy-MM-dd HH:mm`（年月日时分，用户原话）。
+  // ================================================================
+  //  落盘清洗（时间戳「空段不落盘」规则，2026-10-19 用户裁定）
+  // ================================================================
+
+  /// 落盘前清洗：把**段内无内容**的当前时间戳连其段内空块一并剔除。
   ///
-  /// 与参考样本（带秒 `yyyy-MM-dd HH:mm:ss`）不同——如后续要秒仅改此处。
-  static String _formatStamp(DateTime t) {
-    String p(int value, int width) => value.toString().padLeft(width, '0');
-    return '${p(t.year, 4)}-${p(t.month, 2)}-${p(t.day, 2)} '
-        '${p(t.hour, 2)}:${p(t.minute, 2)}';
+  /// 规则（用户原话）：
+  /// * 该时间戳内用户没写字 → 不落盘，只在 UI 上显示；下次进编辑页重新生成；
+  /// * 原本有内容已落盘、但被清空 → 同样不落盘（下次进编辑页生成新的）；
+  /// * 只有该段写了字，时间戳才写入文件。
+  ///
+  /// 仅作用于**最后一个**时间戳（用户原话：机制只应用于「最新更新的内容」，
+  /// 前文已保存的部分不受影响）。返回新文档（块列表为该剔除后的新列表），
+  /// 不改动入参——调用方持有的 UI 文档仍保留待启用的时间戳。
+  DiaryDocument prunedForPersist(DiaryDocument document) {
+    final blocks = document.blocks;
+    final index = DiaryStamp.lastIndex(blocks);
+    // 无时间戳，或当前段时间戳段内已有内容：原样落盘。
+    if (index < 0 || DiaryStamp.segmentHasContent(blocks, index)) {
+      return document;
+    }
+    return DiaryDocument(
+      id: document.id,
+      date: document.date,
+      title: document.title,
+      custom: document.custom,
+      blocks: blocks.sublist(0, index),
+      updatedAt: document.updatedAt,
+      locked: document.locked,
+    );
   }
 
   /// 确保某日记日已有草稿：有则原样返回，无则成稿落盘后返回。

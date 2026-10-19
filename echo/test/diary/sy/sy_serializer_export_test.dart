@@ -123,9 +123,11 @@ void main() {
 
     test('五个槽位全空：不生成首行胶囊超级块', () {
       final children = childrenOf(exportRoot(sampleDoc()));
-      // 首个超级块即第一段（row），不是 col 胶囊行。
-      expect(children.first['Type'], 'NodeSuperBlock');
-      expect(childrenOf(children.first)[1]['Data'], 'row');
+      // 首行无胶囊 → 第一个节点是时间戳段上一行的空段落，其后才是 row 段。
+      expect(children.first['Type'], 'NodeParagraph');
+      expect(children.first.containsKey('Children'), isFalse);
+      expect(children[1]['Type'], 'NodeSuperBlock');
+      expect(childrenOf(children[1])[1]['Data'], 'row');
     });
 
     test('无时间戳段的文档：胶囊行后跟顶层扁平段落', () {
@@ -157,23 +159,32 @@ void main() {
         ],
       );
       final children = childrenOf(exportRoot(doc));
-      // 0 = 首行 col 胶囊超级块；1 = 概述段（顶层段落）；2 = 首个 row 段。
+      // 0 = 首行 col 胶囊超级块；1 = 概述段（顶层段落）；
+      // 2 = 时间戳段上一行空段落；3 = 首个 row 段。
       expect(childrenOf(children[0])[1]['Data'], 'col');
       expect(children[1]['Type'], 'NodeParagraph');
       expect(children[1]['ID'], '20261018080000-summary');
       final style =
           (children[1]['Properties'] as Map)['style'] as String;
       expect(style, contains('var(--b3-font-background12)'));
-      expect(children[2]['Type'], 'NodeSuperBlock');
-      expect(childrenOf(children[2])[1]['Data'], 'row');
+      expect(children[2]['Type'], 'NodeParagraph');
+      expect(children[2].containsKey('Children'), isFalse);
+      expect(children[3]['Type'], 'NodeSuperBlock');
+      expect(childrenOf(children[3])[1]['Data'], 'row');
     });
   });
 
   group('每段垂直超级块', () {
     test('两个时间戳 = 两个 row 超级块，段内正文同包，stamp 带 code 与块级标志', () {
       final children = childrenOf(exportRoot(sampleDoc()));
-      expect(children, hasLength(2));
-      for (final seg in children) {
+      // [空行, 段1, 空行, 段2]：每个时间戳段上一行都插了空段落。
+      expect(children, hasLength(4));
+      for (final i in [0, 2]) {
+        expect(children[i]['Type'], 'NodeParagraph');
+        expect(children[i].containsKey('Children'), isFalse);
+      }
+      for (final i in [1, 3]) {
+        final seg = children[i];
         expect(seg['Type'], 'NodeSuperBlock');
         final kids = childrenOf(seg);
         expect(kids.first['Type'], 'NodeSuperBlockOpenMarker');
@@ -183,7 +194,7 @@ void main() {
       }
 
       // 第一段：open, layout, stamp, 正文 a, 正文 b, close
-      final seg1 = childrenOf(children[0]);
+      final seg1 = childrenOf(children[1]);
       expect(seg1, hasLength(6));
       expect(codeText(seg1[2]), '2026-10-18 10:00');
       final stampProps = (seg1[2]['Properties'] as Map).cast<String, Object?>();
@@ -194,7 +205,7 @@ void main() {
       expect(childrenOf(seg1[3]).single['Data'], '第一段正文');
 
       // 第二段：open, layout, stamp, 正文 c, close
-      final seg2 = childrenOf(children[1]);
+      final seg2 = childrenOf(children[3]);
       expect(seg2, hasLength(5));
       expect(codeText(seg2[2]), '2026-10-18 10:30');
       expect(
@@ -216,10 +227,13 @@ void main() {
         ],
       );
       final children = childrenOf(exportRoot(doc));
+      // [散块, 空行, 段]。
+      expect(children, hasLength(3));
       expect(children.first['Type'], 'NodeParagraph');
       expect(children.first['ID'], '20261018090000-prepre1');
-      expect(children[1]['Type'], 'NodeSuperBlock');
-      expect(children, hasLength(2));
+      expect(children[1]['Type'], 'NodeParagraph');
+      expect(children[1].containsKey('Children'), isFalse);
+      expect(children[2]['Type'], 'NodeSuperBlock');
     });
   });
 

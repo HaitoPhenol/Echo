@@ -71,6 +71,16 @@ class BlockEditorController extends ChangeNotifier {
   /// 保存完成后清脏（编辑页调用）。
   void markClean() => _dirty.value = false;
 
+  /// 当前（最后一个）时间戳是否「待启用」：段内尚无用户内容。
+  ///
+  /// 待启用语义（2026-10-19 用户裁定）：该时间戳不落盘（只存在于 UI，
+  /// 下次进编辑页重新生成），且用户在本段输入**第一个字符**时重打点为
+  /// 当前时间；此后不再自动更新，直到内容再次被清空。
+  bool _stampPending = false;
+
+  /// 「待启用时间戳」状态只读视图（测试与诊断用）。
+  bool get pendingStamp => _stampPending;
+
   /// 当前选中块（块标点击）；null 无选中。
   String? selectedBlockId;
 
@@ -157,6 +167,7 @@ class BlockEditorController extends ChangeNotifier {
       state.controller.addListener(() => _onBlockText(state));
       _states.add(state);
     }
+    _initStampPending();
   }
 
   /// 文本/结构回灌文档并返回（焦点/控制器随之释放）。
@@ -187,6 +198,68 @@ class BlockEditorController extends ChangeNotifier {
   }
 
   // ================================================================
+  //  待启用时间戳（空段不落盘 + 首次输入重打点）
+  // ================================================================
+
+  /// 挂载/撤销恢复后按当前块内容初始化「待启用」标志。
+  ///
+  /// 段内已有内容（例如复用了 30 分钟窗口内已保存的时间戳）→ 不待启用，
+  /// 该时间戳不会再被自动改写（前文已编辑保存的部分不受本机制影响）。
+  void _initStampPending() {
+    final index = _lastStampIndex();
+    _stampPending = index >= 0 && _segmentEmpty(index);
+  }
+
+  /// 最后一个时间戳块的状态下标；无时间戳返回 -1。
+  int _lastStampIndex() {
+    for (var i = _states.length - 1; i >= 0; i--) {
+      if (_states[i].block.isStamp) return i;
+    }
+    return -1;
+  }
+
+  /// 时间戳块 [stampIndex] 的段内是否没有任何用户内容（非 stamp 块全空）。
+  bool _segmentEmpty(int stampIndex) {
+    for (var i = stampIndex + 1; i < _states.length; i++) {
+      final state = _states[i];
+      if (state.block.isStamp) break;
+      if (state.controller.text.trim().isNotEmpty) return false;
+    }
+    return true;
+  }
+
+  /// 内容变化后刷新「待启用」状态。
+  ///
+  /// 段由空转有内容且处于待启用态 → 重打点为当前时间（用户原话：输入
+  /// 第一个字符时自动更新到「动笔时间」）；段再次归空 → 复位为待启用
+  /// （用户原话：删光后该时间戳只在 UI 显示，再输入时重新打点）。
+  void _refreshStampPending() {
+    final index = _lastStampIndex();
+    if (index < 0) {
+      _stampPending = false;
+      return;
+    }
+    if (_segmentEmpty(index)) {
+      _stampPending = true;
+      return;
+    }
+    if (!_stampPending) return;
+    _stampPending = false;
+    _restampStamp(index);
+  }
+
+  /// 把时间戳块改写为当前时间（用户输入首个字符的「动笔时间」）。
+  void _restampStamp(int stampIndex) {
+    final state = _states[stampIndex];
+    final now = _now();
+    final text = formatDiaryStamp(now);
+    if (state.block.text == text) return;
+    applyValue(state, text, TextSelection.collapsed(offset: text.length));
+    state.block.updatedAt = now;
+    notifyListeners();
+  }
+
+  // ================================================================
   //  文本变更主通道（IME delta，兼容各类软键盘）
   // ================================================================
 
@@ -206,6 +279,7 @@ class BlockEditorController extends ChangeNotifier {
     if (newValue.composing.isValid) {
       state.block.text = newText;
       _markDirty();
+      _refreshStampPending();
       return;
     }
 
@@ -227,6 +301,7 @@ class BlockEditorController extends ChangeNotifier {
     if (!inserted.contains('\n')) {
       state.block.text = newText;
       _markDirty();
+      _refreshStampPending();
       return;
     }
 
@@ -304,6 +379,7 @@ class BlockEditorController extends ChangeNotifier {
       }
     }
     _markDirty();
+    _refreshStampPending();
     notifyListeners();
     _postFocus(focusTarget, focusOffset);
   }
@@ -338,6 +414,7 @@ class BlockEditorController extends ChangeNotifier {
       state.dispose();
       _syncDocBlocks();
       _markDirty();
+      _refreshStampPending();
       notifyListeners();
       _postFocus(prev, prev.controller.text.length);
     } else {
@@ -349,6 +426,7 @@ class BlockEditorController extends ChangeNotifier {
       applyValue(prev, merged, TextSelection.collapsed(offset: caret));
       _syncDocBlocks();
       _markDirty();
+      _refreshStampPending();
       notifyListeners();
       _postFocus(prev, caret);
     }
@@ -491,6 +569,7 @@ class BlockEditorController extends ChangeNotifier {
       state.controller.addListener(() => _onBlockText(state));
       _states.add(state);
     }
+    _initStampPending();
     selectedBlockId = null;
     _markDirty();
     notifyListeners();

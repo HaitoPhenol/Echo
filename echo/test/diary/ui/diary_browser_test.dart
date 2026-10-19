@@ -189,6 +189,35 @@ void main() {
       expect(focused, hasLength(1));
     });
 
+    testWidgets('空时间戳不落盘：未写字时仓储内无时间戳块，重进重新生成', (tester) async {
+      final repo = emptyRepo();
+      await tester.pumpWidget(app(repository: repo));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('2026 年'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('6 月'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('今天'));
+      await tester.pumpAndSettle();
+      expect(find.byType(DayEditorPage), findsOneWidget);
+
+      // UI 上待启用时间戳胶囊已生成。
+      expect(
+        find.byWidgetPredicate(
+          (w) =>
+              w is DiaryCapsuleChip &&
+              w.key is ValueKey<String> &&
+              (w.key! as ValueKey<String>).value.startsWith('diary-stamp-'),
+        ),
+        findsOneWidget,
+      );
+
+      // 用户一个字没写：落盘文档内不含时间戳块（空段不写文件）。
+      final stored = await repo.findDay(fixedNow);
+      expect(stored, isNotNull);
+      expect(stored!.blocks.any((b) => b.isStamp), isFalse);
+    });
+
     testWidgets('写作后重进：用户文字保留，胶囊数据不被二次成稿覆盖', (tester) async {
       await drillToToday(tester);
 

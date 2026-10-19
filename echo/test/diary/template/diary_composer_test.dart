@@ -502,4 +502,92 @@ void main() {
       expect(DiaryDaySummary.previewOf(stampOnly), isEmpty);
     });
   });
+
+  group('DiaryComposer.prunedForPersist 落盘清洗（空段时间戳不写文件）', () {
+    final at = DateTime(2026, 10, 18, 10);
+
+    DiaryComposer composer() => DiaryComposer(
+      template: DailyDefaultTemplate(spec: DiaryTemplateSpec.fromJson(_json)),
+      provider: _CountingProvider(),
+      idGenerator: SyIdGenerator(random: Random(5), now: () => at),
+      now: () => at,
+    );
+
+    DiaryBlock summary() => DiaryBlock(
+      id: '20261018080000-zzzzzz9',
+      background: DiaryComposer.summaryBackground,
+    );
+
+    DiaryBlock stamp(String id) => DiaryBlock(
+      id: id,
+      text: '2026-10-18 10:00',
+      custom: {kEchoStampAttr: '1'},
+      updatedAt: at,
+    );
+
+    DiaryBlock para(String id, [String text = '']) =>
+        DiaryBlock(id: id, text: text, updatedAt: at);
+
+    DiaryDocument docOf(List<DiaryBlock> blocks) => DiaryDocument(
+      id: SyIdGenerator.dayContainer(DateTime(2026, 10, 18)),
+      date: DateTime(2026, 10, 18),
+      title: '10月18日 周日',
+      blocks: blocks,
+      updatedAt: at,
+    );
+
+    test('待启用（段空）：剔掉最后时间戳及其段内空块，入参 UI 文档不变', () {
+      final doc = docOf([
+        summary(),
+        stamp('20261018100000-ssssss1'),
+        para('20261018100001-aaaaaaa'),
+      ]);
+      final pruned = composer().prunedForPersist(doc);
+
+      expect(pruned, isNot(same(doc)));
+      expect(pruned.blocks, hasLength(1));
+      expect(pruned.blocks.single.background, DiaryComposer.summaryBackground);
+      // 入参（UI 持有的文档）仍保留待启用时间戳，只在文件里不落盘。
+      expect(doc.blocks, hasLength(3));
+      expect(doc.blocks[1].isStamp, isTrue);
+    });
+
+    test('段内已有内容：原样返回同一文档（时间戳随文件落盘）', () {
+      final doc = docOf([
+        summary(),
+        stamp('20261018100000-ssssss2'),
+        para('20261018100001-bbbbbbb', '今天写的第一句'),
+      ]);
+      expect(composer().prunedForPersist(doc), same(doc));
+    });
+
+    test('无时间戳：原样返回', () {
+      final doc = docOf([summary(), para('20261018080000-ccccccc')]);
+      expect(composer().prunedForPersist(doc), same(doc));
+    });
+
+    test('只剔最后一个：更早时间戳（其段为空）不被牵连', () {
+      final doc = docOf([
+        summary(),
+        stamp('20261018100000-ssssss3'),
+        stamp('20261018103000-ssssss4'),
+        para('20261018103001-ddddddd', '最新段正文'),
+      ]);
+      final pruned = composer().prunedForPersist(doc);
+      expect(pruned, same(doc));
+      expect(pruned.blocks, hasLength(4));
+    });
+
+    test('内容被清空后落盘：时间戳连空块一并剔除（下次进页面重新生成）', () {
+      final doc = docOf([
+        summary(),
+        stamp('20261018100000-ssssss5'),
+        para('20261018100001-eeeeeee', '后来被清空'),
+      ]);
+      doc.blocks[2].text = ''; // 模拟用户在 UI 里清空该段内容（块仍在）。
+      final pruned = composer().prunedForPersist(doc);
+      expect(pruned.blocks, hasLength(1));
+      expect(pruned.blocks.any((b) => b.isStamp), isFalse);
+    });
+  });
 }
