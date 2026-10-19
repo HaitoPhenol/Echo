@@ -14,7 +14,9 @@ import '../template/daily_default_template.dart';
 import '../template/diary_composer.dart';
 import '../../control/bootstrap.dart';
 import '../../services/nav_badge_service.dart';
+import '../diary_navigator.dart';
 import 'browser/day_editor_page.dart';
+import 'browser/day_list_page.dart';
 import 'browser/month_list_page.dart';
 import 'browser/year_list_page.dart';
 import 'diary_composer_scope.dart';
@@ -74,7 +76,7 @@ class DiaryPage extends StatefulWidget {
 /// 公开 State：供导航屏用 [GlobalKey] 调 [openTodayEditor] / [startBackfill]
 /// （把手竖单的「今日日记」「补记」两个快捷入口），与本屏
 /// `_handleMenuKey` / `_aiDialogKey` 同一做法。
-class DiaryPageState extends State<DiaryPage> {
+class DiaryPageState extends State<DiaryPage> implements DiaryNavigatorController {
   final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
 
   late final DiaryClock _clock = widget.clock ?? DiaryClock();
@@ -157,7 +159,9 @@ class DiaryPageState extends State<DiaryPage> {
           ..set(_clock)
           ..set(repository)
           ..set(composer)
-          ..set(exportService);
+          ..set(exportService)
+          // ECP diary.goto 同路入口：命令经注册表拿本 State，驱动内层栈。
+          ..set<DiaryNavigatorController>(this);
       }
 
       if (!mounted) return;
@@ -204,14 +208,7 @@ class DiaryPageState extends State<DiaryPage> {
   }
 
   /// 今日编辑页路由（[预进][DiaryPage.preEnterToday] 与「今日日记」快捷共用）。
-  DiarySlideRoute<void> _todayEditorRoute() {
-    final today = _clock.today();
-    return DiarySlideRoute<void>(
-      builder: (_) =>
-          DayEditorPage(year: today.year, month: today.month, day: today.day),
-      settings: RouteSettings(name: _todayEditorRouteName()),
-    );
-  }
+  DiarySlideRoute<void> _todayEditorRoute() => _editorRouteFor(_clock.today());
 
   /// 今日编辑页的路由名（栈顶比对用）。
   String _todayEditorRouteName() {
@@ -264,6 +261,88 @@ class DiaryPageState extends State<DiaryPage> {
       ),
     );
   }
+
+  // ---- ECP `diary.goto` 同路入口（[DiaryNavigatorController]）-------------
+
+  /// 取内层 Navigator；首帧前尚未就绪时排到帧后重试一次
+  /// （命令可能在 App 冷启动即刻到达，此时 currentState 仍为 null）。
+  void _withNavigator(void Function(NavigatorState navigator) action) {
+    final navigator = _navigatorKey.currentState;
+    if (navigator != null) {
+      action(navigator);
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final ready = _navigatorKey.currentState;
+      if (ready != null) action(ready);
+    });
+  }
+
+  /// 回到根：年列表（弹掉栈内其余路由，保留栈底）。
+  @override
+  Future<void> showYearList() async {
+    _withNavigator((navigator) => navigator.popUntil((r) => r.isFirst));
+  }
+
+  /// 跳到某年月列表：栈形态 [年列表, 月列表]。
+  @override
+  Future<void> showMonthList(int year) async {
+    _withNavigator(
+      (navigator) => navigator.pushAndRemoveUntil(
+        _monthListRoute(year),
+        (r) => r.isFirst,
+      ),
+    );
+  }
+
+  /// 跳到某年月日列表：栈形态 [年列表, 月列表, 日列表]。
+  @override
+  Future<void> showDayList(int year, int month) async {
+    _withNavigator((navigator) {
+      navigator.pushAndRemoveUntil(
+        _monthListRoute(year),
+        (r) => r.isFirst,
+      );
+      navigator.push(_dayListRoute(year, month));
+    });
+  }
+
+  /// 跳到某日编辑页：栈形态与手动「年→月→日」进入一致
+  /// [年列表, 月列表, 日列表, 编辑页]，返回逐层回退。
+  @override
+  Future<void> showEditor(DateTime date) async {
+    final day = DateTime(date.year, date.month, date.day);
+    _withNavigator((navigator) {
+      navigator.pushAndRemoveUntil(
+        _monthListRoute(day.year),
+        (r) => r.isFirst,
+      );
+      navigator.push(_dayListRoute(day.year, day.month));
+      navigator.push(_editorRouteFor(day));
+    });
+  }
+
+  /// 月列表路由（路由名与 [MonthListPage] 既有压栈口径一致）。
+  DiarySlideRoute<void> _monthListRoute(int year) => DiarySlideRoute<void>(
+    builder: (_) => MonthListPage(year: year),
+    settings: RouteSettings(name: '/year/$year'),
+  );
+
+  /// 日列表路由。
+  DiarySlideRoute<void> _dayListRoute(int year, int month) =>
+      DiarySlideRoute<void>(
+        builder: (_) => DayListPage(year: year, month: month),
+        settings: RouteSettings(name: '/year/$year/month/$month'),
+      );
+
+  /// 某日编辑页路由（[预进] 与命令跳转共用同一构造）。
+  DiarySlideRoute<void> _editorRouteFor(DateTime day) => DiarySlideRoute<void>(
+    builder: (_) =>
+        DayEditorPage(year: day.year, month: day.month, day: day.day),
+    settings: RouteSettings(
+      name: '/day/${day.year}/${day.month}/${day.day}',
+    ),
+  );
 
   /// 导出提醒 · 锚点：按「是否仍有已结束月份存在未导出草稿」上报红锚点。
   ///

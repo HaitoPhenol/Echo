@@ -198,6 +198,10 @@ class DiaryExportService {
   /// 导出粒度已改月；[month] 可选（须与 [year] 同时给出），给出时
   /// scope 为 `yyyy-MM`，否则为 `yyyy` / `all`。
   ///
+  /// [date] 为日粒度（2026-10-19 新增，ECP `diary.export --date` 用）：
+  /// 给出时只打包该日 draft，scope 为 `yyyy-MM-dd`，且与 [year]/[month]
+  /// 互斥（同时给出由命令层先行拦截，此处 date 优先）。
+  ///
   /// [notebookName] 缺省或空白时回落 UI 固定名 [DiaryExportService
   /// .notebookName]（用户裁定：命令侧该参数可选）。无任何 draft 时
   /// 抛 [DiaryExportEmptyException]，不生成空包。
@@ -205,6 +209,7 @@ class DiaryExportService {
     String? notebookName,
     int? year,
     int? month,
+    DateTime? date,
     required Directory outputDirectory,
   }) async {
     final name = (notebookName == null || notebookName.trim().isEmpty)
@@ -212,7 +217,14 @@ class DiaryExportService {
         : notebookName.trim();
 
     final diaries = <DiaryDocument>[];
-    if (year == null) {
+    if (date != null) {
+      final day = DateTime(date.year, date.month, date.day);
+      // 与 UI 同口径：只有 draft 入包，exported/archived 不重复导出。
+      if (await repository.stateOfDay(day) == DiaryDocState.draft) {
+        final doc = await repository.findDay(day);
+        if (doc != null) diaries.add(doc);
+      }
+    } else if (year == null) {
       for (final y in await repository.availableYears()) {
         diaries.addAll(await repository.draftDocumentsOfYear(y));
       }
@@ -231,11 +243,14 @@ class DiaryExportService {
     );
 
     await outputDirectory.create(recursive: true);
-    final scope = year == null
-        ? 'all'
-        : (month == null
-              ? '$year'
-              : '$year-${month.toString().padLeft(2, '0')}');
+    final scope = date != null
+        ? '${date.year}-${date.month.toString().padLeft(2, '0')}-'
+              '${date.day.toString().padLeft(2, '0')}'
+        : (year == null
+              ? 'all'
+              : (month == null
+                    ? '$year'
+                    : '$year-${month.toString().padLeft(2, '0')}'));
     final zipFile = File(
       '${outputDirectory.path}/$name-$scope-${_stamp(exportedAt)}.sy.zip',
     );

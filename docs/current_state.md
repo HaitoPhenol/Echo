@@ -204,12 +204,22 @@
   （30/60/120/240s/5min 退避）；App paused（息屏/切后台）立即
   销毁全部会话；审计不记 PIN 与正文（正文命令标 auditRedact，
   记 `<redacted:N>`）。
-- **命令域（35 条；release 物理裁掉 5 条 debugOnly 后 30 条）**：
+- **命令域（40 条；release 物理裁掉 5 条 debugOnly 后 35 条）**：
   sys 9（ping/help/info/status/audit/events/job.get +
-  debugOnly clock.set/delay）、auth 4、nav 2、diary 7
-  （list/get/ensure/prune/export + debugOnly reset/seed）、
+  debugOnly clock.set/delay）、auth 4、nav 2、diary 12
+  （list/get/ensure/goto/prune/export/state.set/block.set/document.set/
+  custom.set + debugOnly reset/seed）、
   chat 6（list/get/open/send/mark-read + debugOnly seed）、
   console 2、badge 5。
+- **笔记页控制（P5，`feat/ecp-diary-control` 分支，待合入排号）**：
+  `diary.goto` 驱动笔记页内层路由栈（年/月/日/编辑页，给 `--date` 直达
+  该日编辑页；先把顶层导航 snap 到 notes）——经 `DiaryNavigatorController`
+  纯 Dart 接口收口，命令层不触达 Widget；`diary.export --date` 增日粒度
+  打包；`diary.state.set` 在 draft↔exported 间迁移（exported→draft 即
+  **恢复导出状态**，仓储新增 `restoreDraft`）；内容写入
+  `diary.block.set`/`diary.document.set`/`diary.custom.set`（JSON 补丁，
+  `--json` 标 auditRedact、仅 draft 可写）。受控动词表新增
+  `block.set/document.set/custom.set/state.set`。
 - **slash 指令台（P3）**：搜索栏 `/` 进入，三段补全（命名空间→
   动词→参数）、结果卡片、PIN/确认卡、命令历史；核心
   `control/slash/ControlConsoleCore` 与入口 Widget 解耦，终端页

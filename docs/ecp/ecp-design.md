@@ -160,7 +160,9 @@ release 构建不包含 `src/debug/` 源集，物理无 receiver；Dart 侧通�
   `notify/exception/view/resolve`（信号）、
   `prune/delete/reset/seed`（生命周期；`seed` 为 P4 debug 灌数）、
   `job.get`（P4：异步作业轮询）、`events`（P4：事件游标/长轮询）、
-  `delay`（P4：仅 debug 验证用）；
+  `delay`（P4：仅 debug 验证用）、
+  `block.set`/`document.set`/`custom.set`/`state.set`（P5：日记内容/自定义
+  属性/状态迁移的显式写入）；
   带点复合动词 `clock.set` 等与清单逐字一致；
 - 首批命名空间：`sys` `auth` `nav` `diary` `chat` `console` `badge`；
 - 仅 debug 构建注册：`sys.clock.set`、`diary.seed`、`diary.reset`、
@@ -177,7 +179,7 @@ release 构建不包含 `src/debug/` 源集，物理无 receiver；Dart 侧通�
 |---|---|---|---|
 | 0 | `guest` | 公开只读 | `sys.ping` `sys.help` `sys.info` |
 | 1 | `owner` | 所有者私人数据读取；**用户接入 Agent/MCP 即视为同意此级读取**，不做逐条读同意 | `diary.get` `diary.list` `chat.get` `chat.list` `console.snapshot` `badge.status` `sys.status` `sys.audit` |
-| 2 | `user` | 本地可逆常规写 + **数据导出**（本地通道直放；MCP 上限 1 物理不可达） | `nav.goto` `diary.ensure` `console.refresh` `badge.*` `chat.open` `chat.mark-read` `diary.export` |
+| 2 | `user` | 本地可逆常规写 + **数据导出**（本地通道直放；MCP 上限 1 物理不可达） | `nav.goto` `diary.ensure` `console.refresh` `badge.*` `chat.open` `chat.mark-read` `diary.export` `diary.goto` `diary.state.set` `diary.block.set` `diary.document.set` `diary.custom.set` |
 | 3 | `admin` | **外部可见副作用 / 不可逆删除 / 鉴权凭据变更**：须显式授权（当次前台解锁会话） | `chat.send`、`diary.prune`、`diary.reset`、`diary.seed`、`auth.set-pin` |
 
 **定级原则（2026-10-13 用户裁定修订，替代原"按最坏通道评估"）**：

@@ -237,6 +237,8 @@ class CommandSpec {
     'goto', 'open', 'create', 'set', 'send', 'refresh', 'ensure',
     // 带点/连字符的复合动词（与手册冻结名一致）
     'clock.set', 'set-pin', 'mark-read',
+    // P5：日记笔记页控制（内容/自定义属性/状态迁移的显式写入）
+    'block.set', 'document.set', 'custom.set', 'state.set',
     // 信号
     'notify', 'exception', 'view', 'resolve',
     // 生命周期

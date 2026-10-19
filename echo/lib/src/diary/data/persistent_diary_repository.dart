@@ -416,6 +416,33 @@ CREATE TABLE $_table(
   }
 
   @override
+  Future<void> restoreDraft(DateTime date) async {
+    final key = _keyOf(date);
+    await _db.transaction((txn) async {
+      final rows = await txn.query(
+        _table,
+        where: 'date = ?',
+        whereArgs: [key],
+        limit: 1,
+      );
+      if (rows.isEmpty) throw StateError('恢复目标不存在：$date');
+      final state = _stateOf(rows.first['state']! as String);
+      if (state != DiaryDocState.exported) {
+        throw StateError('仅 exported 可恢复为 draft（当前 $state）：$date');
+      }
+      // exported 阶段正文文件未删（归档才删），故恢复只需回迁状态与
+      // 清 exported_at；file_path 原样保留，findDay 不再强制只读。
+      await txn.update(
+        _table,
+        {'state': 'draft', 'exported_at': null},
+        where: 'date = ?',
+        whereArgs: [key],
+      );
+    });
+    notifyListeners();
+  }
+
+  @override
   Future<DiaryPruneResult> pruneEmptyBefore(
     DateTime cutoff,
     bool Function(DiaryDocument document) isEmpty, {
