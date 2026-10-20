@@ -1232,7 +1232,15 @@ class _SmartNavScreenState extends State<SmartNavScreen>
         handleRestLeft + (handleDockedLeft - handleRestLeft) * drawerK;
     final aiLeft = DockGeometry.aiLeftFor(screenSize.width);
     final aiWidth = DockGeometry.aiWidthFor(screenSize.width);
-    final aiDialogHeight = math.min(screenSize.height * 0.52, 360.0);
+    // AI 对话框悬在软键盘之上：根 Scaffold 已关闭自动避让，这里必须
+    // 手动补偿 keyboardInset，否则输入行会被键盘遮住。静止态底距仍是
+    // 停靠条上方 38，键盘弹起时整体上移同样的键盘高度；高度再按键盘
+    // 上方的可用空间收敛，避免小屏 + 键盘时面板顶出屏幕。
+    final aiDialogBottom = 38 + safeBottom + keyboardInset;
+    final aiDialogHeight = math.min(
+      math.min(screenSize.height * 0.52, 360.0),
+      math.max(0.0, screenSize.height - aiDialogBottom),
+    );
     final bool barsHiddenBySearch = _nav.isSearching;
 
     return [
@@ -1426,7 +1434,7 @@ class _SmartNavScreenState extends State<SmartNavScreen>
           key: const ValueKey<String>('ai-dialog'),
           left: DockGeometry.sideMargin,
           right: DockGeometry.sideMargin,
-          bottom: 38 + safeBottom,
+          bottom: aiDialogBottom,
           height: aiDialogHeight,
           child: AiDialog(key: _aiDialogKey, onDismissed: _handleAiDismissed),
         ),

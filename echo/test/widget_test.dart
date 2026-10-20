@@ -592,6 +592,11 @@ void main() {
   });
 
   testWidgets('AI 条：单击/短滑动不误触；长按呼出对话框可输入，点遮罩收起', (tester) async {
+    // 固定 800×600 逻辑表面（dpr=1），便于按逻辑像素注入键盘高度。
+    tester.view
+      ..devicePixelRatio = 1.0
+      ..physicalSize = const Size(800, 600);
+    addTearDown(tester.view.reset);
     await tester.pumpWidget(EchoApp(diaryRepository: diaryRepo));
     await tester.pump();
 
@@ -622,8 +627,21 @@ void main() {
     await tester.pump();
     expect(find.text('你好'), findsOneWidget);
 
-    // 点遮罩空白处：失焦收键盘 + 面板退场。
-    await tester.tapAt(const Offset(400, 100));
+    // 键盘弹起：根 Scaffold 不做自动避让，AI 对话框须自行补偿
+    // keyboardInset——面板底边停在键盘上方（保留 38 的静止间距），
+    // 高度收敛到可用空间内，不顶出屏幕。
+    tester.view.viewInsets = const FakeViewPadding(bottom: 260);
+    await tester.pump();
+    final dialogRect = tester.getRect(find.byType(AiDialog));
+    expect(
+      dialogRect.bottom,
+      lessThanOrEqualTo(600 - 260 + 0.5),
+      reason: 'AI 对话框应停在键盘上方，不能被键盘遮住',
+    );
+    expect(dialogRect.top, greaterThanOrEqualTo(0), reason: '面板不得顶出屏幕');
+
+    // 点遮罩空白处（面板左右各留 14 的间隙）：失焦收键盘 + 面板退场。
+    await tester.tapAt(const Offset(5, 100));
     var closed = false;
     for (var i = 0; i < 48 && !closed; i++) {
       await tester.pump(const Duration(milliseconds: 16));
