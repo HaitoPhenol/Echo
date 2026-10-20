@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:echo/src/app/echo_app.dart';
 import 'package:echo/src/diary/data/in_memory_diary_repository.dart';
+import 'package:echo/src/navigation/dock_geometry.dart';
 import 'package:echo/src/navigation/smart_nav_screen.dart';
 import 'package:echo/src/navigation/widgets/ai_dialog.dart';
 import 'package:echo/src/navigation/widgets/handle_menu.dart';
@@ -628,15 +629,15 @@ void main() {
     expect(find.text('你好'), findsOneWidget);
 
     // 键盘弹起：根 Scaffold 不做自动避让，AI 对话框须自行补偿
-    // keyboardInset——面板底边贴住键盘上沿，不再保留静止态的 38
-    // 间距；高度收敛到可用空间内，不顶出屏幕。
+    // keyboardInset——面板与键盘的间距取左右边距，左、右、下三边
+    // 等宽；高度收敛到可用空间内，不顶出屏幕。
     tester.view.viewInsets = const FakeViewPadding(bottom: 260);
     await tester.pump();
     final dialogRect = tester.getRect(find.byType(AiDialog));
     expect(
       dialogRect.bottom,
-      closeTo(600 - 260, 0.5),
-      reason: 'AI 对话框应贴住键盘上沿，不能被键盘遮住',
+      closeTo(600 - 260 - DockGeometry.sideMargin, 0.5),
+      reason: 'AI 对话框与键盘的间距应与左右屏边一致',
     );
     expect(dialogRect.top, greaterThanOrEqualTo(0), reason: '面板不得顶出屏幕');
 
