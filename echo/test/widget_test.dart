@@ -628,15 +628,15 @@ void main() {
     expect(find.text('你好'), findsOneWidget);
 
     // 键盘弹起：根 Scaffold 不做自动避让，AI 对话框须自行补偿
-    // keyboardInset——面板底边停在键盘上方（保留 38 的静止间距），
-    // 高度收敛到可用空间内，不顶出屏幕。
+    // keyboardInset——面板底边贴住键盘上沿，不再保留静止态的 38
+    // 间距；高度收敛到可用空间内，不顶出屏幕。
     tester.view.viewInsets = const FakeViewPadding(bottom: 260);
     await tester.pump();
     final dialogRect = tester.getRect(find.byType(AiDialog));
     expect(
       dialogRect.bottom,
-      lessThanOrEqualTo(600 - 260 + 0.5),
-      reason: 'AI 对话框应停在键盘上方，不能被键盘遮住',
+      closeTo(600 - 260, 0.5),
+      reason: 'AI 对话框应贴住键盘上沿，不能被键盘遮住',
     );
     expect(dialogRect.top, greaterThanOrEqualTo(0), reason: '面板不得顶出屏幕');
 

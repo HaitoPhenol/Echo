@@ -1233,10 +1233,11 @@ class _SmartNavScreenState extends State<SmartNavScreen>
     final aiLeft = DockGeometry.aiLeftFor(screenSize.width);
     final aiWidth = DockGeometry.aiWidthFor(screenSize.width);
     // AI 对话框悬在软键盘之上：根 Scaffold 已关闭自动避让，这里必须
-    // 手动补偿 keyboardInset，否则输入行会被键盘遮住。静止态底距仍是
-    // 停靠条上方 38，键盘弹起时整体上移同样的键盘高度；高度再按键盘
-    // 上方的可用空间收敛，避免小屏 + 键盘时面板顶出屏幕。
-    final aiDialogBottom = 38 + safeBottom + keyboardInset;
+    // 手动补偿 keyboardInset，否则输入行会被键盘遮住。键盘弹起时底边
+    // 直接贴住键盘上沿（不再保留静止态的 38 间距），收起时回到底部
+    // 停靠条上方 38。高度再按键盘上方的可用空间收敛，避免小屏 +
+    // 键盘时面板顶出屏幕。
+    final aiDialogBottom = keyboardInset > 0 ? keyboardInset : 38 + safeBottom;
     final aiDialogHeight = math.min(
       math.min(screenSize.height * 0.52, 360.0),
       math.max(0.0, screenSize.height - aiDialogBottom),
