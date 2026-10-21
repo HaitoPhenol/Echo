@@ -9,15 +9,15 @@
 // 不做任何失焦/断连动作（只标脏根 RenderView 重提帧），本文件的
 // 保活断言不受其影响；补帧器单例在每个用例后重置，避免状态互串。
 
-import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:flutter_test/flutter_test.dart';
-
 import 'package:echo/src/app/echo_app.dart';
 import 'package:echo/src/control/bootstrap.dart';
 import 'package:echo/src/control/slash_ui/slash_ui.dart';
 import 'package:echo/src/diary/data/in_memory_diary_repository.dart';
+import 'package:echo/src/navigation/dock_geometry.dart';
 import 'package:echo/src/services/window_inset_refresher.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_test/flutter_test.dart';
 
 import '../control/control_test_harness.dart';
 
@@ -162,6 +162,47 @@ void main() {
     await imeDoneThenUnfocus(tester);
     expect(find.byType(TextField), findsOneWidget, reason: '结果流回看期失焦不得关闭');
     expect(find.byType(SlashResultCard), findsOneWidget);
+  });
+
+  testWidgets('搜索框发送按钮走键盘提交同一路径：执行命令并产出结果卡', (tester) async {
+    await boot(tester);
+    await openSearch(tester);
+
+    await tester.enterText(find.byType(TextField), '/sys.ping');
+    await tester.pump();
+    expect(find.byTooltip('执行命令'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('执行命令'));
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.byType(SlashResultCard), findsOneWidget);
+  });
+
+  testWidgets('指令面板顶边钉在 y=40，键盘开合都撑满到输入框上沿', (tester) async {
+    await boot(tester);
+    await openSearch(tester);
+
+    await tester.enterText(find.byType(TextField), '/sys.');
+    await tester.pump();
+
+    final layer = find.byType(SlashCommandLayer);
+    expect(layer, findsOneWidget);
+
+    // 测试表面 800×600、安全区 0：胶囊上沿 = 600−(16+44)，面板再留 8。
+    const capsuleTop = 600.0 - (16 + DockGeometry.searchHeight);
+    final closed = tester.getRect(layer);
+    expect(closed.top, closeTo(DockGeometry.slashPanelTop, 0.5));
+    expect(closed.bottom, closeTo(capsuleTop - 8, 0.5));
+
+    // 软键盘弹起：顶边不动，底边随胶囊抬到键盘上方，高度自适应收缩。
+    // FakeViewPadding 以物理像素计，换算成逻辑像素后再断言。
+    tester.view.viewInsets = const FakeViewPadding(bottom: 260);
+    addTearDown(tester.view.reset);
+    await tester.pump();
+    final keyboardInset = 260 / tester.view.devicePixelRatio;
+    final open = tester.getRect(layer);
+    expect(open.top, closeTo(DockGeometry.slashPanelTop, 0.5));
+    expect(open.bottom, closeTo(capsuleTop - 8 - keyboardInset, 0.5));
+    expect(open.height, lessThan(closed.height));
   });
 
   testWidgets('普通搜索态失焦：150ms 后仍自动关闭（回归保护）', (tester) async {

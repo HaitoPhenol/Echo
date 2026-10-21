@@ -7,7 +7,7 @@
 /// 2. 候选补全条（点选插入；↑↓/Enter/Tab/Esc 键事件经外层
 ///    [SlashKeyEvents] 静态助手绑定到 TextField 的 focus 上下文，
 ///    见 [wrapInput]）；
-/// 3. 结果卡片流（倒序、限高内滚、JSON 长按复制在卡片内）；
+/// 3. 结果卡片流（正序、最新在底、限高内滚、JSON 长按复制在卡片内）；
 /// 4. PIN/确认/多行三类模态卡（SlashSheetHost）。
 library;
 
@@ -50,45 +50,69 @@ class SlashCommandLayer extends StatelessWidget {
           return const SizedBox.shrink();
         }
         final mq = MediaQuery.of(context);
+        // 指令态整块套一层深色面板，面板高度由宿主撑满
+        // 「y=40 → 输入框上沿」；内容底对齐，结果流始终贴着补全条。
+        // 仅模态卡（PIN/确认/多行）在指令态未激活时保持透明浮层。
+        final showPanel = controller.active;
+        final body = Column(
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.end,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // 可压缩区（Flexible + 内部滚动）：结果流/多行入口/补全条
+            // 争用剩余高度，最坏可被压到 0（G4-BUG-3：模态卡必须完整，
+            // 故此区必须可压缩，补全条不能钉在 Flexible 外）；reverse 使
+            // 溢出时整层默认停在最底，底部的补全条优先可见。
+            Flexible(
+              child: SingleChildScrollView(
+                reverse: true,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _ResultsList(controller: controller),
+                    if (controller.active && controller.canOpenMultiline)
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: _MultilineToggle(controller: controller),
+                      ),
+                    // 补全候选条恒置于消息列表（结果流）**底部**：reverse
+                    // 滚动默认停在最底，候选贴着输入框始终首先可见，不再
+                    // 被历史结果顶到列表顶端而离开视线。
+                    if (controller.active)
+                      _CompletionBar(controller: controller),
+                  ],
+                ),
+              ),
+            ),
+            // 模态卡宿主在 Flexible 之外：非弹性项以固有高度布局，
+            // 永远完整落在约束盒内（G4-BUG-3）。
+            SlashSheetHost(controller: controller),
+          ],
+        );
         return ConstrainedBox(
           constraints: BoxConstraints(
             maxHeight: mq.size.height * maxHeightFactor,
           ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // 可压缩区（Flexible + 内部滚动）：结果流/多行入口/补全条
-              // 争用剩余高度，最坏可被压到 0（G4-BUG-3：模态卡必须完整，
-              // 故此区必须可压缩，补全条不能钉在 Flexible 外）；reverse 使
-              // 溢出时整层默认停在最底，底部的补全条优先可见。
-              Flexible(
-                child: SingleChildScrollView(
-                  reverse: true,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      _ResultsList(controller: controller),
-                      if (controller.active && controller.canOpenMultiline)
-                        Align(
-                          alignment: Alignment.centerRight,
-                          child: _MultilineToggle(controller: controller),
+          // 面板底纹用 IgnorePointer 包住：面板面积变大后，空白处点击仍应
+          // 穿透到 scrim 关闭搜索，而不是被背景吞掉。
+          child: !showPanel
+              ? body
+              : Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    IgnorePointer(
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: AppColors.overlaySurface,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: AppColors.tone1),
                         ),
-                      // 补全候选条恒置于消息列表（结果流）**底部**：reverse
-                      // 滚动默认停在最底，候选贴着输入框始终首先可见，不再
-                      // 被历史结果顶到列表顶端而离开视线。
-                      if (controller.active)
-                        _CompletionBar(controller: controller),
-                    ],
-                  ),
+                      ),
+                    ),
+                    Padding(padding: const EdgeInsets.all(8), child: body),
+                  ],
                 ),
-              ),
-              // 模态卡宿主在 Flexible 之外：非弹性项以固有高度布局，
-              // 永远完整落在约束盒内（G4-BUG-3）。
-              SlashSheetHost(controller: controller),
-            ],
-          ),
         );
       },
     );
@@ -107,7 +131,9 @@ class _CompletionBar extends StatelessWidget {
     final result = controller.completion;
     if (result.candidates.isEmpty) return const SizedBox.shrink();
     return Container(
-      margin: const EdgeInsets.only(bottom: 8),
+      // 提示框贴住面板底部：底部间距只由面板内边距（8）决定，
+      // 这里不再额外留白。
+      margin: const EdgeInsets.only(bottom: 0),
       decoration: BoxDecoration(
         color: AppColors.overlaySurface,
         borderRadius: BorderRadius.circular(12),
@@ -219,12 +245,13 @@ class _ResultsList extends StatelessWidget {
     // 用普通 Column 而非 shrinkWrap/reverse 的 ListView：本区已身处外层
     // SingleChildScrollView 之内，嵌套的滚动体会在竖直拖拽的手势竞技场
     // 抢先胜出却零可滚范围（内容 == 视口），使整层「拖不动、滚不到顶」。
-    // 项序与旧 reverse ListView 一致：最新一条在最底。
+    // 按 entries 追加序正序排列：新结果落在列表最底、紧贴补全条/输入框，
+    // 而不是插到顶部把旧结果往下顶。
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        for (var i = entries.length - 1; i >= 0; i--)
+        for (var i = 0; i < entries.length; i++)
           Padding(
             padding: const EdgeInsets.only(bottom: 8),
             child: _EntryCard(entry: entries[i]),

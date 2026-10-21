@@ -119,7 +119,14 @@ void main() {
     await tester.pump();
 
     // 两条结果卡：原行 AUTH 失败 + 解锁后重放成功（结果流保留全部）。
-    expect(find.byType(SlashResultCard), findsNWidgets(2));
+    final cards = find.byType(SlashResultCard);
+    expect(cards, findsNWidgets(2));
+    // 新结果追加在列表底部（紧邻输入框一侧），而不是顶到最上面。
+    expect(
+      tester.getTopLeft(cards.at(0)).dy,
+      lessThan(tester.getTopLeft(cards.at(1)).dy),
+      reason: '最新一条结果应排在旧结果之下（结果流底部）',
+    );
     // 最新一条为成功（成功状态勾）；回显行含完整参数 + --confirm。
     expect(find.byIcon(Icons.check_circle_outline), findsOneWidget);
     expect(

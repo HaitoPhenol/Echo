@@ -199,7 +199,17 @@ void main() {
     expect(find.text('执行 3 级破坏性命令'), findsOneWidget);
 
     final outer = layerRect(tester);
-    expect(outer.height, lessThanOrEqualTo(kCompressedHeight * 0.45 + 0.5));
+    // 面板顶边钉在 y=40，底边贴着胶囊上沿：高度自适应撑满两者之间。
+    expect(outer.top, closeTo(DockGeometry.slashPanelTop, 0.5));
+    expect(
+      outer.height,
+      closeTo(
+        kCompressedHeight -
+            DockGeometry.slashPanelTop -
+            (DockGeometry.bottomMargin + DockGeometry.searchHeight + 8),
+        0.5,
+      ),
+    );
     // viewInsets=0 时 adjustResize 无需压缩 body，层内逻辑高即表面高。
     final layerContext = tester.element(find.byType(SlashCommandLayer));
     expect(MediaQuery.sizeOf(layerContext), const Size(360, kCompressedHeight));
@@ -261,7 +271,7 @@ void main() {
     expect(tester.takeException(), isNull);
 
     var outer = layerRect(tester);
-    expect(outer.height, lessThanOrEqualTo(kCompressedHeight * 0.45 + 0.5));
+    expect(outer.top, closeTo(DockGeometry.slashPanelTop, 0.5));
     expectFullyInside(outer, tester.getRect(find.text('确定')), 'PIN 确定');
     expectFullyInside(outer, tester.getRect(find.byIcon(Icons.close)), 'PIN X');
 
@@ -287,7 +297,7 @@ void main() {
     expect(slashOf(tester).core.entries, hasLength(2));
 
     outer = layerRect(tester);
-    expect(outer.height, lessThanOrEqualTo(kCompressedHeight * 0.45 + 0.5));
+    expect(outer.top, closeTo(DockGeometry.slashPanelTop, 0.5));
   });
 
   /// 用例内恢复生产默认补帧窗口（1.2s）；用例结束还原为短窗口。
@@ -353,9 +363,9 @@ void main() {
       ),
     );
     expect(outer.bottom, lessThan(compressedHeight));
-    // 压缩表面（580 ≈ 真机压缩 584）下 Layer 上限 ≈261，
+    // 压缩表面（580 ≈ 真机压缩 584）下面板从 y=40 撑到胶囊上沿，
     // 确认卡按钮仍必须完整落在层内。
-    expect(outer.height, lessThanOrEqualTo(compressedHeight * 0.45 + 0.5));
+    expect(outer.top, closeTo(DockGeometry.slashPanelTop, 0.5));
     expectFullyInside(outer, tester.getRect(find.text('取消')), '取消按钮');
     expectFullyInside(outer, tester.getRect(find.text('确认执行')), '确认执行按钮');
 
@@ -420,7 +430,16 @@ void main() {
         0.5,
       ),
     );
-    expect(after.height, lessThanOrEqualTo(fullHeight * 0.45 + 0.5));
+    expect(after.top, closeTo(DockGeometry.slashPanelTop, 0.5));
+    expect(
+      after.height,
+      closeTo(
+        fullHeight -
+            DockGeometry.slashPanelTop -
+            (DockGeometry.bottomMargin + DockGeometry.searchHeight + 8),
+        0.5,
+      ),
+    );
     expect(tester.takeException(), isNull);
 
     // 真机阻断点：收起后的「取消」必须真实命中。
