@@ -239,7 +239,9 @@ void main() {
         ..attach(document);
     }
 
-    testWidgets('stamp 块渲染为只读胶囊 chip：无 TextField、无块标', (tester) async {
+    testWidgets('stamp 块渲染为只读胶囊 chip：无 TextField，但有块标与类型图标', (
+      tester,
+    ) async {
       final editor = mountStampDoc(DateTime(2026, 5, 15, 9));
       addTearDown(editor.dispose);
       await tester.pumpWidget(harness(editor));
@@ -257,8 +259,10 @@ void main() {
 
       // 两个块中只有正文块可写：全文仅 1 个 TextField。
       expect(find.byType(TextField), findsOneWidget);
-      // 时间戳块不渲染块标：整篇仅正文块的 1 个 drag_indicator。
-      expect(find.byIcon(Icons.drag_indicator), findsOneWidget);
+      // 时间戳块也有块标：正文块 + 时间戳块共 2 个 drag_indicator；
+      // 时钟图标常显（时间戳块没有光标，不依赖焦点）。
+      expect(find.byIcon(Icons.drag_indicator), findsNWidgets(2));
+      expect(find.byIcon(Icons.schedule), findsOneWidget);
     });
 
     testWidgets('普通块不受影响：块标与浮层照常可用', (tester) async {
@@ -267,8 +271,8 @@ void main() {
       await tester.pumpWidget(harness(editor));
       await tester.pump();
 
-      // 点唯一的块标（正文块），浮层正常上树。
-      await tester.tap(find.byIcon(Icons.drag_indicator));
+      // 点正文块的块标（时间戳块在前，正文块是第二个把手）。
+      await tester.tap(find.byIcon(Icons.drag_indicator).last);
       await tester.pump();
       await tester.pump();
       expect(find.text('H2'), findsOneWidget);
@@ -310,8 +314,9 @@ void main() {
       // 未聚焦：浮游图标隐藏，也不占布局。
       expect(typeIcon, findsNothing);
 
-      block.focusNode.requestFocus();
+      await tester.showKeyboard(find.byType(TextField));
       await tester.pump();
+      expect(block.focusNode.hasFocus, isTrue);
       expect(typeIcon, findsOneWidget);
       expect(
         find.descendant(of: typeIcon, matching: find.byIcon(Icons.notes)),

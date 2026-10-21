@@ -50,25 +50,13 @@ class _BlockWidgetState extends State<BlockWidget> {
     final editor = BlockEditorScope.of(context);
     final block = state.block;
 
-    // 时间戳块：App 独有解析（`custom-echo-stamp` 块级属性）→ 渲染为只读
-    // 胶囊 chip，不含块标、不含浮层、不含可输入 TextField。光标由编辑页
-    // 自动落到它的下一行，用户在此块上无法编辑（plan 决策 3/16）。
-    if (block.isStamp) {
-      return Container(
-        // 时间戳胶囊上方留出更大间距，与上一段内容在视觉上分开
-        // （用户原话；导出时由 SySerializer 在时间戳上一行插入空行，同工）。
-        margin: const EdgeInsets.only(top: 12, bottom: 1),
-        child: Align(
-          alignment: Alignment.centerLeft,
-          child: DiaryCapsuleChip(
-            key: ValueKey<String>('diary-stamp-${block.id}'),
-            label: block.text,
-          ),
-        ),
-      );
-    }
-
-    final selected = editor.selectedBlockId == block.id;
+    // 时间戳块：App 独有解析（`custom-echo-stamp` 块级属性）→ 仍渲染为
+    // 只读胶囊 chip（不含 TextField、无排版浮层），但拥有块标与类型图标，
+    // 和正文块一样可长按拖动换位；点块标不选中（无排版语义）。
+    // 胶囊上方留出更大间距，与上一段内容在视觉上分开（导出时由
+    // SySerializer 在时间戳上一行插入空行，同工）。
+    final isStamp = block.isStamp;
+    final selected = !isStamp && editor.selectedBlockId == block.id;
     final readOnly = editor.locked;
 
     // show/hide 不允许在 build 阶段直接调用，随选中态帧后同步浮层。
@@ -136,20 +124,24 @@ class _BlockWidgetState extends State<BlockWidget> {
       overlayChildBuilder: (context) =>
           _buildPopover(context, editor: editor, readOnly: readOnly),
       child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 1),
+        margin: isStamp
+            ? const EdgeInsets.only(top: 12, bottom: 1)
+            : const EdgeInsets.symmetric(vertical: 1),
         child: CompositedTransformTarget(
           link: _blockLink,
           child: Container(
             key: _blockCardKey,
-            decoration: BoxDecoration(
-              color: BlockBackgroundPalette.fillOf(block.background),
-              borderRadius: BorderRadius.circular(8),
-              border: selected
-                  ? Border.all(
-                      color: AppColors.accentBlue.withValues(alpha: 0.55),
-                    )
-                  : null,
-            ),
+            decoration: isStamp
+                ? null
+                : BoxDecoration(
+                    color: BlockBackgroundPalette.fillOf(block.background),
+                    borderRadius: BorderRadius.circular(8),
+                    border: selected
+                        ? Border.all(
+                            color: AppColors.accentBlue.withValues(alpha: 0.55),
+                          )
+                        : null,
+                  ),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
@@ -157,21 +149,35 @@ class _BlockWidgetState extends State<BlockWidget> {
                   index: widget.index,
                   enabled: !readOnly,
                   // 类型图标只在光标位于本块时浮出，且不占布局宽度，
-                  // 故随 focusNode 重建。
+                  // 故随 focusNode 重建；时间戳块没有光标，常显其类型图标。
                   child: ListenableBuilder(
                     listenable: state.focusNode,
                     builder: (context, _) => _BlockHandle(
                       selected: selected,
                       readOnly: readOnly,
-                      showTypeIcon: state.focusNode.hasFocus,
+                      showTypeIcon: isStamp || state.focusNode.hasFocus,
                       block: block,
-                      onTap: () =>
-                          editor.selectBlock(selected ? null : block.id),
+                      onTap: isStamp
+                          ? null
+                          : () =>
+                                editor.selectBlock(selected ? null : block.id),
                     ),
                   ),
                 ),
-                Expanded(child: textField),
-                const SizedBox(width: 2),
+                if (isStamp)
+                  Expanded(
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: DiaryCapsuleChip(
+                        key: ValueKey<String>('diary-stamp-${block.id}'),
+                        label: block.text,
+                      ),
+                    ),
+                  )
+                else ...[
+                  Expanded(child: textField),
+                  const SizedBox(width: 2),
+                ],
               ],
             ),
           ),
@@ -495,6 +501,8 @@ class _BlockTypeIcon extends StatelessWidget {
   final Color color;
 
   IconData get _icon {
+    // 时间戳块独立成类：时钟标记，便于与普通段落区分。
+    if (block.isStamp) return Icons.schedule;
     if (block.kind != DiaryBlockKind.heading) return Icons.notes;
     return switch (block.level) {
       1 => Icons.looks_one,
@@ -531,7 +539,9 @@ class _BlockHandle extends StatelessWidget {
   final bool readOnly;
   final bool showTypeIcon;
   final DiaryBlock block;
-  final VoidCallback onTap;
+
+  /// null 表示本块没有选中语义（时间戳块只可拖动）。
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {

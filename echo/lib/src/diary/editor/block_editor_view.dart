@@ -12,7 +12,8 @@ import 'editor_scope.dart';
 /// 滚动体用 [CustomScrollView] + [SliverReorderableList]：块把手内置
 /// `ReorderableDelayedDragStartListener`，长按起拖、松手由框架落位并回调
 /// [BlockEditorController.moveBlockAt]（生效即压撤销快照），拖动代理与
-/// 空位让渡动画均由框架接管。时间戳只读块无把手，既不可拖、也不显示。
+/// 空位让渡动画均由框架接管。时间戳块同样有把手、可长按拖动换位，
+/// 但保持只读胶囊渲染、不进入文字编辑。
 ///
 /// [header] 可选：挂在滚动区**首项**（如日页胶囊行），随正文一起滚动、
 /// 不参与块结构（不进序列化），也不参与拖拽。
