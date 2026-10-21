@@ -17,7 +17,7 @@ import '../widgets/diary_capsule_row.dart';
 import '../widgets/diary_mood_picker.dart';
 import '../widgets/diary_shell.dart';
 
-/// 当前编辑页控制器登记表（debug 竖单「插入时间戳」用）。
+/// 当前编辑页控制器登记表（竖单「插入时间戳」用）。
 ///
 /// 由日记根页创建并挂在 Navigator 之上；每个 [DayEditorPage] 在加载完成
 /// 后登记自己的控制器、销毁前按实例身份注销。多层编辑页按登记顺序压栈，
@@ -126,7 +126,7 @@ class _DayEditorPageState extends State<DayEditorPage>
   /// 是否已向日记根页登记本页控制器（登记与注销成对，避免重复回调）。
   bool _editorRegistered = false;
 
-  /// 编辑页控制器登记表（debug 竖单「插入时间戳」用；可能为 null）。
+  /// 编辑页控制器登记表（竖单「插入时间戳」用；可能为 null）。
   DiaryEditorRegistry? _editorRegistry;
 
   bool get _readOnly => _document?.locked ?? false;

@@ -608,11 +608,10 @@ class BlockEditorController extends ChangeNotifier {
     if (focus != null) _postFocus(focus, 0);
   }
 
-  /// debug 测试入口：在光标所在块的下一行插入一个「时间戳段」。
+  /// 竖单「插入时间戳」入口：在光标所在块的下一行插入一个「时间戳段」。
   ///
-  /// 仅供 debug 包竖单按钮使用（release 不暴露入口）。与成稿期的
-  /// `DiaryComposer.ensureStamp` 不同，这里不做 30 分钟复用判定，直接以
-  /// 当前时间打点，便于在文档任意位置快速造出一个新超级块观察段框。
+  /// 与成稿期的 `DiaryComposer.ensureStamp` 不同，这里不做 30 分钟复用判定，
+  /// 直接以当前时间打点，便于在文档任意位置新起一个超级块。
   ///
   /// 光标块按「获得焦点的块 → 块标选中的块 → 最后一个正文块」回退；
   /// 锁定文档或没有任何可插入位置时返回 false。
