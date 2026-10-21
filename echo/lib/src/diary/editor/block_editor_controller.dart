@@ -668,6 +668,21 @@ class BlockEditorController extends ChangeNotifier {
     return true;
   }
 
+  /// 「每日总结」置顶段的下标；无置顶段时返回 -1。
+  ///
+  /// 优先认块级标志 [kEchoPinnedAttr]；旧稿尚未补标志时按「首块 + 模板
+  /// 底色」兜底（与 `DiaryComposer.isSummaryBlock` 同口径）。
+  int get _pinnedHeadIndex {
+    if (_states.isEmpty) return -1;
+    final block = _states.first.block;
+    if (block.isStamp) return -1;
+    final pinned =
+        block.isPinned ||
+        (block.kind == DiaryBlockKind.paragraph &&
+            block.background == kPinnedSummaryBackground);
+    return pinned ? 0 : -1;
+  }
+
   /// 拖动重排：把 [oldIndex] 处的块搬到 [newIndex]（搬移后的目标下标）。
   ///
   /// [newIndex] 直接采用 `SliverReorderableList.onReorderItem` 的语义——
@@ -681,11 +696,16 @@ class BlockEditorController extends ChangeNotifier {
   /// 文档末尾）——落进其他超级块中间时按拖动方向吸附到最近的边界：
   /// 向下拖吸到该段之后，向上拖吸到该段之前。正文块仍按单块自由移动，
   /// 可以拖进其他段。
+  ///
+  /// 「每日总结」置顶段（首块）不可拖动，其他块也不能排到它上方。
   void moveBlockAt(int oldIndex, int newIndex) {
     if (locked) return;
     if (oldIndex < 0 || oldIndex >= _states.length) return;
     final target = newIndex.clamp(0, _states.length - 1);
     if (target == oldIndex) return;
+
+    final pinnedIndex = _pinnedHeadIndex;
+    if (oldIndex == pinnedIndex) return;
 
     // 时间戳块携带整段搬移；正文块仍是长度 1 的单块。
     var end = oldIndex;
@@ -711,6 +731,13 @@ class BlockEditorController extends ChangeNotifier {
       // 吸附回原位：不产生任何结构变化，不压快照。
       if (insertAt == oldIndex) return;
     }
+
+    // 置顶段始终排在最前：任何块都不许插到它上方（上移落点吸附到其后）。
+    if (pinnedIndex >= 0 && oldIndex > pinnedIndex && insertAt <= pinnedIndex) {
+      insertAt = pinnedIndex + 1;
+    }
+    // 被夹回原位：同样不产生结构变化。
+    if (insertAt == oldIndex) return;
 
     _pushSnapshot();
     final moved = _states.sublist(oldIndex, end + 1);

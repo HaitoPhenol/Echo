@@ -183,7 +183,8 @@ class _BlockWidgetState extends State<BlockWidget> {
               children: [
                 ReorderableDelayedDragStartListener(
                   index: widget.index,
-                  enabled: !readOnly,
+                  // 「每日总结」置顶段不可拖动（只可点块标选中）。
+                  enabled: !readOnly && !block.isPinned,
                   // 类型图标只在光标位于本块时浮出，且不占布局宽度，
                   // 故随 focusNode 重建；时间戳块没有光标，常显其类型图标。
                   child: ListenableBuilder(

@@ -10,6 +10,15 @@ enum DiaryBlockKind { paragraph, heading }
 /// 思源不渲染自定义属性，故导出后该块在思源里保留其原本（`code`）样式。
 const String kEchoStampAttr = 'custom-echo-stamp';
 
+/// 「每日总结」置顶块的**块级**自定义属性键（App 独有解析标志）：
+/// 带该属性的段落恒在正文区首位，不可拖动，其他块也不得排到它上方。
+/// 新稿由模板写入，旧稿进入编辑页时由 DiaryComposer.ensureStamp 补写。
+const String kEchoPinnedAttr = 'custom-echo-pinned';
+
+/// 置顶块的模板底色号（与 `DiaryComposer.summaryBackground` 同值）；
+/// 旧稿尚未补属性时，靠「首块 + 该底色」识别置顶段。
+const int kPinnedSummaryBackground = 12;
+
 /// 时间戳块的文本格式：`yyyy-MM-dd HH:mm`（年月日时分，用户原话）。
 ///
 /// 与参考样本（带秒 `yyyy-MM-dd HH:mm:ss`）不同——如后续要秒仅改此处。
@@ -143,12 +152,16 @@ class DiaryBlock {
   /// 思源块底色色号 1..13（--b3-font-backgroundN），null 表示无底色。
   int? background;
 
-  /// 块级 custom-* 属性（当前仅时间戳标志 [kEchoStampAttr]）。
-  /// 随 `.sy` 块 `Properties` 往返，导出时一并携带；思源忽略自定义属性。
+  /// 块级 custom-* 属性（时间戳标志 [kEchoStampAttr]、置顶标志
+  /// [kEchoPinnedAttr]）。随 `.sy` 块 `Properties` 往返，导出时一并携带；
+  /// 思源忽略自定义属性。
   final Map<String, String> custom;
 
   /// 是否为时间戳块（App 独有解析：渲染为只读胶囊 chip，不参与正文编辑）。
   bool get isStamp => custom.containsKey(kEchoStampAttr);
+
+  /// 是否为「每日总结」置顶块（不可拖动，其他块不得排到其上方）。
+  bool get isPinned => custom.containsKey(kEchoPinnedAttr);
 
   /// 内容变更时间戳（与 ID 解耦，金标准 §2）。
   DateTime updatedAt;

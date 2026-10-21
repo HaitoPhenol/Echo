@@ -16,6 +16,7 @@ class DiaryTemplateBlockSpec {
     this.level,
     this.text = '',
     this.background,
+    this.custom = const {},
   });
 
   final DiaryTemplateBlockType type;
@@ -26,6 +27,11 @@ class DiaryTemplateBlockSpec {
   ///
   /// 「一句话概述今日」段用 12 号底色（参考模板口径）。
   final int? background;
+
+  /// 块级自定义属性（键值均为字符串）；随块写入 `.sy` Properties。
+  ///
+  /// 模板用它给「每日总结」段打置顶标志 `custom-echo-pinned`。
+  final Map<String, String> custom;
 }
 
 /// 声明式日模板（assets/diary/templates/*.json 的内存表示）。
@@ -100,12 +106,31 @@ class DiaryTemplateSpec {
         throw FormatException('第 $i 个块 background 必须在 1..13');
       }
 
+      final rawCustom = entry['custom'];
+      final custom = <String, String>{};
+      if (rawCustom != null) {
+        if (rawCustom is! Map<String, Object?>) {
+          throw FormatException('第 $i 个块 custom 必须是 JSON 对象');
+        }
+        for (final attr in rawCustom.entries) {
+          if (attr.key.trim().isEmpty) {
+            throw FormatException('第 $i 个块 custom 键必须是非空字符串');
+          }
+          final value = attr.value;
+          if (value is! String) {
+            throw FormatException('第 $i 个块 custom 的值必须是字符串');
+          }
+          custom[attr.key] = value;
+        }
+      }
+
       blocks.add(
         DiaryTemplateBlockSpec(
           type: type,
           level: level,
           text: text,
           background: background,
+          custom: Map.unmodifiable(custom),
         ),
       );
     }

@@ -361,9 +361,12 @@ void main() {
       now: () => nowValue,
     );
 
-    /// 「一句话概述今日」段（12 号底色，恒在文档首位）。
-    DiaryBlock summaryBlock(String id) =>
-        DiaryBlock(id: id, background: DiaryComposer.summaryBackground);
+    /// 「一句话概述今日」段（12 号底色、带置顶标志，恒在文档首位）。
+    DiaryBlock summaryBlock(String id) => DiaryBlock(
+      id: id,
+      background: DiaryComposer.summaryBackground,
+      custom: {kEchoPinnedAttr: '1'},
+    );
 
     DiaryDocument buildDoc({List<DiaryBlock>? blocks}) => DiaryDocument(
       id: SyIdGenerator.dayContainer(DateTime(2026, 10, 18)),

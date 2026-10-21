@@ -49,13 +49,14 @@ class DiaryComposer {
   /// 该段是模板骨架的首块（普通可编辑段落，非时间戳），导出时落在首行
   /// 胶囊超级块与首个时间戳段之间（`SySerializer._rowSegments` 的
   /// 「首个 stamp 前散块」路径）。
-  static const int summaryBackground = 12;
+  static const int summaryBackground = kPinnedSummaryBackground;
 
-  /// 判定某块是否为「一句话概述今日」段：首块位置上的 12 号底色段落。
+  /// 判定某块是否为「每日总结」置顶段：优先看块级置顶标志
+  /// [kEchoPinnedAttr]；旧稿尚未补标志时按「12 号底色段落」兜底识别。
   static bool isSummaryBlock(DiaryBlock block) =>
       !block.isStamp &&
       block.kind == DiaryBlockKind.paragraph &&
-      block.background == summaryBackground;
+      (block.isPinned || block.background == summaryBackground);
 
   /// 确保文档存在「一句话概述今日」段与「当前段」的时间戳块。
   ///
@@ -90,9 +91,14 @@ class DiaryComposer {
         DiaryBlock(
           id: _ids.next(),
           background: summaryBackground,
+          custom: {kEchoPinnedAttr: '1'},
           updatedAt: now,
         ),
       );
+      changed = true;
+    } else if (!document.blocks.first.isPinned) {
+      // 旧稿补置顶标志：此后识别不再依赖底色（用户可自由改底色）。
+      document.blocks.first.custom[kEchoPinnedAttr] = '1';
       changed = true;
     }
 

@@ -1036,5 +1036,42 @@ void main() {
       expect(texts(), ['块0', '块1', '块2']);
       expect(c.canUndo, isFalse);
     });
+
+    /// 挂载「置顶段 + 两个正文块」。
+    BlockEditorController mountPinned() {
+      doc = makeDoc(
+        blocks: [
+          DiaryBlock(
+            id: ids.next(),
+            text: '总结',
+            custom: {kEchoPinnedAttr: '1'},
+          ),
+          DiaryBlock(id: ids.next(), text: '块1'),
+          DiaryBlock(id: ids.next(), text: '块2'),
+        ],
+      );
+      controller = BlockEditorController(idGenerator: ids, now: () => fixedNow)
+        ..attach(doc);
+      addTearDown(controller.dispose);
+      return controller;
+    }
+
+    test('置顶段不可拖动：moveBlockAt(0, 2) no-op 不置脏', () {
+      final c = mountPinned();
+
+      c.moveBlockAt(0, 2);
+
+      expect(texts(), ['总结', '块1', '块2']);
+      expect(c.canUndo, isFalse);
+      expect(c.dirty.value, isFalse);
+    });
+
+    test('其他块不能插到置顶段上方：落点吸附到其后的第一格', () {
+      final c = mountPinned();
+
+      c.moveBlockAt(2, 0);
+
+      expect(texts(), ['总结', '块2', '块1']);
+    });
   });
 }

@@ -46,11 +46,14 @@ class DailyDefaultTemplate implements DiaryTemplate {
             level: b.level,
             text: b.text,
             background: b.background,
+            // 每次实例化各持一份，避免多篇文档共享同一张属性表。
+            custom: Map<String, String>.of(b.custom),
           ),
           DiaryTemplateBlockType.paragraph => DiaryBlock(
             id: ids.next(),
             text: b.text,
             background: b.background,
+            custom: Map<String, String>.of(b.custom),
           ),
         },
     ];
