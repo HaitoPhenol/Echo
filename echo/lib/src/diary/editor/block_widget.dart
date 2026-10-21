@@ -117,7 +117,7 @@ class _BlockWidgetState extends State<BlockWidget> {
         readOnly: readOnly,
         maxLines: null,
         keyboardType: TextInputType.multiline,
-        style: _styleFor(block),
+        style: blockTextStyle(block),
         cursorColor: AppColors.accentBlue,
         cursorRadius: const Radius.circular(1),
         decoration: const InputDecoration(
@@ -248,36 +248,129 @@ class _BlockWidgetState extends State<BlockWidget> {
       ],
     );
   }
+}
 
-  static const double _paragraphSize = 16;
-  static const double _paragraphHeight = 1.55;
+const double _paragraphSize = 16;
+const double _paragraphHeight = 1.55;
 
-  TextStyle _styleFor(DiaryBlock block) {
-    // 13 号底色近白（思源 midnight 取色 #dadada），自动转深色正文。
-    final ink = BlockBackgroundPalette.needsDarkInk(block.background)
-        ? AppColors.background
-        : AppColors.textPrimary;
-    switch (block.kind) {
-      case DiaryBlockKind.heading:
-        // M3 会再校准字号/字距，先保证层级一眼可辨。
-        final size = switch (block.level) {
-          1 => 25.0,
-          2 => 21.0,
-          _ => 18.0,
-        };
-        return TextStyle(
-          fontSize: size,
-          height: 1.35,
-          fontWeight: FontWeight.w700,
-          color: ink,
-        );
-      case DiaryBlockKind.paragraph:
-        return TextStyle(
-          fontSize: _paragraphSize,
-          height: _paragraphHeight,
-          color: ink,
-        );
-    }
+/// 块正文排版：编辑态 `TextField` 与拖拽代理里的静态预览共用同一份字号/
+/// 行高/取色，避免两处样式漂移（预览不是 [TextField]，不能直接复用输入框）。
+TextStyle blockTextStyle(DiaryBlock block) {
+  // 13 号底色近白（思源 midnight 取色 #dadada），自动转深色正文。
+  final ink = BlockBackgroundPalette.needsDarkInk(block.background)
+      ? AppColors.background
+      : AppColors.textPrimary;
+  switch (block.kind) {
+    case DiaryBlockKind.heading:
+      // M3 会再校准字号/字距，先保证层级一眼可辨。
+      final size = switch (block.level) {
+        1 => 25.0,
+        2 => 21.0,
+        _ => 18.0,
+      };
+      return TextStyle(
+        fontSize: size,
+        height: 1.35,
+        fontWeight: FontWeight.w700,
+        color: ink,
+      );
+    case DiaryBlockKind.paragraph:
+      return TextStyle(
+        fontSize: _paragraphSize,
+        height: _paragraphHeight,
+        color: ink,
+      );
+  }
+}
+
+/// 整段拖动时，拖拽代理里补画的**静态正文块预览**。
+///
+/// [SliverReorderableList] 的原生代理只覆盖被拖的那一块；时间戳整段拖动
+/// 需要段内正文一起浮起，这里用同一套段框/底色/排版静态复现，但不建
+/// `TextField`、焦点与浮层——实块仍留在列表原位透明占位（见
+/// [BlockEditorView]），避免同一控制器被两处输入框同时绑定。
+class BlockDragPreview extends StatelessWidget {
+  const BlockDragPreview({
+    super.key,
+    required this.state,
+    required this.segment,
+  });
+
+  final BlockState state;
+
+  /// 本块在段中的位置；与实块一致，拼出连续段框。
+  final StampSegmentEdge segment;
+
+  @override
+  Widget build(BuildContext context) {
+    final block = state.block;
+    final isStamp = block.isStamp;
+    return Container(
+      margin: segment.inSegment
+          ? (isStamp ? const EdgeInsets.only(top: 12) : EdgeInsets.zero)
+          : (isStamp
+                ? const EdgeInsets.only(top: 12, bottom: 1)
+                : const EdgeInsets.symmetric(vertical: 1)),
+      decoration: segment.inSegment
+          ? BoxDecoration(
+              border: Border(
+                left: BorderSide(color: AppColors.tone1),
+                right: BorderSide(color: AppColors.tone1),
+                top: segment.isFirst
+                    ? BorderSide(color: AppColors.tone1)
+                    : BorderSide.none,
+                bottom: segment.isLast
+                    ? BorderSide(color: AppColors.tone1)
+                    : BorderSide.none,
+              ),
+            )
+          : null,
+      child: Container(
+        decoration: isStamp
+            ? null
+            : BoxDecoration(
+                color: BlockBackgroundPalette.fillOf(block.background),
+                borderRadius: BorderRadius.circular(8),
+              ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            SizedBox(
+              width: 24,
+              child: Center(
+                child: Icon(
+                  Icons.drag_indicator,
+                  size: 16,
+                  color: _gutterInk(false),
+                ),
+              ),
+            ),
+            if (isStamp)
+              Expanded(
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: DiaryCapsuleChip(label: block.text),
+                ),
+              )
+            else ...[
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 2,
+                    vertical: 8,
+                  ),
+                  child: Text(
+                    block.text.isEmpty ? ' ' : block.text,
+                    style: blockTextStyle(block),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 2),
+            ],
+          ],
+        ),
+      ),
+    );
   }
 }
 

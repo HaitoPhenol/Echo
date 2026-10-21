@@ -786,7 +786,7 @@ void main() {
       expect(controller.pendingStamp, isTrue);
     });
 
-    test('拖动 stamp 到文档末尾后自动补空正文行', () {
+    test('拖动 stamp 到文档末尾时整段随行，不另补空正文', () {
       attachWith([
         stamp('20261010090000-sssst09', '2026-10-10 08:00'),
         para('20261010090001-ptttt09', 'A 段正文'),
@@ -796,10 +796,10 @@ void main() {
 
       controller.moveBlockAt(0, 3);
 
-      expect(controller.blocks, hasLength(5));
-      expect(controller.blocks[3].block.id, '20261010090000-sssst09');
-      expect(controller.blocks[4].block.isStamp, isFalse);
-      expect(controller.blocks[4].block.text, isEmpty);
+      expect(controller.blocks, hasLength(4));
+      expect(controller.blocks[2].block.id, '20261010090000-sssst09');
+      expect(controller.blocks[3].block.id, '20261010090001-ptttt09');
+      expect(controller.blocks[3].block.text, 'A 段正文');
     });
 
     test('撤销恢复空段：重新待启用，且不立即重打点', () {
@@ -859,6 +859,110 @@ void main() {
     test('edgesOf：无 stamp 时所有块都在段外', () {
       final edges = DiaryStamp.edgesOf([para('a'), para('b')]);
       expect(edges.every((e) => !e.inSegment), isTrue);
+    });
+  });
+
+  group('时间戳段整体拖动', () {
+    DiaryBlock stamp(String text) => DiaryBlock(
+      id: ids.next(),
+      text: text,
+      custom: {kEchoStampAttr: '1'},
+      updatedAt: fixedNow,
+    );
+
+    DiaryBlock para(String text) =>
+        DiaryBlock(id: ids.next(), text: text, updatedAt: fixedNow);
+
+    void attachWith(List<DiaryBlock> blocks) {
+      doc = makeDoc(blocks: blocks);
+      controller = BlockEditorController(idGenerator: ids, now: () => fixedNow)
+        ..attach(doc);
+      addTearDown(controller.dispose);
+    }
+
+    List<String> texts() =>
+        controller.blocks.map((s) => s.block.text).toList(growable: false);
+
+    test('向下拖动时间戳：整段（时间戳 + 正文）一起落到目标段之后', () {
+      attachWith([stamp('S1'), para('a1'), stamp('S2'), para('b1')]);
+
+      controller.moveBlockAt(0, 3);
+
+      expect(texts(), ['S2', 'b1', 'S1', 'a1']);
+    });
+
+    test('向上拖动时间戳：整段一起前移', () {
+      attachWith([
+        stamp('S1'),
+        para('a1'),
+        stamp('S2'),
+        para('b1'),
+        stamp('S3'),
+        para('c1'),
+      ]);
+
+      controller.moveBlockAt(4, 0);
+
+      expect(texts(), ['S3', 'c1', 'S1', 'a1', 'S2', 'b1']);
+    });
+
+    test('落点仍在段内：不动、不压快照不置脏', () {
+      attachWith([
+        stamp('S1'),
+        para('a1'),
+        para('a2'),
+        stamp('S2'),
+        para('b1'),
+      ]);
+
+      controller.moveBlockAt(0, 2);
+
+      expect(texts(), ['S1', 'a1', 'a2', 'S2', 'b1']);
+      expect(controller.canUndo, isFalse);
+      expect(controller.dirty.value, isFalse);
+    });
+
+    test('向下拖进下一段中间：吸附到该段之后，不拆段', () {
+      attachWith([stamp('S1'), para('a1'), stamp('S2'), para('b1')]);
+
+      // 落点在 S2 与其正文 b1 之间（其他超级块中间）。
+      controller.moveBlockAt(0, 2);
+
+      expect(texts(), ['S2', 'b1', 'S1', 'a1']);
+    });
+
+    test('向上拖进上一段中间：吸附到该段之前，不拆段', () {
+      attachWith([
+        stamp('S1'),
+        para('a1'),
+        stamp('S2'),
+        para('b1'),
+        stamp('S3'),
+        para('c1'),
+      ]);
+
+      // 落点在 S2 与其正文 b1 之间（其他超级块中间）。
+      controller.moveBlockAt(4, 3);
+
+      expect(texts(), ['S1', 'a1', 'S3', 'c1', 'S2', 'b1']);
+    });
+
+    test('正文块仍可单独拖入其他段，原段自动补空行', () {
+      attachWith([stamp('S1'), para('a1'), stamp('S2'), para('b1')]);
+
+      controller.moveBlockAt(1, 3);
+
+      expect(texts(), ['S1', '', 'S2', 'b1', 'a1']);
+    });
+
+    test('删除时间戳只删自身，正文并入上一段且仍可再移动', () {
+      attachWith([stamp('S1'), para('a1'), stamp('S2'), para('b1')]);
+
+      controller.deleteBlock(controller.blocks[2]);
+      expect(texts(), ['S1', 'a1', 'b1']);
+
+      controller.moveBlockAt(2, 1);
+      expect(texts(), ['S1', 'b1', 'a1']);
     });
   });
 

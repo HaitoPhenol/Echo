@@ -676,20 +676,89 @@ class BlockEditorController extends ChangeNotifier {
   /// 收敛到 `[0, len-1]`。锁定、索引越界或落点未变时 no-op（不压快照、
   /// 不置脏）；生效时先压一次撤销快照再搬移，块对象（ID / 文本控制器 /
   /// 焦点节点）整体随位移动、不重建。
+  ///
+  /// 时间戳与超级块强相关：拖**时间戳块**时整段一起搬移（时间戳 + 其后
+  /// 直到下一个时间戳前的正文块），且**只允许落在段边界**（某时间戳之前、
+  /// 文档末尾）——落进其他超级块中间时按拖动方向吸附到最近的边界：
+  /// 向下拖吸到该段之后，向上拖吸到该段之前。正文块仍按单块自由移动，
+  /// 可以拖进其他段。
   void moveBlockAt(int oldIndex, int newIndex) {
     if (locked) return;
     if (oldIndex < 0 || oldIndex >= _states.length) return;
     final target = newIndex.clamp(0, _states.length - 1);
     if (target == oldIndex) return;
+
+    // 时间戳块携带整段搬移；正文块仍是长度 1 的单块。
+    var end = oldIndex;
+    if (_states[oldIndex].block.isStamp) {
+      while (end + 1 < _states.length && !_states[end + 1].block.isStamp) {
+        end++;
+      }
+    }
+    final length = end - oldIndex + 1;
+    // 落点仍在本段范围内（含段尾紧邻插槽）：顺序没有变化。
+    if (target > oldIndex && target <= end) return;
+
+    // 框架给的目标下标按「只移除被拖的时间戳一块」折算；整段移动时，
+    // 向下落要再扣掉段内其余块的数量（向上落则下标原样可用）。
+    var insertAt = target < oldIndex ? target : target - (length - 1);
+    if (length > 1) {
+      insertAt = _snapToSegmentBoundary(
+        insertAt,
+        oldIndex: oldIndex,
+        end: end,
+        movingDown: target > oldIndex,
+      );
+      // 吸附回原位：不产生任何结构变化，不压快照。
+      if (insertAt == oldIndex) return;
+    }
+
     _pushSnapshot();
-    final state = _states.removeAt(oldIndex);
-    _states.insert(target, state);
-    state.block.updatedAt = _now();
+    final moved = _states.sublist(oldIndex, end + 1);
+    _states.removeRange(oldIndex, end + 1);
+    _states.insertAll(insertAt, moved);
+    final now = _now();
+    for (final state in moved) {
+      state.block.updatedAt = now;
+    }
     _normalizeSegments();
     _syncDocBlocks();
     _markDirty();
     _reconcilePendingStamps();
     notifyListeners();
+  }
+
+  /// 把整段落点 [insertAt] 收敛到**段边界**，返回在「移除被拖段后」的
+  /// 列表里的插入下标。
+  ///
+  /// 合法边界只有两类：某时间戳块之前（即段的起点）、文档末尾。概述段
+  /// （首个时间戳之前）保持恒在顶部，因此不把 0 当作边界。落入其他段
+  /// 中间时按拖动方向吸附：向下拖取其后第一个边界（落到该段之后），
+  /// 向上拖取其前最后一个边界（落到该段之前）。
+  int _snapToSegmentBoundary(
+    int insertAt, {
+    required int oldIndex,
+    required int end,
+    required bool movingDown,
+  }) {
+    final bounds = <int>[];
+    var index = 0;
+    for (var i = 0; i < _states.length; i++) {
+      if (i >= oldIndex && i <= end) continue;
+      if (_states[i].block.isStamp) bounds.add(index);
+      index++;
+    }
+    bounds.add(index); // 文档末尾
+    if (movingDown) {
+      for (final bound in bounds) {
+        if (bound >= insertAt) return bound;
+      }
+      return bounds.last;
+    }
+    for (final bound in bounds.reversed) {
+      if (bound <= insertAt) return bound;
+    }
+    return bounds.first;
   }
 
   // ================================================================

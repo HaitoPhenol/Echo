@@ -165,7 +165,13 @@
   （只补正文、不凭空造 stamp；`locked` 文档不处理）。② 段框——`BlockWidget`
   按 `StampSegmentEdge` 逐块画左右边线，段首补顶边、段末补底边，段内块垂直
   间距归零，用 `AppColors.tone1` 1px 拼成连续淡框；首个时间戳之前的概述段
-  不画框。
+  不画框。③ 时间戳与超级块强相关——拖动**时间戳块**时整段（时间戳 + 其后
+  到下一个时间戳前的正文块）一起搬移，拖动过程中段内正文由代理里的静态
+  预览一起浮起（实块原位透明占位）；整段**只落在段边界**（某时间戳之前
+  或文档末尾），落进其他段中间时按拖动方向吸附到该段之后/之前，`moveBlockAt`
+  按 `onReorderItem` 的单块下标反算整段落点；正文块仍按单块自由移动
+  （可拖入其他段，原段缺正文自动补空行）；删除时间戳只删自身，其下正文
+  并入上一段。
 - **块类型图标与拖拽重排（2026-10-19）**：块卡左侧改为**「类型图标 +
   拖拽把手」纵向簇**（图标 18dp 宽、把手 24dp 宽，正文相应右移 18dp）：
   类型图标按当前块种类取形（段落 `notes`，H1–H3 `looks_one/two/3`，回读
@@ -180,8 +186,10 @@
   `InheritedNotifier` 改继承 `InheritedTheme`（拖拽代理经
   `InheritedTheme.capture` 摘进 Overlay 重挂，非 InheritedTheme 不会被
   捕获）；②纯 sliver 版无默认 `proxyDecorator`，需自带一层透明 `Material`
-  （块内 `TextField` 断言需 Material 祖先）并叠轻微抬升阴影。时间戳只读
-  块无把手、既不可拖也不显示类型图标；`locked`（已导出）文档整篇不可拖。
+  （块内 `TextField` 断言需 Material 祖先）并叠轻微抬升阴影。时间戳块仍
+  只读（无 `TextField`），但自 2026-10-21 起与正文块一样有块标与类型图标、
+  可拖动换位，块标菜单仅提供删除；拖动时间戳时整段随之搬移（见上条 ③）。
+  `locked`（已导出）文档整篇不可拖。
 - **自动数据与心情（2026-10-18 重设）**：温度/湿度/天气/日程与心情写
   文档根 `custom-*`——`composer.fetchCustomPatch(date)` 三源并发取数
   （单源失败不连坐、null 删键），`controller.applyCustomPatch(patch)`
