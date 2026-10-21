@@ -25,6 +25,10 @@ import 'editor_scope.dart';
 /// （[BlockDragPreview]）——框架的代理只覆盖被拖的那一块，段其余部分
 /// 只能由代理自行补画。
 ///
+/// 内容超出视口时，列表尾部再补一段「可达留白」（约视口高度 1/3）：
+/// 最后一块能继续上滑到屏幕下三分之一处，不被底部导航栏压住，便于
+/// 聚焦操作；内容装得下时留白撤除，短文档仍不可空滚。
+///
 /// [header] 可选：挂在滚动区**首项**（如日页胶囊行），随正文一起滚动、
 /// 不参与块结构（不进序列化），也不参与拖拽。
 class BlockEditorView extends StatefulWidget {
@@ -54,10 +58,45 @@ class _BlockEditorViewState extends State<BlockEditorView> {
   /// 同位置落点不会触发 `onReorderItem`，故用定时器兜底清空。
   Timer? _dragClearTimer;
 
+  /// 列表尾部额外留出的可滚动距离（0 = 内容未超出视口，不预留）。
+  ///
+  /// 占视口高度约 1/3：滚到底时最后一块停在屏幕下三分之一处，
+  /// 不被底部导航栏遮挡。
+  double _bottomOverscroll = 0;
+
+  final ScrollController _scroll = ScrollController();
+
   @override
   void dispose() {
     _dragClearTimer?.cancel();
+    _scroll.dispose();
     super.dispose();
+  }
+
+  /// 内容是否超出视口 → 维护尾部「可达留白」。
+  ///
+  /// 留白本身计入 `maxScrollExtent`，故用它与留白高度比较来判定：
+  /// 内容超出时 `maxScrollExtent > 留白`；内容装得下时
+  /// `maxScrollExtent ≤ 留白`，此时撤掉留白（短文档不产生空滚）。
+  /// 视口高度变化（软键盘开合）时留白同步按新视口重算。
+  void _syncBottomOverscroll() {
+    if (!mounted || !_scroll.hasClients) return;
+    final position = _scroll.position;
+    if (!position.hasContentDimensions) return;
+    const epsilon = 0.5;
+    final target = position.viewportDimension / 3;
+    final extra = _bottomOverscroll;
+    if (extra == 0) {
+      if (position.maxScrollExtent > epsilon) {
+        setState(() => _bottomOverscroll = target);
+      }
+      return;
+    }
+    if ((extra - target).abs() > epsilon) {
+      setState(() => _bottomOverscroll = target);
+    } else if (position.maxScrollExtent <= extra + epsilon) {
+      setState(() => _bottomOverscroll = 0);
+    }
   }
 
   void _handleReorderStart(int index, BlockEditorController editor) {
@@ -116,6 +155,10 @@ class _BlockEditorViewState extends State<BlockEditorView> {
   @override
   Widget build(BuildContext context) {
     final editor = BlockEditorScope.of(context);
+    // 首帧/每次结构变化后量一次滚动范围，决定是否补尾部留白。
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => _syncBottomOverscroll(),
+    );
     return ListenableBuilder(
       listenable: editor,
       builder: (context, _) {
@@ -139,71 +182,87 @@ class _BlockEditorViewState extends State<BlockEditorView> {
         return Listener(
           onPointerUp: (_) => _scheduleDragClear(),
           onPointerCancel: (_) => _scheduleDragClear(),
-          child: CustomScrollView(
-            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-            slivers: [
-              if (head != null)
-                SliverPadding(
-                  padding: insets(top: true, bottom: false),
-                  sliver: SliverToBoxAdapter(
-                    child: KeyedSubtree(
-                      key: const ValueKey<String>('diary-capsule-row'),
-                      child: head,
+          // 打字/输入法改变块高时列表不重建，但滚动范围会变；
+          // 借 metrics 通知在帧后重新评估尾部留白。
+          child: NotificationListener<ScrollMetricsNotification>(
+            onNotification: (_) {
+              WidgetsBinding.instance.addPostFrameCallback(
+                (_) => _syncBottomOverscroll(),
+              );
+              return false;
+            },
+            child: CustomScrollView(
+              controller: _scroll,
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              slivers: [
+                if (head != null)
+                  SliverPadding(
+                    padding: insets(top: true, bottom: false),
+                    sliver: SliverToBoxAdapter(
+                      child: KeyedSubtree(
+                        key: const ValueKey<String>('diary-capsule-row'),
+                        child: head,
+                      ),
                     ),
                   ),
-                ),
-              SliverPadding(
-                padding: insets(top: head == null, bottom: true),
-                sliver: SliverReorderableList(
-                  itemCount: states.length,
-                  onReorderStart: (index) =>
-                      _handleReorderStart(index, editor),
-                  // 松手后框架先回落代理、再回调本方法重排数据；同位置落点
-                  // 不会回调本方法，由 [Listener] 的定时器兜底清空。
-                  onReorderItem: (oldIndex, newIndex) {
-                    editor.moveBlockAt(oldIndex, newIndex);
-                    _clearDragSegment();
-                  },
-                  // 被拖块会被摘进 Overlay 重挂，那儿没有 Scaffold 的 Material，
-                  // 而块内 TextField 断言必须有 Material 祖先——代理里补一层
-                  // 透明 Material（与 ReorderableListView 内部同法），顺带
-                  // 用轻微抬升阴影给出「拿起」反馈。
-                  proxyDecorator: (child, index, animation) =>
-                      _liftedBlockProxy(
-                        child,
-                        index,
-                        animation,
-                        editor: editor,
-                        segmentStart: _dragSegmentStart,
-                        segmentEnd: _dragSegmentEnd,
-                      ),
-                  itemBuilder: (context, index) {
-                    final state = states[index];
-                    final blockKey = ValueKey<String>(state.block.id);
-                    final hidden =
-                        _dragSegmentStart != null &&
-                        _dragSegmentEnd != null &&
-                        index > _dragSegmentStart! &&
-                        index <= _dragSegmentEnd!;
-                    // 外层常驻 [Opacity]/[IgnorePointer]，只切换参数，
-                    // 拖动期间不重建段内正文的 TextField（焦点/控制器不丢）。
-                    return Opacity(
-                      key: blockKey,
-                      opacity: hidden ? 0 : 1,
-                      child: IgnorePointer(
-                        ignoring: hidden,
-                        child: BlockWidget(
-                          key: blockKey,
-                          state: state,
-                          index: index,
-                          segment: edges[index],
+                SliverPadding(
+                  padding: insets(top: head == null, bottom: true),
+                  sliver: SliverReorderableList(
+                    itemCount: states.length,
+                    onReorderStart: (index) =>
+                        _handleReorderStart(index, editor),
+                    // 松手后框架先回落代理、再回调本方法重排数据；同位置落点
+                    // 不会回调本方法，由 [Listener] 的定时器兜底清空。
+                    onReorderItem: (oldIndex, newIndex) {
+                      editor.moveBlockAt(oldIndex, newIndex);
+                      _clearDragSegment();
+                    },
+                    // 被拖块会被摘进 Overlay 重挂，那儿没有 Scaffold 的
+                    // Material，而块内 TextField 断言必须有 Material 祖先——
+                    // 代理里补一层透明 Material（与 ReorderableListView 内部
+                    // 同法），顺带用轻微抬升阴影给出「拿起」反馈。
+                    proxyDecorator: (child, index, animation) =>
+                        _liftedBlockProxy(
+                          child,
+                          index,
+                          animation,
+                          editor: editor,
+                          segmentStart: _dragSegmentStart,
+                          segmentEnd: _dragSegmentEnd,
                         ),
-                      ),
-                    );
-                  },
+                    itemBuilder: (context, index) {
+                      final state = states[index];
+                      final blockKey = ValueKey<String>(state.block.id);
+                      final hidden =
+                          _dragSegmentStart != null &&
+                          _dragSegmentEnd != null &&
+                          index > _dragSegmentStart! &&
+                          index <= _dragSegmentEnd!;
+                      // 外层常驻 [Opacity]/[IgnorePointer]，只切换参数，
+                      // 拖动期间不重建段内正文的 TextField（焦点/控制器不丢）。
+                      return Opacity(
+                        key: blockKey,
+                        opacity: hidden ? 0 : 1,
+                        child: IgnorePointer(
+                          ignoring: hidden,
+                          child: BlockWidget(
+                            key: blockKey,
+                            state: state,
+                            index: index,
+                            segment: edges[index],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
                 ),
-              ),
-            ],
+                // 尾部可达留白：滚到底时把最后一块抬到屏幕下三分之一处。
+                if (_bottomOverscroll > 0)
+                  SliverToBoxAdapter(
+                    child: SizedBox(height: _bottomOverscroll),
+                  ),
+              ],
+            ),
           ),
         );
       },
