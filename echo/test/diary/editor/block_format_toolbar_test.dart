@@ -265,6 +265,34 @@ void main() {
       expect(find.byIcon(Icons.schedule), findsOneWidget);
     });
 
+    testWidgets('时间戳块块标菜单只有删除：点删除移除整块并清除选中', (tester) async {
+      final editor = mountStampDoc(DateTime(2026, 5, 15, 9));
+      addTearDown(editor.dispose);
+      await tester.pumpWidget(harness(editor));
+      await tester.pump();
+
+      // 第一个把手属于时间戳块（文档首块）。
+      await tester.tap(find.byIcon(Icons.drag_indicator).first);
+      await tester.pump();
+      await tester.pump();
+      expect(editor.selectedBlockId, editor.blocks.first.block.id);
+      expect(
+        find.byKey(const ValueKey('diary-delete-stamp')),
+        findsOneWidget,
+      );
+      // 只读块没有排版/底色入口。
+      expect(find.text('H2'), findsNothing);
+      expect(find.byKey(const ValueKey('diary-bg-1')), findsNothing);
+
+      await tester.tap(find.byKey(const ValueKey('diary-delete-stamp')));
+      await tester.pump();
+      await tester.pump();
+
+      expect(editor.blocks.any((s) => s.block.isStamp), isFalse);
+      expect(editor.blocks.single.block.text, '正文');
+      expect(editor.selectedBlockId, isNull);
+    });
+
     testWidgets('普通块不受影响：块标与浮层照常可用', (tester) async {
       final editor = mountStampDoc(DateTime(2026, 5, 15, 9));
       addTearDown(editor.dispose);
@@ -379,6 +407,51 @@ void main() {
 
       expect(editor.blocks.map((s) => s.block.text), ['块1', '块2', '块0']);
       expect(editor.canUndo, isTrue);
+    });
+  });
+
+  group('运行时超级块段框', () {
+    testWidgets('段内块有连续边框，概述段无框且段内间距归零', (tester) async {
+      final now = DateTime(2026, 5, 15, 9);
+      final ids = SyIdGenerator(random: Random(7), now: () => now);
+      final date = DateTime(now.year, now.month, now.day);
+      final summaryId = ids.next();
+      final stampId = ids.next();
+      final bodyId = ids.next();
+      final document = DiaryDocument(
+        id: SyIdGenerator.dayContainer(date),
+        date: date,
+        title: '测试日',
+        blocks: [
+          DiaryBlock(id: summaryId, background: 12),
+          DiaryBlock(
+            id: stampId,
+            text: '2026-05-15 09:00',
+            custom: {kEchoStampAttr: '1'},
+          ),
+          DiaryBlock(id: bodyId),
+        ],
+      );
+      final editor = BlockEditorController(idGenerator: ids, now: () => now)
+        ..attach(document);
+      addTearDown(editor.dispose);
+      await tester.pumpWidget(harness(editor));
+      await tester.pump();
+
+      Container frameOf(String id) => tester.widget<Container>(
+        find.byKey(ValueKey<String>('diary-block-frame-$id')),
+      );
+      Decoration? decorationOf(String id) => frameOf(id).decoration;
+
+      expect(decorationOf(summaryId), isNull);
+      expect(decorationOf(stampId), isA<BoxDecoration>());
+      expect((decorationOf(stampId)! as BoxDecoration).border, isNotNull);
+      expect(decorationOf(bodyId), isA<BoxDecoration>());
+      expect((decorationOf(bodyId)! as BoxDecoration).border, isNotNull);
+
+      // 段首 stamp 保留 top 12；段内正文行上下间距为 0，边框才能连上。
+      expect(frameOf(stampId).margin, const EdgeInsets.only(top: 12));
+      expect(frameOf(bodyId).margin, EdgeInsets.zero);
     });
   });
 }

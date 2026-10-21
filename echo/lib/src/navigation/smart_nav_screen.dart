@@ -769,7 +769,15 @@ class _SmartNavScreenState extends State<SmartNavScreen>
     _destinations[_nav.activePage].id,
     onOpenTodayDiary: _openTodayDiary,
     onBackfill: _openBackfill,
+    // debug 包：仅日编辑页多一个「插入时间戳」测试项（详见
+    // [buildPageActions]），其余页面清单不变。
+    notesEditorActive: _diaryKey.currentState?.isEditorPage ?? false,
+    onInsertTestStamp: _insertTestStamp,
   );
+
+  /// debug 竖单：在编辑页光标所在块的下一行插入一个时间戳段。
+  bool _insertTestStamp() =>
+      _diaryKey.currentState?.insertTestStampBelowCursor() ?? false;
 
   /// 「今日日记」快捷：直接进今日日记编辑页。
   ///

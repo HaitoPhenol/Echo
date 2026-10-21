@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../services/haptics.dart';
+import '../sy/diary_model.dart';
 import 'block_widget.dart';
 import 'editor_scope.dart';
 
@@ -36,6 +37,11 @@ class BlockEditorView extends StatelessWidget {
       listenable: editor,
       builder: (context, _) {
         final states = editor.blocks;
+        // 段边界逐块派生：与导出 `_rowSegments` 同一套位置语义，
+        // 供块组件拼出连续的段框（不改列表结构）。
+        final edges = DiaryStamp.edgesOf([
+          for (final state in states) state.block,
+        ]);
         final head = header;
         // 原先单列表的 vertical padding 落在整表首尾；拆成两条 sliver 后，
         // top 归 header（无 header 时归块列表首项）、bottom 始终归块列表末
@@ -81,6 +87,7 @@ class BlockEditorView extends StatelessWidget {
                     key: ValueKey<String>(state.block.id),
                     state: state,
                     index: index,
+                    segment: edges[index],
                   );
                 },
               ),

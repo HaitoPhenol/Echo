@@ -17,6 +17,47 @@ import '../widgets/diary_capsule_row.dart';
 import '../widgets/diary_mood_picker.dart';
 import '../widgets/diary_shell.dart';
 
+/// 当前编辑页控制器登记表（debug 竖单「插入时间戳」用）。
+///
+/// 由日记根页创建并挂在 Navigator 之上；每个 [DayEditorPage] 在加载完成
+/// 后登记自己的控制器、销毁前按实例身份注销。多层编辑页按登记顺序压栈，
+/// 末位即当前可见的编辑页——返回上一层后仍能定位到底下的编辑页。
+class DiaryEditorRegistry {
+  final List<BlockEditorController> _controllers = [];
+
+  /// 当前可见编辑页的控制器；无编辑页时为 null。
+  BlockEditorController? get current =>
+      _controllers.isEmpty ? null : _controllers.last;
+
+  void register(BlockEditorController controller) {
+    if (!_controllers.contains(controller)) _controllers.add(controller);
+  }
+
+  void unregister(BlockEditorController controller) {
+    _controllers.remove(controller);
+  }
+}
+
+/// [DiaryEditorRegistry] 的 InheritedWidget 载体（编辑页据此找到登记表）。
+class DiaryEditorRegistryScope extends InheritedWidget {
+  const DiaryEditorRegistryScope({
+    super.key,
+    required this.registry,
+    required super.child,
+  });
+
+  final DiaryEditorRegistry registry;
+
+  static DiaryEditorRegistry? maybeOf(BuildContext context) =>
+      context
+          .dependOnInheritedWidgetOfExactType<DiaryEditorRegistryScope>()
+          ?.registry;
+
+  @override
+  bool updateShouldNotify(DiaryEditorRegistryScope oldWidget) =>
+      registry != oldWidget.registry;
+}
+
 /// 单日编辑器页。
 ///
 /// 职责编排：加载统一走 composer.ensureDay（命中草稿直接打开，无则
@@ -82,11 +123,18 @@ class _DayEditorPageState extends State<DayEditorPage>
   Timer? _saveTimer;
   DateTime? _savedAt;
 
+  /// 是否已向日记根页登记本页控制器（登记与注销成对，避免重复回调）。
+  bool _editorRegistered = false;
+
+  /// 编辑页控制器登记表（debug 竖单「插入时间戳」用；可能为 null）。
+  DiaryEditorRegistry? _editorRegistry;
+
   bool get _readOnly => _document?.locked ?? false;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    _editorRegistry = DiaryEditorRegistryScope.maybeOf(context);
     // InheritedWidget（仓储 scope）不能在 initState 中读取。
     if (!_loadStarted) {
       _loadStarted = true;
@@ -120,22 +168,27 @@ class _DayEditorPageState extends State<DayEditorPage>
     // 进入编辑页自动确保「当前段」时间戳（距上次 ≥30 分钟才新建）；
     // ensureDay 本身不生成时间戳，生成动作收口在此入口（plan 决策 14）。
     final stampAdded = composer.ensureStamp(document);
-    _controller.attach(document);
+    final structureChanged = _controller.attach(document);
     _composer = composer;
     _controller.dirty.addListener(_onDirtyChanged);
     _document = document;
+    if (!_editorRegistered) {
+      _editorRegistered = true;
+      _editorRegistry?.register(_controller);
+    }
     if (mounted) setState(() => _loaded = true);
 
-    if (stampAdded) {
+    if (stampAdded || structureChanged) {
       // 即时落盘，但走「空段时间戳不写文件」清洗：待启用的空时间戳只存在
-      // 于 UI，不进 .sy（2026-10-19 用户裁定）；旧稿补建概述段等真实改动
-      // 仍即时落盘，不等 1.5s 防抖。随后（用户主动进入时）光标落到该
-      // 时间戳块的下一行；离屏预进（[DayEditorPage.autoFocus] 为 false）
-      // 不跳焦，避免冷启动凭空弹出软键盘。
+      // 于 UI，不进 .sy（2026-10-19 用户裁定）；旧稿补建概述段、挂载时
+      // 补齐缺失的段正文行等真实改动仍即时落盘，不等 1.5s 防抖。随后
+      // （用户主动进入时）光标落到该时间戳块的下一行；离屏预进
+      // （[DayEditorPage.autoFocus] 为 false）不跳焦，避免冷启动凭空弹出软键盘。
       await repository.upsertDraft(
         composer.prunedForPersist(_controller.snapshotDocument()),
       );
-      if (widget.autoFocus) _focusAfterLastStamp();
+      _controller.markClean();
+      if (stampAdded && widget.autoFocus) _focusAfterLastStamp();
     }
   }
 
@@ -339,6 +392,7 @@ class _DayEditorPageState extends State<DayEditorPage>
     _saveTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     _controller.dirty.removeListener(_onDirtyChanged);
+    if (_editorRegistered) _editorRegistry?.unregister(_controller);
     _controller.dispose();
     super.dispose();
   }

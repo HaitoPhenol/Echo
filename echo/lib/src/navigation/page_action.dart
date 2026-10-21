@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 
 /// 把手条竖单上的一个「本页操作」。
@@ -44,12 +45,19 @@ class PageAction {
 /// 内部驱动日记内层栈到今日编辑页）。
 /// [onBackfill]：笔记页「补记」项的行为（由导航屏注入，内部弹日期
 /// 选择器并把日记内层栈带到所选日期的编辑页）。
+/// [notesEditorActive]：笔记页栈顶是否为**日编辑页**（仅此时显示
+/// debug 测试项）。
+/// [onInsertTestStamp]：debug 测试项的行为——在当前编辑页光标所在块
+/// 下一行插入一个时间戳段；仅 [kDebugMode] 构建可见。
 List<PageAction> buildPageActions(
   String pageId, {
   required VoidCallback onOpenTodayDiary,
   required VoidCallback onBackfill,
+  bool notesEditorActive = false,
+  bool Function()? onInsertTestStamp,
 }) {
   if (pageId == 'notes') {
+    final insertStamp = onInsertTestStamp;
     return [
       PageAction(
         id: 'diary-today',
@@ -63,6 +71,14 @@ List<PageAction> buildPageActions(
         label: '补记',
         onSelect: (_) => onBackfill(),
       ),
+      // debug 包专有：仅在日编辑页显示，用于快速生成时间戳超级块做手测。
+      if (kDebugMode && notesEditorActive && insertStamp != null)
+        PageAction(
+          id: 'debug-insert-stamp',
+          icon: Icons.add_alarm,
+          label: '插入时间戳',
+          onSelect: (_) => insertStamp(),
+        ),
     ];
   }
   return buildDefaultPageActions();

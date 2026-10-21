@@ -20,12 +20,20 @@ import 'editor_scope.dart';
 /// 把手同时包在 `ReorderableDelayedDragStartListener` 内：长按起拖，
 /// 松手由 `SliverReorderableList` 落位（见 [BlockEditorView]）。
 class BlockWidget extends StatefulWidget {
-  const BlockWidget({super.key, required this.state, required this.index});
+  const BlockWidget({
+    super.key,
+    required this.state,
+    required this.index,
+    this.segment = StampSegmentEdge.outside,
+  });
 
   final BlockState state;
 
   /// 本块在块列表中的下标（`SliverReorderableList` 拖拽起点用）。
   final int index;
+
+  /// 本块在时间戳段（运行时超级块）中的位置；段内块拼出连续淡框。
+  final StampSegmentEdge segment;
 
   @override
   State<BlockWidget> createState() => _BlockWidgetState();
@@ -52,12 +60,13 @@ class _BlockWidgetState extends State<BlockWidget> {
 
     // 时间戳块：App 独有解析（`custom-echo-stamp` 块级属性）→ 仍渲染为
     // 只读胶囊 chip（不含 TextField、无排版浮层），但拥有块标与类型图标，
-    // 和正文块一样可长按拖动换位；点块标不选中（无排版语义）。
+    // 和正文块一样可长按拖动换位；点块标浮出「删除」菜单（无排版语义）。
     // 胶囊上方留出更大间距，与上一段内容在视觉上分开（导出时由
     // SySerializer 在时间戳上一行插入空行，同工）。
     final isStamp = block.isStamp;
-    final selected = !isStamp && editor.selectedBlockId == block.id;
+    final selected = editor.selectedBlockId == block.id;
     final readOnly = editor.locked;
+    final segment = widget.segment;
 
     // show/hide 不允许在 build 阶段直接调用，随选中态帧后同步浮层。
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -124,9 +133,31 @@ class _BlockWidgetState extends State<BlockWidget> {
       overlayChildBuilder: (context) =>
           _buildPopover(context, editor: editor, readOnly: readOnly),
       child: Container(
-        margin: isStamp
-            ? const EdgeInsets.only(top: 12, bottom: 1)
-            : const EdgeInsets.symmetric(vertical: 1),
+        // 段框锚点：始终存在，测试按 decoration 判定是否在段内。
+        key: ValueKey<String>('diary-block-frame-${block.id}'),
+        // 段内垂直间距归零，逐块左右边线才能拼成连续框；段首 stamp
+        // 仍保留 top 12，与上一段在视觉上分开。
+        margin: segment.inSegment
+            ? (isStamp ? const EdgeInsets.only(top: 12) : EdgeInsets.zero)
+            : (isStamp
+                  ? const EdgeInsets.only(top: 12, bottom: 1)
+                  : const EdgeInsets.symmetric(vertical: 1)),
+        // 每块只画左右边线，段首补顶边、段末补底边——
+        // 不改列表结构即可拼出一个连续的段框（2026-10-21 用户裁定）。
+        decoration: segment.inSegment
+            ? BoxDecoration(
+                border: Border(
+                  left: BorderSide(color: AppColors.tone1),
+                  right: BorderSide(color: AppColors.tone1),
+                  top: segment.isFirst
+                      ? BorderSide(color: AppColors.tone1)
+                      : BorderSide.none,
+                  bottom: segment.isLast
+                      ? BorderSide(color: AppColors.tone1)
+                      : BorderSide.none,
+                ),
+              )
+            : null,
         child: CompositedTransformTarget(
           link: _blockLink,
           child: Container(
@@ -157,10 +188,8 @@ class _BlockWidgetState extends State<BlockWidget> {
                       readOnly: readOnly,
                       showTypeIcon: isStamp || state.focusNode.hasFocus,
                       block: block,
-                      onTap: isStamp
-                          ? null
-                          : () =>
-                                editor.selectBlock(selected ? null : block.id),
+                      onTap: () =>
+                          editor.selectBlock(selected ? null : block.id),
                     ),
                   ),
                 ),
@@ -295,71 +324,130 @@ class _BlockFormatPopover extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _ToolButton(
-                    key: const ValueKey('diary-turn-p'),
-                    label: '正文',
-                    active: block.kind == DiaryBlockKind.paragraph,
-                    onTap: readOnly
-                        ? null
-                        : () =>
-                              editor.turnInto(state, DiaryBlockKind.paragraph),
-                  ),
-                  for (final level in [1, 2, 3])
+              // 时间戳块只读，没有排版/底色语义，菜单只保留整块删除。
+              if (block.isStamp)
+                _MenuAction(
+                  key: const ValueKey('diary-delete-stamp'),
+                  label: '删除',
+                  icon: Icons.delete_outline,
+                  onTap: readOnly ? null : () => editor.deleteBlock(state),
+                )
+              else ...[
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
                     _ToolButton(
-                      key: ValueKey('diary-turn-h$level'),
-                      label: 'H$level',
-                      active: headingActive && block.level == level,
+                      key: const ValueKey('diary-turn-p'),
+                      label: '正文',
+                      active: block.kind == DiaryBlockKind.paragraph,
                       onTap: readOnly
                           ? null
                           : () => editor.turnInto(
                               state,
-                              DiaryBlockKind.heading,
-                              level: level,
+                              DiaryBlockKind.paragraph,
                             ),
                     ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Container(height: 1, color: AppColors.tone1),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 6,
-                runSpacing: 6,
-                children: [
-                  for (
-                    var n = BlockBackgroundPalette.min;
-                    n <= BlockBackgroundPalette.max;
-                    n++
-                  )
+                    for (final level in [1, 2, 3])
+                      _ToolButton(
+                        key: ValueKey('diary-turn-h$level'),
+                        label: 'H$level',
+                        active: headingActive && block.level == level,
+                        onTap: readOnly
+                            ? null
+                            : () => editor.turnInto(
+                                state,
+                                DiaryBlockKind.heading,
+                                level: level,
+                              ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Container(height: 1, color: AppColors.tone1),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    for (
+                      var n = BlockBackgroundPalette.min;
+                      n <= BlockBackgroundPalette.max;
+                      n++
+                    )
+                      _Swatch(
+                        key: ValueKey('diary-bg-$n'),
+                        color: BlockBackgroundPalette.colors[n]!,
+                        active: block.background == n,
+                        onTap: readOnly
+                            ? null
+                            : () => editor.setBackground(state, n),
+                      ),
                     _Swatch(
-                      key: ValueKey('diary-bg-$n'),
-                      color: BlockBackgroundPalette.colors[n]!,
-                      active: block.background == n,
+                      key: const ValueKey('diary-bg-clear'),
+                      active: block.background == null,
                       onTap: readOnly
                           ? null
-                          : () => editor.setBackground(state, n),
+                          : () => editor.setBackground(state, null),
+                      child: Icon(
+                        Icons.close,
+                        size: 13,
+                        color: block.background == null
+                            ? AppColors.accentBlue
+                            : AppColors.textMuted,
+                      ),
                     ),
-                  _Swatch(
-                    key: const ValueKey('diary-bg-clear'),
-                    active: block.background == null,
-                    onTap: readOnly
-                        ? null
-                        : () => editor.setBackground(state, null),
-                    child: Icon(
-                      Icons.close,
-                      size: 13,
-                      color: block.background == null
-                          ? AppColors.accentBlue
-                          : AppColors.textMuted,
-                    ),
-                  ),
-                ],
-              ),
+                  ],
+                ),
+              ],
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 浮层内的菜单动作（图标 + 文案）：删除等非排版命令用。
+/// [onTap] 为 null 时降为次级灰并不可点。
+class _MenuAction extends StatelessWidget {
+  const _MenuAction({
+    super.key,
+    required this.label,
+    required this.icon,
+    required this.onTap,
+  });
+
+  final String label;
+  final IconData icon;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = onTap == null ? AppColors.textMuted : AppColors.anchorRed;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: AppColors.tone2),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 14, color: color),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0.8,
+                color: color,
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -539,9 +627,7 @@ class _BlockHandle extends StatelessWidget {
   final bool readOnly;
   final bool showTypeIcon;
   final DiaryBlock block;
-
-  /// null 表示本块没有选中语义（时间戳块只可拖动）。
-  final VoidCallback? onTap;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {

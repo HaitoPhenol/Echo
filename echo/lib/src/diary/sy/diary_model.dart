@@ -20,6 +20,29 @@ String formatDiaryStamp(DateTime t) {
       '${p(t.hour, 2)}:${p(t.minute, 2)}';
 }
 
+/// 一个块在时间戳段（运行时超级块）中的位置。
+///
+/// 段 = 一个时间戳块 + 其后到下一个时间戳之前的全部块；
+/// 首个时间戳之前的块（如概述段）不属于任何段。
+class StampSegmentEdge {
+  const StampSegmentEdge({
+    required this.inSegment,
+    required this.isFirst,
+    required this.isLast,
+  });
+
+  /// 不在任何段内（首个时间戳之前的块）。
+  static const StampSegmentEdge outside = StampSegmentEdge(
+    inSegment: false,
+    isFirst: false,
+    isLast: false,
+  );
+
+  final bool inSegment;
+  final bool isFirst;
+  final bool isLast;
+}
+
 /// 时间戳「段」判定工具（[DiaryBlock.isStamp] 之上的纯函数集合）。
 ///
 /// 段 = 某个时间戳块与其后、下一个时间戳块之前的全部块。段是否「有内容」
@@ -52,6 +75,34 @@ class DiaryStamp {
   static bool isPending(List<DiaryBlock> blocks) {
     final index = lastIndex(blocks);
     return index >= 0 && !segmentHasContent(blocks, index);
+  }
+
+  /// 逐块计算段边界：与导出 `_rowSegments` 同一套位置语义。
+  ///
+  /// 不在段内的块（首个时间戳之前）全部返回 [StampSegmentEdge.outside]。
+  static List<StampSegmentEdge> edgesOf(List<DiaryBlock> blocks) {
+    final edges = List<StampSegmentEdge>.filled(
+      blocks.length,
+      StampSegmentEdge.outside,
+      growable: false,
+    );
+    var start = -1;
+    for (var i = 0; i <= blocks.length; i++) {
+      final isBoundary = i == blocks.length || blocks[i].isStamp;
+      if (!isBoundary) continue;
+      if (start >= 0) {
+        for (var j = start; j < i; j++) {
+          edges[j] = StampSegmentEdge(
+            inSegment: true,
+            isFirst: j == start,
+            isLast: j == i - 1,
+          );
+        }
+        start = -1;
+      }
+      if (i < blocks.length) start = i;
+    }
+    return edges;
   }
 }
 

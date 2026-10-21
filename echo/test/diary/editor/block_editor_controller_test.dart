@@ -664,7 +664,7 @@ void main() {
       expect(controller.pendingStamp, isFalse);
     });
 
-    test('机制只作用于最后一个时间戳：更早的时间戳不被改写', () {
+    test('机制只作用于已落盘且有内容的段：更早的时间戳不被改写', () {
       attachWith([
         stamp('20261010090000-ssssss5', '2026-10-10 08:00'),
         para('20261010090001-fffffff', '前文已保存'),
@@ -678,6 +678,187 @@ void main() {
 
       expect(controller.blocks[2].block.text, '2026-10-10 09:42');
       expect(controller.blocks[0].block.text, '2026-10-10 08:00');
+    });
+
+    test('删除末段时间戳后，上一段由空转有正文 → 上一时间戳重打点', () {
+      attachWith([
+        stamp('20261010090000-sssst01', '2026-10-10 08:00'),
+        stamp('20261010093000-sssst02', '2026-10-10 09:30'),
+        para('20261010093001-ptttt01', 'B 段正文'),
+      ]);
+      // 段补齐在 attach 时已给 A 补了空正文行；A 段当前为空、待启用。
+      expect(controller.pendingStampIds, contains('20261010090000-sssst01'));
+      expect(
+        controller.pendingStampIds,
+        isNot(contains('20261010093000-sssst02')),
+      );
+
+      currentNow = DateTime(2026, 10, 10, 9, 42);
+      controller.deleteBlock(
+        controller.blocks.firstWhere(
+          (s) => s.block.id == '20261010093000-sssst02',
+        ),
+      );
+
+      expect(controller.blocks.first.block.text, '2026-10-10 09:42');
+      expect(controller.pendingStamp, isFalse);
+    });
+
+    test('attach 补齐：stamp 位于末尾时自动补空正文行', () {
+      doc = makeDoc(
+        blocks: [stamp('20261010090000-sssst03', '2026-10-10 09:00')],
+      );
+      controller = BlockEditorController(
+        idGenerator: ids,
+        now: () => currentNow,
+      );
+      addTearDown(controller.dispose);
+
+      expect(controller.attach(doc), isTrue);
+      expect(controller.blocks, hasLength(2));
+      expect(controller.blocks[1].block.isStamp, isFalse);
+      expect(controller.blocks[1].block.text, isEmpty);
+      expect(controller.pendingStamp, isTrue);
+    });
+
+    test('attach 补齐：相邻 stamp 之间自动补空正文行', () {
+      doc = makeDoc(
+        blocks: [
+          stamp('20261010090000-sssst04', '2026-10-10 08:00'),
+          stamp('20261010093000-sssst05', '2026-10-10 09:30'),
+        ],
+      );
+      controller = BlockEditorController(
+        idGenerator: ids,
+        now: () => currentNow,
+      );
+      addTearDown(controller.dispose);
+
+      expect(controller.attach(doc), isTrue);
+      expect(controller.blocks, hasLength(3));
+      expect(controller.blocks[1].block.isStamp, isFalse);
+      expect(controller.blocks[2].block.isStamp, isTrue);
+    });
+
+    test('attach 不补齐结构完整的文档', () {
+      doc = makeDoc(
+        blocks: [
+          stamp('20261010090000-sssst06', '2026-10-10 09:00'),
+          para('20261010090001-ptttt06', '已有内容'),
+        ],
+      );
+      controller = BlockEditorController(
+        idGenerator: ids,
+        now: () => currentNow,
+      );
+      addTearDown(controller.dispose);
+
+      expect(controller.attach(doc), isFalse);
+      expect(controller.blocks, hasLength(2));
+    });
+
+    test('锁定文档不补齐段正文', () {
+      doc = makeDoc(
+        locked: true,
+        blocks: [stamp('20261010090000-sssst07', '2026-10-10 09:00')],
+      );
+      controller = BlockEditorController(
+        idGenerator: ids,
+        now: () => currentNow,
+      );
+      addTearDown(controller.dispose);
+
+      expect(controller.attach(doc), isFalse);
+      expect(controller.blocks, hasLength(1));
+    });
+
+    test('删除段内唯一正文块后自动补空正文行', () {
+      attachWith([
+        stamp('20261010090000-sssst08', '2026-10-10 09:00'),
+        para('20261010090001-ptttt08', '正文'),
+      ]);
+
+      controller.deleteBlock(controller.blocks[1]);
+
+      expect(controller.blocks, hasLength(2));
+      expect(controller.blocks[0].block.isStamp, isTrue);
+      expect(controller.blocks[1].block.text, isEmpty);
+      expect(controller.pendingStamp, isTrue);
+    });
+
+    test('拖动 stamp 到文档末尾后自动补空正文行', () {
+      attachWith([
+        stamp('20261010090000-sssst09', '2026-10-10 08:00'),
+        para('20261010090001-ptttt09', 'A 段正文'),
+        stamp('20261010093000-sssst10', '2026-10-10 09:30'),
+        para('20261010093001-ptttt10', 'B 段正文'),
+      ]);
+
+      controller.moveBlockAt(0, 3);
+
+      expect(controller.blocks, hasLength(5));
+      expect(controller.blocks[3].block.id, '20261010090000-sssst09');
+      expect(controller.blocks[4].block.isStamp, isFalse);
+      expect(controller.blocks[4].block.text, isEmpty);
+    });
+
+    test('撤销恢复空段：重新待启用，且不立即重打点', () {
+      attachWith([
+        stamp('20261010090000-sssst11', '2026-10-10 09:00'),
+        para('20261010090001-ptttt11', ''),
+      ]);
+      final body = controller.blocks[1];
+
+      // 先做一次结构操作，留下「空段」快照。
+      controller.turnInto(body, DiaryBlockKind.heading, level: 1);
+      currentNow = DateTime(2026, 10, 10, 9, 37);
+      type(body, '写');
+
+      expect(controller.blocks.first.block.text, '2026-10-10 09:37');
+      expect(controller.pendingStamp, isFalse);
+
+      controller.undo();
+
+      expect(controller.blocks.first.block.text, '2026-10-10 09:00');
+      expect(controller.pendingStamp, isTrue);
+    });
+  });
+
+  group('运行时超级块（段边界派生）', () {
+    DiaryBlock stamp(String text) => DiaryBlock(
+      id: ids.next(),
+      text: text,
+      custom: {kEchoStampAttr: '1'},
+      updatedAt: fixedNow,
+    );
+
+    DiaryBlock para(String text) =>
+        DiaryBlock(id: ids.next(), text: text, updatedAt: fixedNow);
+
+    test('edgesOf：首个 stamp 前不在段内，段首/段尾边界正确', () {
+      final blocks = [
+        para('概述'),
+        stamp('A'),
+        para('正文1'),
+        para('正文2'),
+        stamp('B'),
+        para('正文3'),
+      ];
+
+      final edges = DiaryStamp.edgesOf(blocks);
+
+      expect(edges[0].inSegment, isFalse);
+      expect(edges[1].inSegment, isTrue);
+      expect([edges[1].isFirst, edges[1].isLast], [true, false]);
+      expect([edges[2].isFirst, edges[2].isLast], [false, false]);
+      expect([edges[3].isFirst, edges[3].isLast], [false, true]);
+      expect([edges[4].isFirst, edges[4].isLast], [true, false]);
+      expect([edges[5].isFirst, edges[5].isLast], [false, true]);
+    });
+
+    test('edgesOf：无 stamp 时所有块都在段外', () {
+      final edges = DiaryStamp.edgesOf([para('a'), para('b')]);
+      expect(edges.every((e) => !e.inSegment), isTrue);
     });
   });
 
