@@ -295,27 +295,35 @@ void main() {
         ..attach(document);
     }
 
-    testWidgets('类型图标在把手左侧并随块种类切换：段落 notes → H1 looks_one', (tester) async {
+    testWidgets('类型图标浮在把手下方、仅光标在本块时显示：段落 notes → H1 looks_one', (
+      tester,
+    ) async {
       final editor = mountMulti(['正文']);
       addTearDown(editor.dispose);
       await tester.pumpWidget(harness(editor));
       await tester.pump();
 
+      final block = editor.blocks.single;
       final typeIcon = find.byKey(
-        ValueKey<String>('diary-type-${editor.blocks.single.block.id}'),
+        ValueKey<String>('diary-type-${block.block.id}'),
       );
+      // 未聚焦：浮游图标隐藏，也不占布局。
+      expect(typeIcon, findsNothing);
+
+      block.focusNode.requestFocus();
+      await tester.pump();
       expect(typeIcon, findsOneWidget);
       expect(
         find.descendant(of: typeIcon, matching: find.byIcon(Icons.notes)),
         findsOneWidget,
       );
-      // 纵向簇顺序：类型图标在拖拽把手左侧。
-      expect(
-        tester.getCenter(typeIcon).dx,
-        lessThan(tester.getCenter(find.byIcon(Icons.drag_indicator)).dx),
-      );
+      // 浮游位置：在拖拽把手正下方，不参与横向排版。
+      final iconCenter = tester.getCenter(typeIcon);
+      final handleCenter = tester.getCenter(find.byIcon(Icons.drag_indicator));
+      expect(iconCenter.dy, greaterThan(handleCenter.dy));
+      expect((iconCenter.dx - handleCenter.dx).abs(), lessThan(1));
 
-      editor.turnInto(editor.blocks.single, DiaryBlockKind.heading, level: 1);
+      editor.turnInto(block, DiaryBlockKind.heading, level: 1);
       await tester.pump();
       expect(
         find.descendant(of: typeIcon, matching: find.byIcon(Icons.looks_one)),

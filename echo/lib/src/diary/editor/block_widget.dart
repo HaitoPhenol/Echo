@@ -20,11 +20,7 @@ import 'editor_scope.dart';
 /// 把手同时包在 `ReorderableDelayedDragStartListener` 内：长按起拖，
 /// 松手由 `SliverReorderableList` 落位（见 [BlockEditorView]）。
 class BlockWidget extends StatefulWidget {
-  const BlockWidget({
-    super.key,
-    required this.state,
-    required this.index,
-  });
+  const BlockWidget({super.key, required this.state, required this.index});
 
   final BlockState state;
 
@@ -157,19 +153,21 @@ class _BlockWidgetState extends State<BlockWidget> {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                _BlockTypeIcon(
-                  key: ValueKey<String>('diary-type-${block.id}'),
-                  block: block,
-                  color: _gutterInk(selected),
-                ),
                 ReorderableDelayedDragStartListener(
                   index: widget.index,
                   enabled: !readOnly,
-                  child: _BlockHandle(
-                    selected: selected,
-                    readOnly: readOnly,
-                    onTap: () =>
-                        editor.selectBlock(selected ? null : block.id),
+                  // 类型图标只在光标位于本块时浮出，且不占布局宽度，
+                  // 故随 focusNode 重建。
+                  child: ListenableBuilder(
+                    listenable: state.focusNode,
+                    builder: (context, _) => _BlockHandle(
+                      selected: selected,
+                      readOnly: readOnly,
+                      showTypeIcon: state.focusNode.hasFocus,
+                      block: block,
+                      onTap: () =>
+                          editor.selectBlock(selected ? null : block.id),
+                    ),
                   ),
                 ),
                 Expanded(child: textField),
@@ -486,7 +484,8 @@ Color _gutterInk(bool selected) => selected
     ? AppColors.accentBlue
     : AppColors.mechInkDim.withValues(alpha: 0.7);
 
-/// 拖拽把手左侧的**当前块类型**图标：段落取 `notes`，H1–H3 取
+/// 浮在拖拽把手下方的**当前块类型**小图标（不占布局、忽略指针）：
+/// 段落取 `notes`，H1–H3 取
 /// `looks_one/two/3`（Material 图标名 1/2 为英文、3 起为数字；回读的
 /// H4–H6 与 H3 同字号，退化为通用标题图标）。
 class _BlockTypeIcon extends StatelessWidget {
@@ -516,15 +515,22 @@ class _BlockTypeIcon extends StatelessWidget {
 
 /// 24dp 块标：点击选中并浮出排版工具条。长按起拖由外层
 /// [ReorderableDelayedDragStartListener] 识别，本组件只负责选中与外观。
+///
+/// 块类型图标不再占左侧布局宽度，改为浮在把手正下方的
+/// [IgnorePointer] 小图标：仅本块获得焦点时显式，不推挤正文。
 class _BlockHandle extends StatelessWidget {
   const _BlockHandle({
     required this.selected,
     required this.readOnly,
+    required this.showTypeIcon,
+    required this.block,
     required this.onTap,
   });
 
   final bool selected;
   final bool readOnly;
+  final bool showTypeIcon;
+  final DiaryBlock block;
   final VoidCallback onTap;
 
   @override
@@ -534,12 +540,23 @@ class _BlockHandle extends StatelessWidget {
       onTap: readOnly ? null : onTap,
       child: SizedBox(
         width: 24,
-        child: Center(
-          child: Icon(
-            Icons.drag_indicator,
-            size: 16,
-            color: _gutterInk(selected),
-          ),
+        child: Stack(
+          clipBehavior: Clip.none,
+          alignment: Alignment.center,
+          children: [
+            Icon(Icons.drag_indicator, size: 16, color: _gutterInk(selected)),
+            if (showTypeIcon)
+              Positioned(
+                top: 15,
+                child: IgnorePointer(
+                  child: _BlockTypeIcon(
+                    key: ValueKey<String>('diary-type-${block.id}'),
+                    block: block,
+                    color: _gutterInk(selected),
+                  ),
+                ),
+              ),
+          ],
         ),
       ),
     );
