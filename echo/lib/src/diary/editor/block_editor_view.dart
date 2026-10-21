@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../services/haptics.dart';
 import 'block_widget.dart';
 import 'editor_scope.dart';
 
@@ -62,6 +63,11 @@ class BlockEditorView extends StatelessWidget {
               padding: insets(top: head == null, bottom: true),
               sliver: SliverReorderableList(
                 itemCount: states.length,
+                // 长按满阈值、真正拿起块的那一刻给一次确认震（离手前只触发
+                // 一次），让「可拖动」有触觉确认；落位不震，避免噪声。
+                // 走 Haptics 原生通道，绕过系统触感开关与 lightImpact 的
+                // 弱映射（MIX 2S 上几乎无感）。
+                onReorderStart: (_) => Haptics.confirm(),
                 onReorderItem: editor.moveBlockAt,
                 // 被拖块会被摘进 Overlay 重挂，那儿没有 Scaffold 的 Material，
                 // 而块内 TextField 断言必须有 Material 祖先——代理里补一层
