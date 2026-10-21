@@ -7,7 +7,7 @@
 /// 2. 候选补全条（点选插入；↑↓/Enter/Tab/Esc 键事件经外层
 ///    [SlashKeyEvents] 静态助手绑定到 TextField 的 focus 上下文，
 ///    见 [wrapInput]）；
-/// 3. 结果卡片流（倒序、限高内滚、JSON 长按复制在卡片内）；
+/// 3. 结果卡片流（正序、最新在底、限高内滚、JSON 长按复制在卡片内）；
 /// 4. PIN/确认/多行三类模态卡（SlashSheetHost）。
 library;
 
@@ -219,12 +219,13 @@ class _ResultsList extends StatelessWidget {
     // 用普通 Column 而非 shrinkWrap/reverse 的 ListView：本区已身处外层
     // SingleChildScrollView 之内，嵌套的滚动体会在竖直拖拽的手势竞技场
     // 抢先胜出却零可滚范围（内容 == 视口），使整层「拖不动、滚不到顶」。
-    // 项序与旧 reverse ListView 一致：最新一条在最底。
+    // 按 entries 追加序正序排列：新结果落在列表最底、紧贴补全条/输入框，
+    // 而不是插到顶部把旧结果往下顶。
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        for (var i = entries.length - 1; i >= 0; i--)
+        for (var i = 0; i < entries.length; i++)
           Padding(
             padding: const EdgeInsets.only(bottom: 8),
             child: _EntryCard(entry: entries[i]),
