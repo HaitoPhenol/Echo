@@ -31,6 +31,7 @@
 > 不走提案、直接执行的规则文档小改，在此追加一行（最新在上）。
 > 格式：日期 · 文件 · 一句话原因 · 提交。
 
+- 2026-10-21 · docs/architecture.md · slash 指令面板几何重定：顶边钉 `DockGeometry.slashPanelTop`（y=40，逻辑像素）、底边随搜索胶囊与键盘自适应撑满，整块铺 `overlaySurface`+16 圆角、内容底对齐、提示框贴底；结果流由倒序改正序（最新在底，此前描述缺失）。用户当场裁定数值与间距，非铁律/美术 token 变更，不走 RCR · 随 fix(slash) 入库
 - 2026-10-20 · docs/architecture.md · AI 对话框几何补键盘态：根 Scaffold 关闭自动避让后，面板 `bottom` 须自行补偿 `viewInsets.bottom`，键盘弹起时与键盘保留 `DockGeometry.sideMargin` 使左/右/下三边等宽、高度按键盘上方可用空间收敛，原「adjustResize 压缩窗口」描述已失效，按快通道直接修并在此登记；非铁律/美术 token 变更，不走 RCR · 已随 fix(nav) 合并入库（0.14.6+47）
 - 2026-10-19 · docs/ecp/ecp-commands.md、ecp/ecp-design.md、current_state.md、architecture.md · ECP P5 笔记页控制五命令 `diary.goto`/`diary.state.set`/`diary.block.set`/`diary.document.set`/`diary.custom.set` 与 `diary.export --date` 日粒度、仓储 `restoreDraft` 恢复导出状态、受控动词表新增 `block.set/document.set/custom.set/state.set` 致文档过时，按快通道直接修并在本册登记；系用户当场需求，非铁律/美术 token 变更，不走 RCR · 已随 feat(ecp) 合并提交入库（0.14.1+42）
 - 2026-10-19 · docs/diary/flutter-tech-plan.md、sy-format-golden-3.8.6.md、current_state.md、glossary.md、usage-guide.md、architecture.md · 日记时间戳「空段不落盘 + 首字符重打点」与导出段前空行（落盘清洗 `prunedForPersist` 剔掉「最后一个段内无内容的时间戳」、编辑器 `pendingStamp` 首字符重打点为动笔时刻后冻结、前端时间戳胶囊上方 `top:12` 间距、导出每个 `row` 段超级块前插顶层空 `NodeParagraph`）致文档过时，按快通道直接修并在本册登记；系用户当场裁定，非铁律 / 美术 token 变更，不走 RCR · 已随 feat(diary) 合并提交入库（0.14.2+43）

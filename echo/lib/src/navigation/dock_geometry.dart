@@ -34,6 +34,12 @@ abstract final class DockGeometry {
   /// 搜索态全宽胶囊高度。
   static const double searchHeight = 44;
 
+  /// slash 指令态浮层顶边（距屏幕顶部的逻辑像素）。
+  ///
+  /// 面板顶边固定在此处，底边随搜索胶囊与软键盘移动：键盘开合都让
+  /// 结果流撑满「y=40 → 输入框上沿」这段高度。
+  static const double slashPanelTop = 40;
+
   /// 把手条占屏宽比例（12vw）。
   static const double handleFraction = 0.12;
 

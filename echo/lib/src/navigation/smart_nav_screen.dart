@@ -1245,6 +1245,9 @@ class _SmartNavScreenState extends State<SmartNavScreen>
       math.max(0.0, screenSize.height - aiDialogBottom),
     );
     final bool barsHiddenBySearch = _nav.isSearching;
+    // slash 面板底边 = 搜索胶囊上沿（胶囊底距 16+安全区，高 44，再留 8）。
+    final slashLayerBottom =
+        16 + safeBottom + DockGeometry.searchHeight + 8 + keyboardInset;
 
     return [
       // -------- 搜索态：全屏隐形 scrim（点外部关闭搜索）--------
@@ -1368,13 +1371,19 @@ class _SmartNavScreenState extends State<SmartNavScreen>
       // -------- slash 指令态浮层（补全/结果/模态卡） --------
       // 叠在胶囊之上、抽屉与竖单之下；指令态退出时零占位。
       // 只在搜索态挂载，故与胶囊同步抬 keyboardInset（无双重补偿）。
+      // 顶边钉在 DockGeometry.slashPanelTop（y=40），底边随输入框移动：
+      // 面板高度 = 40 → 胶囊上沿，软键盘开合都自适应撑满。
       if (_slash != null && _nav.isSearching)
         Positioned(
           key: const ValueKey<String>('slash-layer'),
           left: 14,
           right: 14,
-          bottom:
-              16 + safeBottom + DockGeometry.searchHeight + 8 + keyboardInset,
+          // 极小屏 + 键盘时留 1px 兜底，避免 top+bottom 超过屏高。
+          top: math.min(
+            DockGeometry.slashPanelTop,
+            math.max(0.0, screenSize.height - slashLayerBottom - 1),
+          ),
+          bottom: slashLayerBottom,
           child: SlashCommandLayer(controller: _slash!),
         ),
 
