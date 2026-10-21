@@ -142,6 +142,11 @@ class _BlockWidgetState extends State<BlockWidget> {
             : (isStamp
                   ? const EdgeInsets.only(top: 12, bottom: 1)
                   : const EdgeInsets.symmetric(vertical: 1)),
+        // 段框顶边与时间戳胶囊之间留 3px：边框画在 padding 之外，
+        // 这 3px 落在框内，避免胶囊贴着上边框（2026-10-22 用户裁定）。
+        padding: isStamp && segment.inSegment
+            ? const EdgeInsets.only(top: 3)
+            : null,
         // 每块只画左右边线，段首补顶边、段末补底边——
         // 不改列表结构即可拼出一个连续的段框（2026-10-21 用户裁定）。
         decoration: segment.inSegment
