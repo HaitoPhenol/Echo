@@ -164,6 +164,19 @@ void main() {
     expect(find.byType(SlashResultCard), findsOneWidget);
   });
 
+  testWidgets('搜索框发送按钮走键盘提交同一路径：执行命令并产出结果卡', (tester) async {
+    await boot(tester);
+    await openSearch(tester);
+
+    await tester.enterText(find.byType(TextField), '/sys.ping');
+    await tester.pump();
+    expect(find.byTooltip('执行命令'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('执行命令'));
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.byType(SlashResultCard), findsOneWidget);
+  });
+
   testWidgets('指令面板顶边钉在 y=40，键盘开合都撑满到输入框上沿', (tester) async {
     await boot(tester);
     await openSearch(tester);

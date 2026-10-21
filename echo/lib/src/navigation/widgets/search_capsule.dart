@@ -283,9 +283,8 @@ class SearchCapsule extends StatelessWidget {
                 borderRadius: radius,
                 boxShadow: [
                   BoxShadow(
-                    color: const Color(0x8C000000).withValues(
-                      alpha: (0x8C / 255) * chrome,
-                    ),
+                    color: const Color(0x8C000000)
+                        .withValues(alpha: (0x8C / 255) * chrome),
                     blurRadius: 38,
                     offset: const Offset(0, 14),
                   ),
@@ -450,7 +449,7 @@ class SearchCapsule extends StatelessWidget {
   Widget _searchContent() {
     final isInput = controller.searchState == SearchState.input;
     final field = Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.only(left: 10, right: 10),
       child: Row(
         children: [
           Icon(
@@ -460,7 +459,7 @@ class SearchCapsule extends StatelessWidget {
                 ? AppColors.accentBlue
                 : AppColors.textMuted,
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: 3),
           Expanded(
             child: TextField(
               controller: textController,
@@ -486,6 +485,31 @@ class SearchCapsule extends StatelessWidget {
               ),
             ),
           ),
+          // 输入态右侧操作区：左退格、右发送（右缘为主操作）。
+          // 文字为空时两者禁用，避免误触。
+          if (isInput)
+            ValueListenableBuilder<TextEditingValue>(
+              valueListenable: textController,
+              builder: (context, value, _) {
+                final hasText = value.text.isNotEmpty;
+                return Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _CapsuleAction(
+                      icon: Icons.backspace_outlined,
+                      tooltip: '退格到上一个空格',
+                      onTap: hasText ? _deleteToPreviousSpace : null,
+                    ),
+                    _CapsuleAction(
+                      icon: Icons.send,
+                      tooltip: slashMode ? '执行命令' : '搜索',
+                      onTap: hasText ? _submitQuery : null,
+                      color: AppColors.accentBlue,
+                    ),
+                  ],
+                );
+              },
+            ),
         ],
       ),
     );
@@ -495,6 +519,71 @@ class SearchCapsule extends StatelessWidget {
       return SlashKeyEvents(controller: slashController!, child: field);
     }
     return field;
+  }
+
+  /// 退格：删掉末尾一个词，保留它前面的分隔空格。
+  ///
+  /// `sys.ping --help` → `sys.ping `；无空格时整段清空；纯空格也清空。
+  /// 程序化改文本不会触发 onChanged，需手动回调刷新补全/搜索建议。
+  void _deleteToPreviousSpace() {
+    final text = textController.text;
+    if (text.isEmpty) return;
+    var end = text.length;
+    while (end > 0 && text[end - 1] == ' ') {
+      end--;
+    }
+    final space = end == 0 ? -1 : text.lastIndexOf(' ', end - 1);
+    final cut = space < 0 ? 0 : space + 1;
+    final next = text.substring(0, cut);
+    textController.value = TextEditingValue(
+      text: next,
+      selection: TextSelection.collapsed(offset: next.length),
+    );
+    onQueryChanged(next);
+  }
+
+  /// 发送：与键盘提交/搜索键同一路径，空文本不提交。
+  void _submitQuery() {
+    final text = textController.text;
+    if (text.trim().isEmpty) return;
+    onSubmitted(text);
+  }
+}
+
+/// 胶囊内的紧凑图标按钮（28×28 命中区，随外部深色底走）。
+class _CapsuleAction extends StatelessWidget {
+  const _CapsuleAction({
+    required this.icon,
+    required this.tooltip,
+    required this.onTap,
+    this.color = AppColors.textMuted,
+  });
+
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback? onTap;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = onTap != null;
+    return IconButton(
+      onPressed: onTap,
+      tooltip: tooltip,
+      icon: Icon(icon, size: 16),
+      color: enabled ? color : color.withValues(alpha: 0.35),
+      padding: EdgeInsets.zero,
+      constraints: const BoxConstraints.tightFor(width: 28, height: 28),
+      splashRadius: 14,
+      // IconButton 默认带 48×48 的最小点击区（MaterialTapTargetSize.padded），
+      // 只改 constraints 按钮实际仍占 48 宽。shrinkWrap 后命中区就是 28×28。
+      style: IconButton.styleFrom(
+        minimumSize: const Size(28, 48),
+        maximumSize: const Size(28, 48),
+        padding: EdgeInsets.zero,
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      ),
+    );
   }
 }
 

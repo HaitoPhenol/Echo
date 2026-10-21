@@ -32,7 +32,7 @@ abstract final class DockGeometry {
   static const double dotGap = dotDiameter / 2;
 
   /// 搜索态全宽胶囊高度。
-  static const double searchHeight = 44;
+  static const double searchHeight = 48;
 
   /// slash 指令态浮层顶边（距屏幕顶部的逻辑像素）。
   ///

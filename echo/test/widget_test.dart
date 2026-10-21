@@ -122,6 +122,41 @@ void main() {
     expect(historyChip, findsOneWidget);
   });
 
+  testWidgets('搜索框右侧退格：删到上一个空格并保留空格，发送走键盘提交路径', (tester) async {
+    await tester.pumpWidget(EchoApp(diaryRepository: diaryRepo));
+    await tester.pump();
+
+    await tester.longPressAt(const Offset(600, 560));
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.tapAt(const Offset(500, 560));
+    await tester.pump(const Duration(milliseconds: 200));
+
+    // 输入态才显示两个按钮：左退格、右发送。
+    expect(find.byTooltip('退格到上一个空格'), findsOneWidget);
+    expect(find.byTooltip('搜索'), findsOneWidget);
+
+    await tester.enterText(find.byType(TextField), 'notes 日记');
+    await tester.pump();
+
+    // 退格一次：删掉「日记」，保留分隔空格。
+    await tester.tap(find.byTooltip('退格到上一个空格'));
+    await tester.pump();
+    expect(find.text('notes '), findsOneWidget);
+
+    // 发送：普通搜索态记入历史；清空输入后历史胶囊可见该条。
+    await tester.tap(find.byTooltip('搜索'));
+    await tester.pump();
+    await tester.tap(find.byTooltip('退格到上一个空格'));
+    await tester.pump();
+    await tester.tap(find.byTooltip('退格到上一个空格'));
+    await tester.pump();
+    // 历史仓储入库时会 trim，故胶囊显示 `notes`（尾随空格被去掉）。
+    final chip = find.byWidgetPredicate(
+      (w) => w is Text && w.data == 'notes' && w.overflow == TextOverflow.ellipsis,
+    );
+    expect(chip, findsOneWidget);
+  });
+
   testWidgets('横滑松手后立即上甩：滚筒先关闭，快捷弧不叠加', (tester) async {
     await tester.pumpWidget(EchoApp(diaryRepository: diaryRepo));
     await tester.pump();
