@@ -13,8 +13,9 @@ import '../../theme/app_colors.dart';
 /// 恒为占位禁用态、提交无行为。AI 能力接入时再在消息区与发送链路上
 /// 做扩展，位置与外观已在此定型。
 ///
-/// 键盘弹出由安卓 adjustResize 压缩窗口高度承载：父级以压缩后的
-/// 窗口高度给本组件定位与定高，它自然停在键盘上方，无需手动补偿。
+/// 键盘避让由父级定位承载：根 Scaffold 不开自动避让，父级读到
+/// `viewInsets.bottom` 后把本组件整体上移，并按键盘上方可用高度
+/// 收敛面板高度；本组件自身不做键盘补偿。
 class AiDialog extends StatefulWidget {
   const AiDialog({super.key, required this.onDismissed});
 

@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:echo/src/app/echo_app.dart';
 import 'package:echo/src/diary/data/in_memory_diary_repository.dart';
+import 'package:echo/src/navigation/dock_geometry.dart';
 import 'package:echo/src/navigation/smart_nav_screen.dart';
 import 'package:echo/src/navigation/widgets/ai_dialog.dart';
 import 'package:echo/src/navigation/widgets/handle_menu.dart';
@@ -592,6 +593,11 @@ void main() {
   });
 
   testWidgets('AI 条：单击/短滑动不误触；长按呼出对话框可输入，点遮罩收起', (tester) async {
+    // 固定 800×600 逻辑表面（dpr=1），便于按逻辑像素注入键盘高度。
+    tester.view
+      ..devicePixelRatio = 1.0
+      ..physicalSize = const Size(800, 600);
+    addTearDown(tester.view.reset);
     await tester.pumpWidget(EchoApp(diaryRepository: diaryRepo));
     await tester.pump();
 
@@ -622,8 +628,21 @@ void main() {
     await tester.pump();
     expect(find.text('你好'), findsOneWidget);
 
-    // 点遮罩空白处：失焦收键盘 + 面板退场。
-    await tester.tapAt(const Offset(400, 100));
+    // 键盘弹起：根 Scaffold 不做自动避让，AI 对话框须自行补偿
+    // keyboardInset——面板与键盘的间距取左右边距，左、右、下三边
+    // 等宽；高度收敛到可用空间内，不顶出屏幕。
+    tester.view.viewInsets = const FakeViewPadding(bottom: 260);
+    await tester.pump();
+    final dialogRect = tester.getRect(find.byType(AiDialog));
+    expect(
+      dialogRect.bottom,
+      closeTo(600 - 260 - DockGeometry.sideMargin, 0.5),
+      reason: 'AI 对话框与键盘的间距应与左右屏边一致',
+    );
+    expect(dialogRect.top, greaterThanOrEqualTo(0), reason: '面板不得顶出屏幕');
+
+    // 点遮罩空白处（面板左右各留 14 的间隙）：失焦收键盘 + 面板退场。
+    await tester.tapAt(const Offset(5, 100));
     var closed = false;
     for (var i = 0; i < 48 && !closed; i++) {
       await tester.pump(const Duration(milliseconds: 16));
