@@ -156,10 +156,10 @@ void main() {
     await tester.pump();
     await tester.tap(find.byTooltip('退格到上一个分隔符'));
     await tester.pump();
-    // 历史仓储入库时会 trim，故胶囊显示 `sys`（尾随点号被去掉）。
+    // 历史仓储只 trim 空白，尾随点号原样保留（`.trim()` 不去标点）。
     final chip = find.byWidgetPredicate(
       (w) =>
-          w is Text && w.data == 'sys' && w.overflow == TextOverflow.ellipsis,
+          w is Text && w.data == 'sys.' && w.overflow == TextOverflow.ellipsis,
     );
     expect(chip, findsOneWidget);
   });

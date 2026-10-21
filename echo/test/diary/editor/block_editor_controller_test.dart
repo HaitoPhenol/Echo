@@ -721,7 +721,7 @@ void main() {
       expect(controller.pendingStamp, isTrue);
     });
 
-    test('attach 补齐：相邻 stamp 之间自动补空正文行', () {
+    test('attach 补齐：相邻 stamp 之间与末尾都自动补空正文行', () {
       doc = makeDoc(
         blocks: [
           stamp('20261010090000-sssst04', '2026-10-10 08:00'),
@@ -735,9 +735,10 @@ void main() {
       addTearDown(controller.dispose);
 
       expect(controller.attach(doc), isTrue);
-      expect(controller.blocks, hasLength(3));
+      expect(controller.blocks, hasLength(4));
       expect(controller.blocks[1].block.isStamp, isFalse);
       expect(controller.blocks[2].block.isStamp, isTrue);
+      expect(controller.blocks[3].block.isStamp, isFalse);
     });
 
     test('attach 不补齐结构完整的文档', () {
