@@ -24,12 +24,16 @@ class BlockWidget extends StatefulWidget {
     super.key,
     required this.state,
     required this.index,
+    this.segment = StampSegmentEdge.outside,
   });
 
   final BlockState state;
 
   /// 本块在块列表中的下标（`SliverReorderableList` 拖拽起点用）。
   final int index;
+
+  /// 本块在时间戳段（运行时超级块）中的位置；段内块拼出连续淡框。
+  final StampSegmentEdge segment;
 
   @override
   State<BlockWidget> createState() => _BlockWidgetState();
@@ -54,26 +58,15 @@ class _BlockWidgetState extends State<BlockWidget> {
     final editor = BlockEditorScope.of(context);
     final block = state.block;
 
-    // 时间戳块：App 独有解析（`custom-echo-stamp` 块级属性）→ 渲染为只读
-    // 胶囊 chip，不含块标、不含浮层、不含可输入 TextField。光标由编辑页
-    // 自动落到它的下一行，用户在此块上无法编辑（plan 决策 3/16）。
-    if (block.isStamp) {
-      return Container(
-        // 时间戳胶囊上方留出更大间距，与上一段内容在视觉上分开
-        // （用户原话；导出时由 SySerializer 在时间戳上一行插入空行，同工）。
-        margin: const EdgeInsets.only(top: 12, bottom: 1),
-        child: Align(
-          alignment: Alignment.centerLeft,
-          child: DiaryCapsuleChip(
-            key: ValueKey<String>('diary-stamp-${block.id}'),
-            label: block.text,
-          ),
-        ),
-      );
-    }
-
+    // 时间戳块：App 独有解析（`custom-echo-stamp` 块级属性）→ 仍渲染为
+    // 只读胶囊 chip（不含 TextField、无排版浮层），但拥有块标与类型图标，
+    // 和正文块一样可长按拖动换位；点块标浮出「删除」菜单（无排版语义）。
+    // 胶囊上方留出更大间距，与上一段内容在视觉上分开（导出时由
+    // SySerializer 在时间戳上一行插入空行，同工）。
+    final isStamp = block.isStamp;
     final selected = editor.selectedBlockId == block.id;
     final readOnly = editor.locked;
+    final segment = widget.segment;
 
     // show/hide 不允许在 build 阶段直接调用，随选中态帧后同步浮层。
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -124,13 +117,16 @@ class _BlockWidgetState extends State<BlockWidget> {
         readOnly: readOnly,
         maxLines: null,
         keyboardType: TextInputType.multiline,
-        style: _styleFor(block),
+        style: blockTextStyle(block),
         cursorColor: AppColors.accentBlue,
         cursorRadius: const Radius.circular(1),
         decoration: const InputDecoration(
           isCollapsed: true,
           border: InputBorder.none,
-          contentPadding: EdgeInsets.symmetric(horizontal: 2, vertical: 8),
+          contentPadding: EdgeInsets.symmetric(
+            horizontal: 2,
+            vertical: _textVerticalPadding,
+          ),
         ),
       ),
     );
@@ -140,40 +136,94 @@ class _BlockWidgetState extends State<BlockWidget> {
       overlayChildBuilder: (context) =>
           _buildPopover(context, editor: editor, readOnly: readOnly),
       child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 1),
+        // 段框锚点：始终存在，测试按 decoration 判定是否在段内。
+        key: ValueKey<String>('diary-block-frame-${block.id}'),
+        // 段内垂直间距归零，逐块左右边线才能拼成连续框；段首 stamp
+        // 仍保留 top 12，与上一段在视觉上分开。
+        margin: segment.inSegment
+            ? (isStamp ? const EdgeInsets.only(top: 12) : EdgeInsets.zero)
+            : (isStamp
+                  ? const EdgeInsets.only(top: 12, bottom: 1)
+                  : const EdgeInsets.symmetric(vertical: 1)),
+        // 段框顶边与时间戳胶囊之间留 3px：边框画在 padding 之外，
+        // 这 3px 落在框内，避免胶囊贴着上边框（2026-10-22 用户裁定）。
+        padding: isStamp && segment.inSegment
+            ? const EdgeInsets.only(top: 3)
+            : null,
+        // 每块只画左右边线，段首补顶边、段末补底边——
+        // 不改列表结构即可拼出一个连续的段框（2026-10-21 用户裁定）。
+        decoration: segment.inSegment
+            ? BoxDecoration(
+                border: Border(
+                  left: BorderSide(color: AppColors.tone1),
+                  right: BorderSide(color: AppColors.tone1),
+                  top: segment.isFirst
+                      ? BorderSide(color: AppColors.tone1)
+                      : BorderSide.none,
+                  bottom: segment.isLast
+                      ? BorderSide(color: AppColors.tone1)
+                      : BorderSide.none,
+                ),
+              )
+            : null,
         child: CompositedTransformTarget(
           link: _blockLink,
           child: Container(
             key: _blockCardKey,
-            decoration: BoxDecoration(
-              color: BlockBackgroundPalette.fillOf(block.background),
-              borderRadius: BorderRadius.circular(8),
-              border: selected
-                  ? Border.all(
-                      color: AppColors.accentBlue.withValues(alpha: 0.55),
-                    )
-                  : null,
-            ),
+            decoration: isStamp
+                ? null
+                : BoxDecoration(
+                    color: BlockBackgroundPalette.fillOf(block.background),
+                    borderRadius: BorderRadius.circular(8),
+                    border: selected
+                        ? Border.all(
+                            color: AppColors.accentBlue.withValues(alpha: 0.55),
+                          )
+                        : null,
+                  ),
             child: Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
+              // 块标与正文首行对齐（时间戳是单行胶囊，仍按居中）。
+              crossAxisAlignment: isStamp
+                  ? CrossAxisAlignment.center
+                  : CrossAxisAlignment.start,
               children: [
-                _BlockTypeIcon(
-                  key: ValueKey<String>('diary-type-${block.id}'),
-                  block: block,
-                  color: _gutterInk(selected),
-                ),
-                ReorderableDelayedDragStartListener(
-                  index: widget.index,
-                  enabled: !readOnly,
-                  child: _BlockHandle(
-                    selected: selected,
-                    readOnly: readOnly,
-                    onTap: () =>
-                        editor.selectBlock(selected ? null : block.id),
+                Padding(
+                  padding: EdgeInsets.only(
+                    top: isStamp ? 0 : _handleTopFor(block),
+                  ),
+                  child: ReorderableDelayedDragStartListener(
+                    index: widget.index,
+                    // 「每日总结」置顶段不可拖动（只可点块标选中）。
+                    enabled: !readOnly && !block.isPinned,
+                    // 类型图标只在光标位于本块时浮出，且不占布局宽度，
+                    // 故随 focusNode 重建；时间戳块没有光标，常显其类型图标。
+                    child: ListenableBuilder(
+                      listenable: state.focusNode,
+                      builder: (context, _) => _BlockHandle(
+                        selected: selected,
+                        readOnly: readOnly,
+                        showTypeIcon: isStamp || state.focusNode.hasFocus,
+                        block: block,
+                        onTap: () =>
+                            editor.selectBlock(selected ? null : block.id),
+                      ),
+                    ),
                   ),
                 ),
-                Expanded(child: textField),
-                const SizedBox(width: 2),
+                if (isStamp)
+                  Expanded(
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: DiaryCapsuleChip(
+                        key: ValueKey<String>('diary-stamp-${block.id}'),
+                        label: block.text,
+                      ),
+                    ),
+                  )
+                else ...[
+                  Expanded(child: textField),
+                  const SizedBox(width: 2),
+                ],
               ],
             ),
           ),
@@ -215,36 +265,152 @@ class _BlockWidgetState extends State<BlockWidget> {
       ],
     );
   }
+}
 
-  static const double _paragraphSize = 16;
-  static const double _paragraphHeight = 1.55;
+const double _paragraphSize = 16;
+const double _paragraphHeight = 1.55;
 
-  TextStyle _styleFor(DiaryBlock block) {
-    // 13 号底色近白（思源 midnight 取色 #dadada），自动转深色正文。
-    final ink = BlockBackgroundPalette.needsDarkInk(block.background)
-        ? AppColors.background
-        : AppColors.textPrimary;
-    switch (block.kind) {
-      case DiaryBlockKind.heading:
-        // M3 会再校准字号/字距，先保证层级一眼可辨。
-        final size = switch (block.level) {
-          1 => 25.0,
-          2 => 21.0,
-          _ => 18.0,
-        };
-        return TextStyle(
-          fontSize: size,
-          height: 1.35,
-          fontWeight: FontWeight.w700,
-          color: ink,
-        );
-      case DiaryBlockKind.paragraph:
-        return TextStyle(
-          fontSize: _paragraphSize,
-          height: _paragraphHeight,
-          color: ink,
-        );
-    }
+/// 块正文排版：编辑态 `TextField` 与拖拽代理里的静态预览共用同一份字号/
+/// 行高/取色，避免两处样式漂移（预览不是 [TextField]，不能直接复用输入框）。
+TextStyle blockTextStyle(DiaryBlock block) {
+  // 13 号底色近白（思源 midnight 取色 #dadada），自动转深色正文。
+  final ink = BlockBackgroundPalette.needsDarkInk(block.background)
+      ? AppColors.background
+      : AppColors.textPrimary;
+  switch (block.kind) {
+    case DiaryBlockKind.heading:
+      // M3 会再校准字号/字距，先保证层级一眼可辨。
+      final size = switch (block.level) {
+        1 => 25.0,
+        2 => 21.0,
+        _ => 18.0,
+      };
+      return TextStyle(
+        fontSize: size,
+        height: 1.35,
+        fontWeight: FontWeight.w700,
+        color: ink,
+      );
+    case DiaryBlockKind.paragraph:
+      return TextStyle(
+        fontSize: _paragraphSize,
+        height: _paragraphHeight,
+        color: ink,
+      );
+  }
+}
+
+/// 正文上内边距，与 [TextField] 的 `contentPadding.vertical` 同源。
+const double _textVerticalPadding = 8;
+
+/// 块标拖拽图标高度（块标纵向簇的布局高度）。
+const double _handleIconSize = 16;
+
+/// 块标对齐正文**首行**时需要的上偏移。
+///
+/// 正文块的高度随行数增长，块标若按整块垂直居中就会漂到段落中部；
+/// 这里改以首行行盒中心为准：`上内边距 + (行高 − 图标高) / 2`。
+/// 单行块算出的值恰等于原来的居中位置，单行外观不变。
+double _handleTopFor(DiaryBlock block) {
+  final style = blockTextStyle(block);
+  final lineHeight = (style.fontSize ?? _paragraphSize) * (style.height ?? 1);
+  return _textVerticalPadding + (lineHeight - _handleIconSize) / 2;
+}
+
+/// 整段拖动时，拖拽代理里补画的**静态正文块预览**。
+///
+/// [SliverReorderableList] 的原生代理只覆盖被拖的那一块；时间戳整段拖动
+/// 需要段内正文一起浮起，这里用同一套段框/底色/排版静态复现，但不建
+/// `TextField`、焦点与浮层——实块仍留在列表原位透明占位（见
+/// [BlockEditorView]），避免同一控制器被两处输入框同时绑定。
+class BlockDragPreview extends StatelessWidget {
+  const BlockDragPreview({
+    super.key,
+    required this.state,
+    required this.segment,
+  });
+
+  final BlockState state;
+
+  /// 本块在段中的位置；与实块一致，拼出连续段框。
+  final StampSegmentEdge segment;
+
+  @override
+  Widget build(BuildContext context) {
+    final block = state.block;
+    final isStamp = block.isStamp;
+    return Container(
+      margin: segment.inSegment
+          ? (isStamp ? const EdgeInsets.only(top: 12) : EdgeInsets.zero)
+          : (isStamp
+                ? const EdgeInsets.only(top: 12, bottom: 1)
+                : const EdgeInsets.symmetric(vertical: 1)),
+      decoration: segment.inSegment
+          ? BoxDecoration(
+              border: Border(
+                left: BorderSide(color: AppColors.tone1),
+                right: BorderSide(color: AppColors.tone1),
+                top: segment.isFirst
+                    ? BorderSide(color: AppColors.tone1)
+                    : BorderSide.none,
+                bottom: segment.isLast
+                    ? BorderSide(color: AppColors.tone1)
+                    : BorderSide.none,
+              ),
+            )
+          : null,
+      child: Container(
+        decoration: isStamp
+            ? null
+            : BoxDecoration(
+                color: BlockBackgroundPalette.fillOf(block.background),
+                borderRadius: BorderRadius.circular(8),
+              ),
+        child: Row(
+          // 与实块一致：块标对齐正文首行，单行时等同居中。
+          crossAxisAlignment: isStamp
+              ? CrossAxisAlignment.center
+              : CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: EdgeInsets.only(top: isStamp ? 0 : _handleTopFor(block)),
+              child: SizedBox(
+                width: 24,
+                child: Center(
+                  child: Icon(
+                    Icons.drag_indicator,
+                    size: _handleIconSize,
+                    color: _gutterInk(false),
+                  ),
+                ),
+              ),
+            ),
+            if (isStamp)
+              Expanded(
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: DiaryCapsuleChip(label: block.text),
+                ),
+              )
+            else ...[
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 2,
+                    vertical: 8,
+                  ),
+                  child: Text(
+                    block.text.isEmpty ? ' ' : block.text,
+                    style: blockTextStyle(block),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 2),
+            ],
+          ],
+        ),
+      ),
+    );
   }
 }
 
@@ -291,71 +457,130 @@ class _BlockFormatPopover extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _ToolButton(
-                    key: const ValueKey('diary-turn-p'),
-                    label: '正文',
-                    active: block.kind == DiaryBlockKind.paragraph,
-                    onTap: readOnly
-                        ? null
-                        : () =>
-                              editor.turnInto(state, DiaryBlockKind.paragraph),
-                  ),
-                  for (final level in [1, 2, 3])
+              // 时间戳块只读，没有排版/底色语义，菜单只保留整块删除。
+              if (block.isStamp)
+                _MenuAction(
+                  key: const ValueKey('diary-delete-stamp'),
+                  label: '删除',
+                  icon: Icons.delete_outline,
+                  onTap: readOnly ? null : () => editor.deleteBlock(state),
+                )
+              else ...[
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
                     _ToolButton(
-                      key: ValueKey('diary-turn-h$level'),
-                      label: 'H$level',
-                      active: headingActive && block.level == level,
+                      key: const ValueKey('diary-turn-p'),
+                      label: '正文',
+                      active: block.kind == DiaryBlockKind.paragraph,
                       onTap: readOnly
                           ? null
                           : () => editor.turnInto(
                               state,
-                              DiaryBlockKind.heading,
-                              level: level,
+                              DiaryBlockKind.paragraph,
                             ),
                     ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Container(height: 1, color: AppColors.tone1),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 6,
-                runSpacing: 6,
-                children: [
-                  for (
-                    var n = BlockBackgroundPalette.min;
-                    n <= BlockBackgroundPalette.max;
-                    n++
-                  )
+                    for (final level in [1, 2, 3])
+                      _ToolButton(
+                        key: ValueKey('diary-turn-h$level'),
+                        label: 'H$level',
+                        active: headingActive && block.level == level,
+                        onTap: readOnly
+                            ? null
+                            : () => editor.turnInto(
+                                state,
+                                DiaryBlockKind.heading,
+                                level: level,
+                              ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Container(height: 1, color: AppColors.tone1),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    for (
+                      var n = BlockBackgroundPalette.min;
+                      n <= BlockBackgroundPalette.max;
+                      n++
+                    )
+                      _Swatch(
+                        key: ValueKey('diary-bg-$n'),
+                        color: BlockBackgroundPalette.colors[n]!,
+                        active: block.background == n,
+                        onTap: readOnly
+                            ? null
+                            : () => editor.setBackground(state, n),
+                      ),
                     _Swatch(
-                      key: ValueKey('diary-bg-$n'),
-                      color: BlockBackgroundPalette.colors[n]!,
-                      active: block.background == n,
+                      key: const ValueKey('diary-bg-clear'),
+                      active: block.background == null,
                       onTap: readOnly
                           ? null
-                          : () => editor.setBackground(state, n),
+                          : () => editor.setBackground(state, null),
+                      child: Icon(
+                        Icons.close,
+                        size: 13,
+                        color: block.background == null
+                            ? AppColors.accentBlue
+                            : AppColors.textMuted,
+                      ),
                     ),
-                  _Swatch(
-                    key: const ValueKey('diary-bg-clear'),
-                    active: block.background == null,
-                    onTap: readOnly
-                        ? null
-                        : () => editor.setBackground(state, null),
-                    child: Icon(
-                      Icons.close,
-                      size: 13,
-                      color: block.background == null
-                          ? AppColors.accentBlue
-                          : AppColors.textMuted,
-                    ),
-                  ),
-                ],
-              ),
+                  ],
+                ),
+              ],
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 浮层内的菜单动作（图标 + 文案）：删除等非排版命令用。
+/// [onTap] 为 null 时降为次级灰并不可点。
+class _MenuAction extends StatelessWidget {
+  const _MenuAction({
+    super.key,
+    required this.label,
+    required this.icon,
+    required this.onTap,
+  });
+
+  final String label;
+  final IconData icon;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = onTap == null ? AppColors.textMuted : AppColors.anchorRed;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: AppColors.tone2),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 14, color: color),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0.8,
+                color: color,
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -486,7 +711,8 @@ Color _gutterInk(bool selected) => selected
     ? AppColors.accentBlue
     : AppColors.mechInkDim.withValues(alpha: 0.7);
 
-/// 拖拽把手左侧的**当前块类型**图标：段落取 `notes`，H1–H3 取
+/// 浮在拖拽把手下方的**当前块类型**小图标（不占布局、忽略指针）：
+/// 段落取 `notes`，H1–H3 取
 /// `looks_one/two/3`（Material 图标名 1/2 为英文、3 起为数字；回读的
 /// H4–H6 与 H3 同字号，退化为通用标题图标）。
 class _BlockTypeIcon extends StatelessWidget {
@@ -496,6 +722,8 @@ class _BlockTypeIcon extends StatelessWidget {
   final Color color;
 
   IconData get _icon {
+    // 时间戳块独立成类：时钟标记，便于与普通段落区分。
+    if (block.isStamp) return Icons.schedule;
     if (block.kind != DiaryBlockKind.heading) return Icons.notes;
     return switch (block.level) {
       1 => Icons.looks_one,
@@ -516,15 +744,22 @@ class _BlockTypeIcon extends StatelessWidget {
 
 /// 24dp 块标：点击选中并浮出排版工具条。长按起拖由外层
 /// [ReorderableDelayedDragStartListener] 识别，本组件只负责选中与外观。
+///
+/// 块类型图标不再占左侧布局宽度，改为浮在把手正下方的
+/// [IgnorePointer] 小图标：仅本块获得焦点时显式，不推挤正文。
 class _BlockHandle extends StatelessWidget {
   const _BlockHandle({
     required this.selected,
     required this.readOnly,
+    required this.showTypeIcon,
+    required this.block,
     required this.onTap,
   });
 
   final bool selected;
   final bool readOnly;
+  final bool showTypeIcon;
+  final DiaryBlock block;
   final VoidCallback onTap;
 
   @override
@@ -534,12 +769,23 @@ class _BlockHandle extends StatelessWidget {
       onTap: readOnly ? null : onTap,
       child: SizedBox(
         width: 24,
-        child: Center(
-          child: Icon(
-            Icons.drag_indicator,
-            size: 16,
-            color: _gutterInk(selected),
-          ),
+        child: Stack(
+          clipBehavior: Clip.none,
+          alignment: Alignment.center,
+          children: [
+            Icon(Icons.drag_indicator, size: 16, color: _gutterInk(selected)),
+            if (showTypeIcon)
+              Positioned(
+                top: 15,
+                child: IgnorePointer(
+                  child: _BlockTypeIcon(
+                    key: ValueKey<String>('diary-type-${block.id}'),
+                    block: block,
+                    color: _gutterInk(selected),
+                  ),
+                ),
+              ),
+          ],
         ),
       ),
     );

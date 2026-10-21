@@ -11,7 +11,11 @@ void main() {
 {
   "id": "daily-default-v2",
   "blocks": [
-    { "type": "paragraph", "background": 12 },
+    {
+      "type": "paragraph",
+      "background": 12,
+      "custom": { "custom-echo-pinned": "1" }
+    },
     { "type": "paragraph" }
   ]
 }
@@ -26,9 +30,11 @@ void main() {
       expect(spec.blocks.first.level, isNull);
       expect(spec.blocks.first.text, isEmpty);
       expect(spec.blocks.first.background, 12);
+      expect(spec.blocks.first.custom[kEchoPinnedAttr], '1');
       expect(spec.blocks.last.type, DiaryTemplateBlockType.paragraph);
       expect(spec.blocks.last.text, isEmpty);
       expect(spec.blocks.last.background, isNull);
+      expect(spec.blocks.last.custom, isEmpty);
     });
 
     test('paragraph 可带预填文本，缺省为空串', () {

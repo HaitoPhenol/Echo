@@ -71,15 +71,25 @@ class BlockEditorController extends ChangeNotifier {
   /// 保存完成后清脏（编辑页调用）。
   void markClean() => _dirty.value = false;
 
-  /// 当前（最后一个）时间戳是否「待启用」：段内尚无用户内容。
+  /// 待启用 = 该时间戳的段内目前没有任何用户内容（时间尚未锚定）。
+  ///
+  /// 按 stamp id 记录，支持同时存在多个待启用时间戳；`pendingStamp`
+  /// 保留原语义，只回答「最后一个时间戳是否待启用」。
   ///
   /// 待启用语义（2026-10-19 用户裁定）：该时间戳不落盘（只存在于 UI，
   /// 下次进编辑页重新生成），且用户在本段输入**第一个字符**时重打点为
   /// 当前时间；此后不再自动更新，直到内容再次被清空。
-  bool _stampPending = false;
+  final Set<String> _pendingStampIds = <String>{};
 
-  /// 「待启用时间戳」状态只读视图（测试与诊断用）。
-  bool get pendingStamp => _stampPending;
+  /// 「最后一个时间戳是否待启用」只读视图（测试与诊断用）。
+  bool get pendingStamp {
+    final index = _lastStampIndex();
+    return index >= 0 &&
+        _pendingStampIds.contains(_states[index].block.id);
+  }
+
+  /// 全部待启用时间戳 id 的只读视图（测试与诊断用）。
+  Set<String> get pendingStampIds => Set<String>.unmodifiable(_pendingStampIds);
 
   /// 当前选中块（块标点击）；null 无选中。
   String? selectedBlockId;
@@ -148,7 +158,10 @@ class BlockEditorController extends ChangeNotifier {
   // ================================================================
 
   /// 载入文档并为每个块建立运行时状态。
-  void attach(DiaryDocument document) {
+  ///
+  /// 挂载时校验段结构：每个时间戳后缺正文块则补一个空段落。
+  /// 返回 `true` 表示补齐改动了文档，调用方需立即落盘。
+  bool attach(DiaryDocument document) {
     if (_states.isNotEmpty) detach();
     _doc = document;
     // 至少保留一个块（空文档打开即可输入）。
@@ -167,7 +180,13 @@ class BlockEditorController extends ChangeNotifier {
       state.controller.addListener(() => _onBlockText(state));
       _states.add(state);
     }
+    final changed = _normalizeSegments();
+    if (changed) {
+      _syncDocBlocks();
+      _markDirty();
+    }
     _initStampPending();
+    return changed;
   }
 
   /// 文本/结构回灌文档并返回（焦点/控制器随之释放）。
@@ -201,13 +220,18 @@ class BlockEditorController extends ChangeNotifier {
   //  待启用时间戳（空段不落盘 + 首次输入重打点）
   // ================================================================
 
-  /// 挂载/撤销恢复后按当前块内容初始化「待启用」标志。
+  /// 挂载/撤销恢复后按当前块内容初始化「待启用」集合（不重打点）。
   ///
-  /// 段内已有内容（例如复用了 30 分钟窗口内已保存的时间戳）→ 不待启用，
-  /// 该时间戳不会再被自动改写（前文已编辑保存的部分不受本机制影响）。
+  /// 所有段内为空的 stamp 都进入待启用——不只最后一个。这样删除末段
+  /// 时间戳后，上一段（原本为空、下方有正文）才有机会在内容归属变化时
+  /// 重新锚定时间（2026-10-21 用户报告）。
   void _initStampPending() {
-    final index = _lastStampIndex();
-    _stampPending = index >= 0 && _segmentEmpty(index);
+    _pendingStampIds.clear();
+    for (var i = 0; i < _states.length; i++) {
+      if (_states[i].block.isStamp && _segmentEmpty(i)) {
+        _pendingStampIds.add(_states[i].block.id);
+      }
+    }
   }
 
   /// 最后一个时间戳块的状态下标；无时间戳返回 -1。
@@ -228,24 +252,56 @@ class BlockEditorController extends ChangeNotifier {
     return true;
   }
 
-  /// 内容变化后刷新「待启用」状态。
+  /// 补齐每个时间戳段：stamp 位于末尾、或下一块仍是 stamp 时插入空段落。
   ///
-  /// 段由空转有内容且处于待启用态 → 重打点为当前时间（用户原话：输入
-  /// 第一个字符时自动更新到「动笔时间」）；段再次归空 → 复位为待启用
-  /// （用户原话：删光后该时间戳只在 UI 显示，再输入时重新打点）。
-  void _refreshStampPending() {
-    final index = _lastStampIndex();
-    if (index < 0) {
-      _stampPending = false;
-      return;
+  /// 「每个超级块至少有一行时间戳块和一行正文块」（2026-10-21 用户裁定）。
+  /// 只补正文，绝不凭空创建新 stamp；锁定文档不处理。
+  /// 返回 true 表示块列表发生变化（调用方负责 sync + 置脏）。
+  bool _normalizeSegments() {
+    if (locked) return false;
+    var changed = false;
+    for (var i = 0; i < _states.length; i++) {
+      if (!_states[i].block.isStamp) continue;
+      final next = i + 1;
+      if (next < _states.length && !_states[next].block.isStamp) continue;
+
+      final block = DiaryBlock(id: _ids.next(), text: '', updatedAt: _now());
+      final state = BlockState(block)..lastValue = const TextEditingValue();
+      state.controller.addListener(() => _onBlockText(state));
+      _states.insert(next, state);
+      changed = true;
+      i = next;
     }
-    if (_segmentEmpty(index)) {
-      _stampPending = true;
-      return;
+    return changed;
+  }
+
+  /// 内容/结构变化后全量校准「待启用」集合。
+  ///
+  /// * 段内为空 → 保持/进入待启用，时间戳文本暂不改变；
+  /// * 段内已有内容且此前待启用 → 重打点为当前时间并移出集合
+  ///   （用户原话：输入第一个字符时更新到「动笔时间」，此后冻结）；
+  /// * 段内容再次清空 → 下次校准重新进入待启用，再次输入时重新打点。
+  ///
+  /// 删除时间戳后，其下一段正文并入上一段：若上一段此前为空且处于
+  /// 待启用态，这里会把它重打点为当前时间（本次 bug 的修复点）。
+  void _reconcilePendingStamps() {
+    final present = <String>{};
+    for (var i = 0; i < _states.length; i++) {
+      final state = _states[i];
+      if (!state.block.isStamp) continue;
+      final id = state.block.id;
+      present.add(id);
+
+      if (_segmentEmpty(i)) {
+        _pendingStampIds.add(id);
+        continue;
+      }
+      if (_pendingStampIds.remove(id)) {
+        _restampStamp(i);
+      }
     }
-    if (!_stampPending) return;
-    _stampPending = false;
-    _restampStamp(index);
+    // 已删除的 stamp 从集合中清理。
+    _pendingStampIds.removeWhere((id) => !present.contains(id));
   }
 
   /// 把时间戳块改写为当前时间（用户输入首个字符的「动笔时间」）。
@@ -279,7 +335,7 @@ class BlockEditorController extends ChangeNotifier {
     if (newValue.composing.isValid) {
       state.block.text = newText;
       _markDirty();
-      _refreshStampPending();
+      _reconcilePendingStamps();
       return;
     }
 
@@ -301,7 +357,7 @@ class BlockEditorController extends ChangeNotifier {
     if (!inserted.contains('\n')) {
       state.block.text = newText;
       _markDirty();
-      _refreshStampPending();
+      _reconcilePendingStamps();
       return;
     }
 
@@ -356,6 +412,7 @@ class BlockEditorController extends ChangeNotifier {
       newStates.add(newState);
     }
     _states.insertAll(index + 1, newStates);
+    _normalizeSegments();
     _syncDocBlocks();
 
     // 依据新坐标把光标落到对应块（处理在段中回车/粘贴中段的情况）。
@@ -379,7 +436,7 @@ class BlockEditorController extends ChangeNotifier {
       }
     }
     _markDirty();
-    _refreshStampPending();
+    _reconcilePendingStamps();
     notifyListeners();
     _postFocus(focusTarget, focusOffset);
   }
@@ -412,9 +469,10 @@ class BlockEditorController extends ChangeNotifier {
       // 空块：删除自身，焦点落上一块末尾。
       _states.removeAt(index);
       state.dispose();
+      _normalizeSegments();
       _syncDocBlocks();
       _markDirty();
-      _refreshStampPending();
+      _reconcilePendingStamps();
       notifyListeners();
       _postFocus(prev, prev.controller.text.length);
     } else {
@@ -424,9 +482,10 @@ class BlockEditorController extends ChangeNotifier {
       _states.removeAt(index);
       state.dispose();
       applyValue(prev, merged, TextSelection.collapsed(offset: caret));
+      _normalizeSegments();
       _syncDocBlocks();
       _markDirty();
-      _refreshStampPending();
+      _reconcilePendingStamps();
       notifyListeners();
       _postFocus(prev, caret);
     }
@@ -504,6 +563,126 @@ class BlockEditorController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// 删除整块（块标菜单「删除」）。时间戳块同样可删。
+  ///
+  /// 生效时压一次撤销快照；删空后补一个空段落，保证文档始终有可输入块。
+  /// 若删除后某段时间戳后不再有正文块，自动补一个空段落。
+  /// 焦点落到删除位置之后最近的正文块（没有则之前），避免悬空。
+  void deleteBlock(BlockState state) {
+    if (locked) return;
+    final index = _states.indexOf(state);
+    if (index < 0) return;
+    final id = state.block.id;
+    _pushSnapshot();
+    _states.removeAt(index);
+    state.dispose();
+    if (_states.isEmpty) {
+      final block = DiaryBlock(id: _ids.next(), text: '', updatedAt: _now());
+      final blank = BlockState(block)
+        ..lastValue = const TextEditingValue();
+      blank.controller.addListener(() => _onBlockText(blank));
+      _states.add(blank);
+    }
+    if (selectedBlockId == id) selectedBlockId = null;
+    _normalizeSegments();
+    _syncDocBlocks();
+    _markDirty();
+    _reconcilePendingStamps();
+    notifyListeners();
+
+    BlockState? focus;
+    for (var i = index; i < _states.length; i++) {
+      if (!_states[i].block.isStamp) {
+        focus = _states[i];
+        break;
+      }
+    }
+    if (focus == null) {
+      for (var i = index - 1; i >= 0; i--) {
+        if (!_states[i].block.isStamp) {
+          focus = _states[i];
+          break;
+        }
+      }
+    }
+    if (focus != null) _postFocus(focus, 0);
+  }
+
+  /// 竖单「插入时间戳」入口：在光标所在块的下一行插入一个「时间戳段」。
+  ///
+  /// 与成稿期的 `DiaryComposer.ensureStamp` 不同，这里不做 30 分钟复用判定，
+  /// 直接以当前时间打点，便于在文档任意位置新起一个超级块。
+  ///
+  /// 光标块按「获得焦点的块 → 块标选中的块 → 最后一个正文块」回退；
+  /// 锁定文档或没有任何可插入位置时返回 false。
+  bool insertStampBelowCursor() {
+    if (locked) return false;
+
+    var index = -1;
+    for (var i = 0; i < _states.length; i++) {
+      if (_states[i].focusNode.hasFocus) {
+        index = i;
+        break;
+      }
+    }
+    if (index < 0) {
+      final selected = selectedBlockId;
+      if (selected != null) {
+        index = _states.indexWhere((s) => s.block.id == selected);
+      }
+    }
+    if (index < 0) {
+      for (var i = _states.length - 1; i >= 0; i--) {
+        if (!_states[i].block.isStamp) {
+          index = i;
+          break;
+        }
+      }
+    }
+    if (index < 0) return false;
+
+    _pushSnapshot();
+    final now = _now();
+    final stampBlock = DiaryBlock(
+      id: _ids.next(),
+      text: formatDiaryStamp(now),
+      custom: {kEchoStampAttr: '1'},
+      updatedAt: now,
+    );
+    final bodyBlock = DiaryBlock(id: _ids.next(), text: '', updatedAt: now);
+    final stampState = BlockState(stampBlock)
+      ..lastValue = const TextEditingValue();
+    final bodyState = BlockState(bodyBlock)
+      ..lastValue = const TextEditingValue();
+    stampState.controller.addListener(() => _onBlockText(stampState));
+    bodyState.controller.addListener(() => _onBlockText(bodyState));
+
+    _states.insertAll(index + 1, [stampState, bodyState]);
+    _normalizeSegments();
+    _syncDocBlocks();
+    _markDirty();
+    _reconcilePendingStamps();
+    notifyListeners();
+    // 光标落到新段的正文行，便于立刻输入内容观察段框与待启用行为。
+    _postFocus(bodyState, 0);
+    return true;
+  }
+
+  /// 「每日总结」置顶段的下标；无置顶段时返回 -1。
+  ///
+  /// 优先认块级标志 [kEchoPinnedAttr]；旧稿尚未补标志时按「首块 + 模板
+  /// 底色」兜底（与 `DiaryComposer.isSummaryBlock` 同口径）。
+  int get _pinnedHeadIndex {
+    if (_states.isEmpty) return -1;
+    final block = _states.first.block;
+    if (block.isStamp) return -1;
+    final pinned =
+        block.isPinned ||
+        (block.kind == DiaryBlockKind.paragraph &&
+            block.background == kPinnedSummaryBackground);
+    return pinned ? 0 : -1;
+  }
+
   /// 拖动重排：把 [oldIndex] 处的块搬到 [newIndex]（搬移后的目标下标）。
   ///
   /// [newIndex] 直接采用 `SliverReorderableList.onReorderItem` 的语义——
@@ -511,18 +690,101 @@ class BlockEditorController extends ChangeNotifier {
   /// 收敛到 `[0, len-1]`。锁定、索引越界或落点未变时 no-op（不压快照、
   /// 不置脏）；生效时先压一次撤销快照再搬移，块对象（ID / 文本控制器 /
   /// 焦点节点）整体随位移动、不重建。
+  ///
+  /// 时间戳与超级块强相关：拖**时间戳块**时整段一起搬移（时间戳 + 其后
+  /// 直到下一个时间戳前的正文块），且**只允许落在段边界**（某时间戳之前、
+  /// 文档末尾）——落进其他超级块中间时按拖动方向吸附到最近的边界：
+  /// 向下拖吸到该段之后，向上拖吸到该段之前。正文块仍按单块自由移动，
+  /// 可以拖进其他段。
+  ///
+  /// 「每日总结」置顶段（首块）不可拖动，其他块也不能排到它上方。
   void moveBlockAt(int oldIndex, int newIndex) {
     if (locked) return;
     if (oldIndex < 0 || oldIndex >= _states.length) return;
     final target = newIndex.clamp(0, _states.length - 1);
     if (target == oldIndex) return;
+
+    final pinnedIndex = _pinnedHeadIndex;
+    if (oldIndex == pinnedIndex) return;
+
+    // 时间戳块携带整段搬移；正文块仍是长度 1 的单块。
+    var end = oldIndex;
+    if (_states[oldIndex].block.isStamp) {
+      while (end + 1 < _states.length && !_states[end + 1].block.isStamp) {
+        end++;
+      }
+    }
+    final length = end - oldIndex + 1;
+    // 落点仍在本段范围内（含段尾紧邻插槽）：顺序没有变化。
+    if (target > oldIndex && target <= end) return;
+
+    // 框架给的目标下标按「只移除被拖的时间戳一块」折算；整段移动时，
+    // 向下落要再扣掉段内其余块的数量（向上落则下标原样可用）。
+    var insertAt = target < oldIndex ? target : target - (length - 1);
+    if (length > 1) {
+      insertAt = _snapToSegmentBoundary(
+        insertAt,
+        oldIndex: oldIndex,
+        end: end,
+        movingDown: target > oldIndex,
+      );
+      // 吸附回原位：不产生任何结构变化，不压快照。
+      if (insertAt == oldIndex) return;
+    }
+
+    // 置顶段始终排在最前：任何块都不许插到它上方（上移落点吸附到其后）。
+    if (pinnedIndex >= 0 && oldIndex > pinnedIndex && insertAt <= pinnedIndex) {
+      insertAt = pinnedIndex + 1;
+    }
+    // 被夹回原位：同样不产生结构变化。
+    if (insertAt == oldIndex) return;
+
     _pushSnapshot();
-    final state = _states.removeAt(oldIndex);
-    _states.insert(target, state);
-    state.block.updatedAt = _now();
+    final moved = _states.sublist(oldIndex, end + 1);
+    _states.removeRange(oldIndex, end + 1);
+    _states.insertAll(insertAt, moved);
+    final now = _now();
+    for (final state in moved) {
+      state.block.updatedAt = now;
+    }
+    _normalizeSegments();
     _syncDocBlocks();
     _markDirty();
+    _reconcilePendingStamps();
     notifyListeners();
+  }
+
+  /// 把整段落点 [insertAt] 收敛到**段边界**，返回在「移除被拖段后」的
+  /// 列表里的插入下标。
+  ///
+  /// 合法边界只有两类：某时间戳块之前（即段的起点）、文档末尾。概述段
+  /// （首个时间戳之前）保持恒在顶部，因此不把 0 当作边界。落入其他段
+  /// 中间时按拖动方向吸附：向下拖取其后第一个边界（落到该段之后），
+  /// 向上拖取其前最后一个边界（落到该段之前）。
+  int _snapToSegmentBoundary(
+    int insertAt, {
+    required int oldIndex,
+    required int end,
+    required bool movingDown,
+  }) {
+    final bounds = <int>[];
+    var index = 0;
+    for (var i = 0; i < _states.length; i++) {
+      if (i >= oldIndex && i <= end) continue;
+      if (_states[i].block.isStamp) bounds.add(index);
+      index++;
+    }
+    bounds.add(index); // 文档末尾
+    if (movingDown) {
+      for (final bound in bounds) {
+        if (bound >= insertAt) return bound;
+      }
+      return bounds.last;
+    }
+    for (final bound in bounds.reversed) {
+      if (bound <= insertAt) return bound;
+    }
+    return bounds.first;
   }
 
   // ================================================================
@@ -590,6 +852,9 @@ class BlockEditorController extends ChangeNotifier {
       state.controller.addListener(() => _onBlockText(state));
       _states.add(state);
     }
+    // 恢复态同样校验段结构；只初始化待启用，不在此刻重打点。
+    _normalizeSegments();
+    _syncDocBlocks();
     _initStampPending();
     selectedBlockId = null;
     _markDirty();

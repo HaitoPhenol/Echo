@@ -128,7 +128,7 @@ class SySerializer {
 
   Map<String, Object?> _encodeBlock(DiaryBlock block) {
     final properties = <String, Object?>{
-      // 块级 custom-*（当前仅时间戳标志）随 Properties 往返；思源忽略自定义属性。
+      // 块级 custom-*（时间戳/置顶标志）随 Properties 往返；思源忽略自定义属性。
       for (final entry in block.custom.entries) entry.key: entry.value,
       'id': block.id,
     };
@@ -349,7 +349,7 @@ class SySerializer {
       final updated = blockProps['updated'] != null
           ? _parseStamp('${blockProps['updated']}')
           : date;
-      // 块级 custom-*（当前仅时间戳标志）回读，供 App 端识别只读胶囊块。
+      // 块级 custom-*（时间戳/置顶标志）回读，供 App 端识别特殊块。
       final blockCustom = <String, String>{};
       for (final entry in blockProps.entries) {
         if (entry.key.startsWith('custom-')) {

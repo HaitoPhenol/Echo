@@ -71,8 +71,9 @@ class DiaryCapsuleRow extends StatelessWidget {
                   DiaryCapsuleChip(
                     key: ValueKey<String>(_valueKeys[item.key]!),
                     leading: _moodLeading(item.label),
-                    // 未设心情显示占位文字「心情」，已设置仅显 emoji。
-                    label: item.label == null ? '心情' : null,
+                    // 恒定显示文字「心情」：已设置时为 emoji + 文字，
+                    // 未设置时为空心图标 + 文字，槽位宽度不随状态跳变。
+                    label: '心情',
                     onTap: onPickMood,
                   )
                 else

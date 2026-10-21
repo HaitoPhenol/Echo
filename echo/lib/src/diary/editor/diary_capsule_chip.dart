@@ -23,7 +23,7 @@ class DiaryCapsuleChip extends StatelessWidget {
   /// 前导表情/图标；null 时只有文字。
   final Widget? leading;
 
-  /// 文字；null 时只有前导（心情已设置时仅显示 emoji）。
+  /// 文字；null 时只有前导。
   final String? label;
 
   final VoidCallback? onTap;

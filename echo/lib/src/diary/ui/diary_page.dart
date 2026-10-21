@@ -104,6 +104,29 @@ class DiaryPageState extends State<DiaryPage> implements DiaryNavigatorControlle
   /// 本进程是否已真正弹出过提醒对话框（防重复）。
   bool _reminderShown = false;
 
+  /// 已挂载编辑页控制器登记表（竖单「插入时间戳」用）。
+  ///
+  /// 挂在 Navigator 之上，编辑页加载完成时自行登记、销毁前注销；
+  /// 多层编辑页按登记顺序压栈，[DiaryEditorRegistry.current] 即当前可见页。
+  final DiaryEditorRegistry _editorRegistry = DiaryEditorRegistry();
+
+  /// 当前栈顶是否为可写的日编辑页（竖单据此显示「插入时间戳」）。
+  ///
+  /// 已导出只读（`locked`）时不显示：插入时间戳会被控制器拒绝，
+  /// 留一个无响应的按钮只会误导。
+  bool get isEditorPage {
+    final controller = _editorRegistry.current;
+    return (_topRouteName ?? '').startsWith('/day/') &&
+        controller != null &&
+        !controller.locked;
+  }
+
+  /// 竖单「插入时间戳」：在当前编辑页光标所在块的下一行插入一个时间戳段。
+  ///
+  /// 无编辑页（或未加载完成）时静默返回 false。
+  bool insertStampBelowCursor() =>
+      _editorRegistry.current?.insertStampBelowCursor() ?? false;
+
   @override
   void initState() {
     super.initState();
@@ -254,18 +277,7 @@ class DiaryPageState extends State<DiaryPage> implements DiaryNavigatorControlle
     // push 前重新取 navigator：等待选择器期间本页可能已被拆装。
     final navigator = _navigatorKey.currentState;
     if (navigator == null) return;
-    navigator.push(
-      DiarySlideRoute<void>(
-        builder: (_) => DayEditorPage(
-          year: picked.year,
-          month: picked.month,
-          day: picked.day,
-        ),
-        settings: RouteSettings(
-          name: '/day/${picked.year}/${picked.month}/${picked.day}',
-        ),
-      ),
-    );
+    navigator.push(_editorRouteFor(picked));
   }
 
   // ---- ECP `diary.goto` 同路入口（[DiaryNavigatorController]）-------------
@@ -482,28 +494,31 @@ class DiaryPageState extends State<DiaryPage> implements DiaryNavigatorControlle
             onPopInvokedWithResult: (didPop, _) {
               if (!didPop) _navigatorKey.currentState?.maybePop();
             },
-            child: Navigator(
-              key: _navigatorKey,
-              observers: [
-                _DiaryStackObserver(
-                  onChanged: _syncCanPop,
-                  onTopRoute: (name) => _topRouteName = name,
-                ),
-              ],
-              // 首帧路由栈：默认只有年列表；[preEnterToday] 时一次性建好
-              // 「年列表 + 今日编辑页」两层（初始路由无转场动画，此时日记页
-              // 还在页面轨道上离屏，用户不可见）。
-              onGenerateInitialRoutes: widget.preEnterToday
-                  ? _initialRoutesWithTodayEditor
-                  : Navigator.defaultGenerateInitialRoutes,
-              onGenerateRoute: (settings) {
-                return MaterialPageRoute<void>(
-                  settings: settings,
-                  fullscreenDialog: false,
-                  // 根页也半透明：让页面共用的机械背景透上来。
-                  builder: (_) => const YearListPage(),
-                );
-              },
+            child: DiaryEditorRegistryScope(
+              registry: _editorRegistry,
+              child: Navigator(
+                key: _navigatorKey,
+                observers: [
+                  _DiaryStackObserver(
+                    onChanged: _syncCanPop,
+                    onTopRoute: (name) => _topRouteName = name,
+                  ),
+                ],
+                // 首帧路由栈：默认只有年列表；[preEnterToday] 时一次性建好
+                // 「年列表 + 今日编辑页」两层（初始路由无转场动画，此时日记页
+                // 还在页面轨道上离屏，用户不可见）。
+                onGenerateInitialRoutes: widget.preEnterToday
+                    ? _initialRoutesWithTodayEditor
+                    : Navigator.defaultGenerateInitialRoutes,
+                onGenerateRoute: (settings) {
+                  return MaterialPageRoute<void>(
+                    settings: settings,
+                    fullscreenDialog: false,
+                    // 根页也半透明：让页面共用的机械背景透上来。
+                    builder: (_) => const YearListPage(),
+                  );
+                },
+              ),
             ),
           ),
         ),
