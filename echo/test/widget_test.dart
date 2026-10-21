@@ -1,9 +1,6 @@
-import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:flutter_test/flutter_test.dart';
-
 import 'package:echo/src/app/echo_app.dart';
 import 'package:echo/src/diary/data/in_memory_diary_repository.dart';
+import 'package:echo/src/diary/ui/diary_page.dart';
 import 'package:echo/src/navigation/dock_geometry.dart';
 import 'package:echo/src/navigation/smart_nav_screen.dart';
 import 'package:echo/src/navigation/widgets/ai_dialog.dart';
@@ -12,10 +9,12 @@ import 'package:echo/src/navigation/widgets/mechanical_page_drum.dart';
 import 'package:echo/src/navigation/widgets/quick_action_arc.dart';
 import 'package:echo/src/navigation/widgets/side_drawer.dart';
 import 'package:echo/src/navigation/widgets/trigger_ripple.dart';
-import 'package:echo/src/diary/ui/diary_page.dart';
 import 'package:echo/src/pages/chat_page.dart';
 import 'package:echo/src/pages/template_page.dart';
 import 'package:echo/src/services/nav_badge_service.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_test/flutter_test.dart';
 
 /// 以 16ms 为步长逐帧推进 [ms] 毫秒。
 ///
@@ -132,27 +131,35 @@ void main() {
     await tester.pump(const Duration(milliseconds: 200));
 
     // 输入态才显示两个按钮：左退格、右发送。
-    expect(find.byTooltip('退格到上一个空格'), findsOneWidget);
+    expect(find.byTooltip('退格到上一个分隔符'), findsOneWidget);
     expect(find.byTooltip('搜索'), findsOneWidget);
 
     await tester.enterText(find.byType(TextField), 'notes 日记');
     await tester.pump();
 
     // 退格一次：删掉「日记」，保留分隔空格。
-    await tester.tap(find.byTooltip('退格到上一个空格'));
+    await tester.tap(find.byTooltip('退格到上一个分隔符'));
     await tester.pump();
     expect(find.text('notes '), findsOneWidget);
+
+    // 点号同为分隔符且保留：`sys.ping` → `sys.`。
+    await tester.enterText(find.byType(TextField), 'sys.ping');
+    await tester.pump();
+    await tester.tap(find.byTooltip('退格到上一个分隔符'));
+    await tester.pump();
+    expect(find.text('sys.'), findsOneWidget);
 
     // 发送：普通搜索态记入历史；清空输入后历史胶囊可见该条。
     await tester.tap(find.byTooltip('搜索'));
     await tester.pump();
-    await tester.tap(find.byTooltip('退格到上一个空格'));
+    await tester.tap(find.byTooltip('退格到上一个分隔符'));
     await tester.pump();
-    await tester.tap(find.byTooltip('退格到上一个空格'));
+    await tester.tap(find.byTooltip('退格到上一个分隔符'));
     await tester.pump();
-    // 历史仓储入库时会 trim，故胶囊显示 `notes`（尾随空格被去掉）。
+    // 历史仓储入库时会 trim，故胶囊显示 `sys`（尾随点号被去掉）。
     final chip = find.byWidgetPredicate(
-      (w) => w is Text && w.data == 'notes' && w.overflow == TextOverflow.ellipsis,
+      (w) =>
+          w is Text && w.data == 'sys' && w.overflow == TextOverflow.ellipsis,
     );
     expect(chip, findsOneWidget);
   });
@@ -699,7 +706,10 @@ void main() {
       await tester.pump();
       expect(find.byType(QuickActionArc), findsOneWidget);
       final center = tester.getCenter(
-        find.descendant(of: find.byType(QuickActionArc), matching: find.byIcon(icon)),
+        find.descendant(
+          of: find.byType(QuickActionArc),
+          matching: find.byIcon(icon),
+        ),
       );
       await g.moveTo(center);
       await tester.pump();
@@ -713,9 +723,8 @@ void main() {
 
     // SnackBar（1s）会盖住导航条热区，测试里提前退场（等价于自然超时），
     // 再等弧退场（360ms）完成，保证第二次手势开的是新弧。
-    ScaffoldMessenger.of(
-      tester.element(find.byType(Scaffold).first),
-    ).hideCurrentSnackBar();
+    ScaffoldMessenger.of(tester.element(find.byType(Scaffold).first))
+        .hideCurrentSnackBar();
     await pumpFramesMs(tester, 380);
     expect(find.byType(QuickActionArc), findsNothing);
 
@@ -732,12 +741,15 @@ void main() {
       onlySurvivor = find.byType(TriggerRipple).evaluate().length == 1;
     }
     expect(onlySurvivor, isTrue, reason: 'A 结束移除后应只剩 B');
-    final opacity = tester.widget<FadeTransition>(
-      find.descendant(
-        of: find.byType(TriggerRipple),
-        matching: find.byType(FadeTransition),
-      ),
-    ).opacity.value;
+    final opacity = tester
+        .widget<FadeTransition>(
+          find.descendant(
+            of: find.byType(TriggerRipple),
+            matching: find.byType(FadeTransition),
+          ),
+        )
+        .opacity
+        .value;
     expect(opacity, greaterThan(0.2), reason: 'B 应仍在动画中而非冻结');
 
     // B 到点也正常结束并移除，树中无残留（冻结泄漏则永远等不到）。
@@ -828,11 +840,7 @@ void main() {
     await g1.moveTo(const Offset(520, 560));
     await tester.pump();
     final afterFirstDrag = chatX();
-    expect(
-      afterFirstDrag,
-      lessThan(initialX),
-      reason: '第一指左拖应使页面位置随翻页前移',
-    );
+    expect(afterFirstDrag, lessThan(initialX), reason: '第一指左拖应使页面位置随翻页前移');
 
     // ---- 第二指：同时在导航条上按下并反向拖动 ----
     // 若被劫持，第二指会覆盖 _gesture 并让页面位置反向回退；单指独占
@@ -843,20 +851,12 @@ void main() {
     await g2.moveTo(const Offset(680, 560));
     await g2.moveTo(const Offset(760, 560));
     await tester.pump();
-    expect(
-      chatX(),
-      closeTo(afterFirstDrag, 0.5),
-      reason: '第二指不应改写页面位置（未被劫持）',
-    );
+    expect(chatX(), closeTo(afterFirstDrag, 0.5), reason: '第二指不应改写页面位置（未被劫持）');
 
     // ---- 第一指继续左拖：仍是有效驱动者，页面继续左移 ----
     await g1.moveTo(const Offset(485, 560));
     await tester.pump();
-    expect(
-      chatX(),
-      lessThan(afterFirstDrag),
-      reason: '第一指仍应持续驱动翻页',
-    );
+    expect(chatX(), lessThan(afterFirstDrag), reason: '第一指仍应持续驱动翻页');
 
     // 收尾：第一指松手落位；第二指自始至终未被接管，其释放不应产生
     // 任何翻页副作用（不误触发双击跳页）。

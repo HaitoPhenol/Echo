@@ -497,8 +497,8 @@ class SearchCapsule extends StatelessWidget {
                   children: [
                     _CapsuleAction(
                       icon: Icons.backspace_outlined,
-                      tooltip: '退格到上一个空格',
-                      onTap: hasText ? _deleteToPreviousSpace : null,
+                      tooltip: '退格到上一个分隔符',
+                      onTap: hasText ? _deleteToPreviousDelimiter : null,
                     ),
                     _CapsuleAction(
                       icon: Icons.send,
@@ -521,19 +521,25 @@ class SearchCapsule extends StatelessWidget {
     return field;
   }
 
-  /// 退格：删掉末尾一个词，保留它前面的分隔空格。
+  /// 退格：删掉末尾一个词，保留它前面的分隔符（空格或 `.`）。
   ///
-  /// `sys.ping --help` → `sys.ping `；无空格时整段清空；纯空格也清空。
+  /// `sys.ping --help` → `sys.ping `；`sys.ping` → `sys.`；
+  /// 无分隔符时整段清空；纯分隔符也清空。
   /// 程序化改文本不会触发 onChanged，需手动回调刷新补全/搜索建议。
-  void _deleteToPreviousSpace() {
+  void _deleteToPreviousDelimiter() {
     final text = textController.text;
     if (text.isEmpty) return;
     var end = text.length;
-    while (end > 0 && text[end - 1] == ' ') {
+    while (end > 0 && _isDelimiter(text[end - 1])) {
       end--;
     }
-    final space = end == 0 ? -1 : text.lastIndexOf(' ', end - 1);
-    final cut = space < 0 ? 0 : space + 1;
+    var cut = 0;
+    for (var i = end - 1; i >= 0; i--) {
+      if (_isDelimiter(text[i])) {
+        cut = i + 1;
+        break;
+      }
+    }
     final next = text.substring(0, cut);
     textController.value = TextEditingValue(
       text: next,
@@ -541,6 +547,9 @@ class SearchCapsule extends StatelessWidget {
     );
     onQueryChanged(next);
   }
+
+  /// 按词退格的词分隔符：空格与 `.`（保留下一个词之前的分隔符）。
+  static bool _isDelimiter(String ch) => ch == ' ' || ch == '.';
 
   /// 发送：与键盘提交/搜索键同一路径，空文本不提交。
   void _submitQuery() {
