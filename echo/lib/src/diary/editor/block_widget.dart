@@ -123,7 +123,10 @@ class _BlockWidgetState extends State<BlockWidget> {
         decoration: const InputDecoration(
           isCollapsed: true,
           border: InputBorder.none,
-          contentPadding: EdgeInsets.symmetric(horizontal: 2, vertical: 8),
+          contentPadding: EdgeInsets.symmetric(
+            horizontal: 2,
+            vertical: _textVerticalPadding,
+          ),
         ),
       ),
     );
@@ -179,23 +182,31 @@ class _BlockWidgetState extends State<BlockWidget> {
                         : null,
                   ),
             child: Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
+              // 块标与正文首行对齐（时间戳是单行胶囊，仍按居中）。
+              crossAxisAlignment: isStamp
+                  ? CrossAxisAlignment.center
+                  : CrossAxisAlignment.start,
               children: [
-                ReorderableDelayedDragStartListener(
-                  index: widget.index,
-                  // 「每日总结」置顶段不可拖动（只可点块标选中）。
-                  enabled: !readOnly && !block.isPinned,
-                  // 类型图标只在光标位于本块时浮出，且不占布局宽度，
-                  // 故随 focusNode 重建；时间戳块没有光标，常显其类型图标。
-                  child: ListenableBuilder(
-                    listenable: state.focusNode,
-                    builder: (context, _) => _BlockHandle(
-                      selected: selected,
-                      readOnly: readOnly,
-                      showTypeIcon: isStamp || state.focusNode.hasFocus,
-                      block: block,
-                      onTap: () =>
-                          editor.selectBlock(selected ? null : block.id),
+                Padding(
+                  padding: EdgeInsets.only(
+                    top: isStamp ? 0 : _handleTopFor(block),
+                  ),
+                  child: ReorderableDelayedDragStartListener(
+                    index: widget.index,
+                    // 「每日总结」置顶段不可拖动（只可点块标选中）。
+                    enabled: !readOnly && !block.isPinned,
+                    // 类型图标只在光标位于本块时浮出，且不占布局宽度，
+                    // 故随 focusNode 重建；时间戳块没有光标，常显其类型图标。
+                    child: ListenableBuilder(
+                      listenable: state.focusNode,
+                      builder: (context, _) => _BlockHandle(
+                        selected: selected,
+                        readOnly: readOnly,
+                        showTypeIcon: isStamp || state.focusNode.hasFocus,
+                        block: block,
+                        onTap: () =>
+                            editor.selectBlock(selected ? null : block.id),
+                      ),
                     ),
                   ),
                 ),
@@ -289,6 +300,23 @@ TextStyle blockTextStyle(DiaryBlock block) {
   }
 }
 
+/// 正文上内边距，与 [TextField] 的 `contentPadding.vertical` 同源。
+const double _textVerticalPadding = 8;
+
+/// 块标拖拽图标高度（块标纵向簇的布局高度）。
+const double _handleIconSize = 16;
+
+/// 块标对齐正文**首行**时需要的上偏移。
+///
+/// 正文块的高度随行数增长，块标若按整块垂直居中就会漂到段落中部；
+/// 这里改以首行行盒中心为准：`上内边距 + (行高 − 图标高) / 2`。
+/// 单行块算出的值恰等于原来的居中位置，单行外观不变。
+double _handleTopFor(DiaryBlock block) {
+  final style = blockTextStyle(block);
+  final lineHeight = (style.fontSize ?? _paragraphSize) * (style.height ?? 1);
+  return _textVerticalPadding + (lineHeight - _handleIconSize) / 2;
+}
+
 /// 整段拖动时，拖拽代理里补画的**静态正文块预览**。
 ///
 /// [SliverReorderableList] 的原生代理只覆盖被拖的那一块；时间戳整段拖动
@@ -339,15 +367,21 @@ class BlockDragPreview extends StatelessWidget {
                 borderRadius: BorderRadius.circular(8),
               ),
         child: Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
+          // 与实块一致：块标对齐正文首行，单行时等同居中。
+          crossAxisAlignment: isStamp
+              ? CrossAxisAlignment.center
+              : CrossAxisAlignment.start,
           children: [
-            SizedBox(
-              width: 24,
-              child: Center(
-                child: Icon(
-                  Icons.drag_indicator,
-                  size: 16,
-                  color: _gutterInk(false),
+            Padding(
+              padding: EdgeInsets.only(top: isStamp ? 0 : _handleTopFor(block)),
+              child: SizedBox(
+                width: 24,
+                child: Center(
+                  child: Icon(
+                    Icons.drag_indicator,
+                    size: _handleIconSize,
+                    color: _gutterInk(false),
+                  ),
                 ),
               ),
             ),

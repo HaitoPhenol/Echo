@@ -178,6 +178,9 @@
   拖拽把手」纵向簇**（图标 18dp 宽、把手 24dp 宽，正文相应右移 18dp）：
   类型图标按当前块种类取形（段落 `notes`，H1–H3 `looks_one/two/3`，回读
   H4–H6 退化为 `title`），选中取强调蓝、常态取机能暗灰，与把手同簇同色。
+  **簇在纵向按正文首行对齐**（2026-10-22）：块高随行数增长时块标不再落到
+  段落中部，偏移按首行行盒中心算（`_handleTopFor`），单行块与居中外观一致；
+  拖拽代理里的静态预览同口径，时间戳胶囊单行仍居中。
   把手外包 `ReorderableDelayedDragStartListener`（长按 `kLongPressTimeout`
   起拖，`enabled: !readOnly`），宿主由 `ListView.builder` 换成
   `CustomScrollView` + `SliverReorderableList`，`onReorderItem`（该 SDK
