@@ -47,7 +47,7 @@ echo/
 │       │   ├── data/                      # Repository 抽象 + 内存/sqflite 实现、04:00 时钟、数据 Provider
 │       │   ├── template/                  # 每日模板：JSON 解析、成稿器（幂等/并发去重）
 │       │   ├── editor/                    # 分块编辑器：命令、控制器（撤销重做）、块视图/浮层
-│       │   ├── export/                    # 月行增量导出服务
+│       │   ├── export/                    # 年/月范围导出服务
 │       │   └── ui/                        # 年/月/日浏览页、编辑页、三态 UI（含 widgets/）
 │       ├── services/                      # 与界面无关的能力层
 │       │   ├── chat_store.dart            # 聊天会话数据：增删/已读未读 + 未读聚合

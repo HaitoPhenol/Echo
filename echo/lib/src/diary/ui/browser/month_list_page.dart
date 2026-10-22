@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 
-import '../../../theme/app_colors.dart';
 import '../../data/diary_repository.dart';
 import '../../export/diary_export_service.dart';
+import '../diary_export_flow.dart';
 import '../diary_export_scope.dart';
 import '../diary_route.dart';
 import '../widgets/diary_list_row.dart';
@@ -19,11 +19,12 @@ import 'day_list_page.dart';
 /// 入口，见 `navigation/page_action.dart` 与 `DiaryPageState.startBackfill`），
 /// 本页顶栏不再有「+」。
 ///
-/// 每行 trailing 为**月**增量导出入口（2026-10-18 由年行迁来）：
-/// 点导出先选渠道（分享 / 另存，2026-10-22），打包该月全部 draft 为
-/// 「日记」笔记本 .sy.zip；分享经「确认已发送」、另存保存成功后才把
-/// 早于今天的 draft 批量置 exported。**今日（未结束）的日记仍入包，
-/// 但保持 draft 可继续写**，故当月再次导出会重复包含今日内容。
+/// 每行 trailing 为**月**导出入口（2026-10-18 由年行迁来）：
+/// 点导出先显示当前范围（「导出范围：yyyy 年 M 月」）并选渠道
+/// （分享 / 另存，2026-10-22），打包该月**全部**日记（含已导出，
+/// 2026-10-22 用户裁定）为「日记」笔记本 .sy.zip；分享经「确认已发送」、
+/// 另存保存成功后才把早于今天的 draft 批量置 exported。**今日（未结束）
+/// 的日记仍入包，但保持 draft 可继续写**，故当月再次导出会重复包含今日内容。
 /// 该月所有笔记都无未导出时，导出按钮左侧另显「已导出」徽标（2026-10-19）。
 class MonthListPage extends StatefulWidget {
   const MonthListPage({super.key, required this.year});
@@ -61,122 +62,44 @@ class _MonthListPageState extends State<MonthListPage> {
 
   Future<void> _exportMonth(int month) async {
     if (_exportingMonth != null) return;
-    final channel = await _pickExportChannel();
+    final scopeLabel = '${widget.year} 年 $month 月';
+    final channel = await showDiaryExportChannelSheet(
+      context,
+      scopeLabel: scopeLabel,
+    );
     if (channel == null || !mounted) return;
     setState(() => _exportingMonth = month);
     final service = DiaryExportServiceScope.of(context);
     final messenger = ScaffoldMessenger.maybeOf(context);
-    final year = widget.year;
     try {
       final outcome = await service.exportMonth(
-        year,
+        widget.year,
         month,
         channel: channel,
         // 分享面板取消/成功无法区分，返回后由用户人工确认是否真的送达；
         // 否认则草稿保留、可再次导出。另存有明确结果，无需确认。
         confirmShared: channel == DiaryExportChannel.share
-            ? _confirmSent
+            ? () => confirmDiaryShareSent(context)
             : null,
       );
       messenger?.clearSnackBars();
       messenger?.showSnackBar(
         SnackBar(
-          content: Text(_exportResultText(outcome, year, month)),
+          content: Text(diaryExportResultText(outcome)),
           duration: const Duration(seconds: 2),
         ),
       );
     } catch (_) {
       messenger?.clearSnackBars();
       messenger?.showSnackBar(
-        const SnackBar(
-          content: Text('导出失败，草稿已保留，请重试'),
-          duration: Duration(seconds: 2),
+        SnackBar(
+          content: Text('导出失败，$scopeLabel内容已保留，请重试'),
+          duration: const Duration(seconds: 2),
         ),
       );
     } finally {
       if (mounted) setState(() => _exportingMonth = null);
     }
-  }
-
-  /// 导出结果文案：今日日记会入包但保持 draft，故成功文案按实际
-  /// 迁移篇数（`markedCount`）与入包篇数（`exportedCount`）区分。
-  String _exportResultText(DiaryExportOutcome outcome, int year, int month) {
-    if (!outcome.didExport) {
-      if (!outcome.userDenied) return '$year 年 $month 月没有待导出的草稿';
-      return outcome.channel == DiaryExportChannel.save
-          ? '已取消另存，草稿仍保留，可再次导出'
-          : '未标记为已导出，草稿仍保留，可再次导出';
-    }
-    final verb = outcome.channel == DiaryExportChannel.save ? '已另存' : '已分享';
-    final keptDraft = outcome.exportedCount - outcome.markedCount;
-    if (keptDraft == 0) return '$verb ${outcome.exportedCount} 篇 · 标记为已导出';
-    if (outcome.markedCount == 0) {
-      return '$verb ${outcome.exportedCount} 篇 · 今日日记保持草稿';
-    }
-    return '$verb ${outcome.exportedCount} 篇 · 标记 ${outcome.markedCount} 篇，'
-        '今日保持草稿';
-  }
-
-  /// 导出渠道选择：分享（系统面板）或另存（系统「保存到」对话框）。
-  ///
-  /// 点遮罩 / 返回键关闭返回 null，不触发导出。
-  Future<DiaryExportChannel?> _pickExportChannel() {
-    return showModalBottomSheet<DiaryExportChannel>(
-      context: context,
-      backgroundColor: AppColors.overlaySurface,
-      barrierColor: Colors.black54,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (sheetContext) => SafeArea(
-        top: false,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.ios_share, size: 20),
-              title: const Text('分享'),
-              subtitle: const Text('发送到思源或其他应用'),
-              onTap: () =>
-                  Navigator.of(sheetContext).pop(DiaryExportChannel.share),
-            ),
-            ListTile(
-              leading: const Icon(Icons.save_alt, size: 20),
-              title: const Text('另存'),
-              subtitle: const Text('保存到本机选定的位置'),
-              onTap: () =>
-                  Navigator.of(sheetContext).pop(DiaryExportChannel.save),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  /// 系统分享返回后的人工确认（share_plus 不回报真实发送结果）。
-  /// 点「尚未发送」/ 点弹窗外关闭 → false，草稿不迁移。
-  Future<bool> _confirmSent() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('确认已发送？'),
-        content: const Text(
-          '系统分享不会回报发送结果。请确认已把文件发送到思源'
-          '（或另存成功）后，再标记为已导出。',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('尚未发送'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('确认已发送'),
-          ),
-        ],
-      ),
-    );
-    return confirmed ?? false;
   }
 
   Future<void> _openMonth(int month) async {
@@ -260,9 +183,8 @@ class _MonthListPageState extends State<MonthListPage> {
                       const DiaryStateBadge(text: '已导出'),
                       const SizedBox(width: 6),
                     ],
-                    _MonthExportButton(
-                      year: widget.year,
-                      month: month,
+                    DiaryExportIconButton(
+                      tooltip: '导出 ${widget.year} 年 $month 月全部日记',
                       exporting: _exportingMonth == month,
                       // 任一月导出进行中时其余月行禁用，避免并发迁移。
                       enabled: _exportingMonth == null,
@@ -288,50 +210,4 @@ class _MonthData {
 
   /// 「已全部导出」的月份（该月存在记录且无 draft），月行据此显徽标。
   final Set<int> fullyExported;
-}
-
-/// 月行尾部导出按钮：空闲显分享图标，进行中转圈。
-class _MonthExportButton extends StatelessWidget {
-  const _MonthExportButton({
-    required this.year,
-    required this.month,
-    required this.exporting,
-    required this.enabled,
-    required this.onPressed,
-  });
-
-  final int year;
-  final int month;
-  final bool exporting;
-  final bool enabled;
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    final color = enabled
-        ? AppColors.pageLabel
-        : AppColors.mechInkDim.withValues(alpha: 0.45);
-    // 裸图标 + 手势而非 IconButton：头部行统一 28px 中线，见
-    // diary_shell.dart 头部注释；IconButton 最小点击高度会撑高行。
-    return Tooltip(
-      message: '导出 $year 年 $month 月草稿',
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: enabled && !exporting ? onPressed : null,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 6),
-          child: exporting
-              ? SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: color,
-                  ),
-                )
-              : Icon(Icons.ios_share, size: 17, color: color),
-        ),
-      ),
-    );
-  }
 }

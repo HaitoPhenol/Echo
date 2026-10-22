@@ -196,6 +196,17 @@ abstract class DiaryRepository extends ChangeNotifier {
   /// exported/archived 不重复入包。
   Future<List<DiaryDocument>> draftDocumentsOfMonth(int year, int month);
 
+  /// 指定年份内**全部可打包**的日文档（draft + exported，日期升序），
+  /// 供「全量导出」使用（2026-10-22 用户裁定：导出不再跳过已导出内容）。
+  ///
+  /// archived 正文已物理清除，永不参与导出。
+  Future<List<DiaryDocument>> documentsOfYear(int year);
+
+  /// 指定月份内全部可打包的日文档（draft + exported，日期升序）。
+  ///
+  /// archived 正文已物理清除，永不参与导出。
+  Future<List<DiaryDocument>> documentsOfMonth(int year, int month);
+
   /// 最早一篇**早于** [cutoff]（按自然日比较，不含 cutoff 当天）的
   /// draft 日期；无则 null。
   ///

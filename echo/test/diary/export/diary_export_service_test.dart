@@ -161,15 +161,24 @@ void main() {
       expect(tempDir.listSync(), isEmpty);
     });
 
-    test('第二次导出：已 exported 不再入包，当月待导出为 0', () async {
+    test('第二次导出：已导出内容仍完整打包，只是不再迁移', () async {
       final d = DateTime(2026, 6, 14);
       await repo.upsertDraft(draft(d, mood: '🙂'));
       final first = await service.exportMonth(2026, 6);
       expect(first.exportedCount, 1);
 
       final second = await service.exportMonth(2026, 6);
-      expect(second.exportedCount, 0);
-      expect(share.calls, hasLength(1));
+      // 全量打包（2026-10-22）：已导出内容照样入包，只是无 draft 可迁移。
+      expect(second.exportedCount, 1);
+      expect(second.markedCount, 0);
+      expect(share.calls, hasLength(2));
+      final archive = ZipDecoder().decodeBytes(share.payloads.last);
+      expect(
+        archive.files.any(
+          (f) => f.name.endsWith('${SyIdGenerator.dayContainer(d)}.sy'),
+        ),
+        isTrue,
+      );
       expect(await repo.stateOfDay(d), DiaryDocState.exported);
     });
 
@@ -238,6 +247,70 @@ void main() {
       expect(confirmed.exportedCount, 1);
       expect(share.calls, hasLength(2));
       expect(await repo.stateOfDay(d), DiaryDocState.exported);
+    });
+  });
+
+  group('DiaryExportService.exportYear', () {
+    test('全年导出：跨月入包、含已导出、只迁移早于今天的 draft', () async {
+      final jan = DateTime(2026, 1, 10);
+      final may = DateTime(2026, 5, 20);
+      final todayDay = DateTime(2026, 6, 15);
+      final lastYear = DateTime(2025, 12, 31);
+      await repo.upsertDraft(draft(jan, text: '一月'));
+      await repo.upsertDraft(draft(may, text: '五月'));
+      await repo.upsertDraft(draft(todayDay, text: '今天'));
+      await repo.upsertDraft(draft(lastYear, text: '去年'));
+
+      // 先按月导出 5 月，使其变为 exported：验证全年导出不会跳过它。
+      await service.exportMonth(2026, 5);
+      expect(await repo.stateOfDay(may), DiaryDocState.exported);
+
+      final outcome = await service.exportYear(2026);
+      expect(outcome.scopeLabel, '2026 年');
+      expect(outcome.isYear, isTrue);
+      expect(outcome.didExport, isTrue);
+      // 1 月 + 5 月（已导出）+ 今日 = 3 篇全部入包。
+      expect(outcome.exportedCount, 3);
+      expect(outcome.markedCount, 1);
+      expect(outcome.todayKeptCount, 1);
+
+      final fileName = share.calls.last.single.path
+          .split(Platform.pathSeparator)
+          .last;
+      expect(fileName, '日记-2026-20260615-203000.sy.zip');
+      final archive = ZipDecoder().decodeBytes(share.payloads.last);
+      final names = archive.files.map((f) => f.name).toList();
+      expect(names, contains('日记/${SyIdGenerator.yearContainer(2026)}.sy'));
+      // 年 + 1/5/6 三个月容器 + 3 篇日文档。
+      expect(
+        names.where((n) => n.endsWith('.sy') && !n.contains('.siyuan')),
+        hasLength(7),
+      );
+      expect(
+        names,
+        contains(
+          '日记/${SyIdGenerator.yearContainer(2026)}/'
+          '${SyIdGenerator.monthContainer(DateTime(2026, 5))}.sy',
+        ),
+      );
+      // 去年不在 2026 年包内。
+      expect(
+        names.any((n) => n.contains(SyIdGenerator.yearContainer(2025))),
+        isFalse,
+      );
+
+      expect(await repo.stateOfDay(jan), DiaryDocState.exported);
+      expect(await repo.stateOfDay(may), DiaryDocState.exported);
+      expect(await repo.stateOfDay(todayDay), DiaryDocState.draft);
+      expect(await repo.stateOfDay(lastYear), DiaryDocState.draft);
+      expect(tempDir.listSync(), isEmpty);
+    });
+
+    test('全年无记录：不分享，返回 exportedCount=0', () async {
+      final outcome = await service.exportYear(2030);
+      expect(outcome.exportedCount, 0);
+      expect(outcome.didExport, isFalse);
+      expect(share.calls, isEmpty);
     });
   });
 

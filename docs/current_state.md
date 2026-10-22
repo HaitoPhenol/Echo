@@ -91,7 +91,7 @@
 | `data/` | `DiaryRepository` 抽象 + 内存实现 / **sqflite 持久实现**、`DiaryClock`（04:00 日界）、`DiaryDataProvider`（现为 Fake 常量）、debug 种子 |
 | `template/` | 模板 JSON 解析、每日成稿 `DiaryComposer`（幂等/并发去重/custom-* 数据面填充） |
 | `editor/` | 分块编辑器：命令、控制器（50 步撤销重做、`applyCustomPatch` 批量写文档根 custom-*、`moveBlockAt` 拖拽重排）、块视图（`CustomScrollView` + `SliverReorderableList`、`header` 可挂滚动区首项）、块左侧「类型图标 + 拖拽把手」纵向簇、块标浮层 |
-| `export/` | 导出服务（月行增量导出 .sy.zip，`exportMonth`） |
+| `export/` | 导出服务（年/月范围全量导出 .sy.zip，`exportYear` / `exportMonth`） |
 | `ui/` | 年→月→日浏览页、日记编辑页、三态 UI、胶囊行（`diary_capsule_row.dart`，心情入口）、导出渠道弹窗与分享确认流 |
 
 - **生产装配用持久仓储**（M5 起）：sqflite 库
@@ -218,21 +218,24 @@
 - **04:00 日界**：`DiaryClock.diaryDate`，hour<4 归前一自然日；
   测试注入时钟，生产取墙钟。
 - **空稿清理**：进模块 prune 早于今天的空草稿（meta+.sy 双删）。
-- **导出**（2026-10-18 起改为**按月**）：入口在**月列表每行右侧**
-  （年列表不再有年导出）；点击后先由 `showModalBottomSheet` 选渠道
-  （`DiaryExportChannel.share|save`，关闭弹窗不导出），打包该月 draft
-  成一个 zip 后分流：
-  - **分享**：share_plus 调系统分享 → 返回后人工「确认已发送」才把该月
-    draft 批量置 exported，否认保留草稿可再次导出；
+- **导出**（2026-10-22 起**粒度跟随页面层级**）：年列表行右侧导出**全年**
+  （`exportYear`），月列表行右侧导出**该月**（`exportMonth`）；点击后先由
+  `showModalBottomSheet` 弹出渠道选择，顶部固定提示「导出范围：yyyy 年 /
+  yyyy 年 M 月」，并说明**范围内全部日记都会完整打包（含已导出）**
+  （`DiaryExportChannel.share|save`，关闭弹窗不导出）。**全量打包**：以
+  `documentsOfYear/Month` 取 draft + exported，archived 正文已清除不参与。
+  打包后分流：
+  - **分享**：share_plus 调系统分享 → 返回后人工「确认已发送」才把范围内
+    早于今天的 draft 批量置 exported，否认保留草稿可再次导出；
   - **另存**（2026-10-22）：走自建 `echo/files` 通道 + Android
     `ACTION_CREATE_DOCUMENT`（SAF，每次自选目录与文件名、零存储权限，
     Kotlin 侧后台线程把临时 zip 拷到目标 Uri），保存成功即直接迁移
     exported，取消（`userDenied`）则保留草稿。
-  `exportMonth` 返回的 `DiaryExportOutcome.channel` 决定 UI 完成/中止文案。
+  `DiaryExportOutcome` 的 `channel` / `scopeLabel` 决定 UI 完成/中止文案。
   **今日（未结束）的日记仍入包但不迁移**（2026-10-22 用户裁定）：只有
   早于 `repository.today()` 的 draft 批量置 exported，今日保持 draft 可继续
-  写；`exportedCount` 为入包篇数、`markedCount` 为实际迁移篇数，UI 成功
-  文案据此区分（「今日保持草稿」）。
+  写；`exportedCount` 为入包篇数、`markedCount` 为实际迁移篇数、
+  `todayKeptCount` 为今日保留篇数，UI 成功文案据此区分。
   Android 思源不响应 ACTION_SEND，实际走思源内 SAF 导入。该月所有笔记都
   无未导出（`isMonthFullyExported`）时，导出按钮左侧显「已导出」徽标
   （与日行同款 `DiaryStateBadge`）。

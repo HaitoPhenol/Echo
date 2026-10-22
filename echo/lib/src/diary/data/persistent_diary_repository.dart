@@ -256,34 +256,45 @@ CREATE TABLE $_table(
   }
 
   @override
-  Future<List<DiaryDocument>> draftDocumentsOfYear(int year) async {
-    final rows = await _db.query(
-      _table,
-      where: "state = 'draft' AND (date / 10000) = ?",
-      whereArgs: [year],
-      orderBy: 'date ASC',
-    );
-    final docs = <DiaryDocument>[];
-    for (final row in rows) {
-      final relative = row['file_path']! as String;
-      final file = File('${root.path}/$relative');
-      if (await file.exists()) {
-        docs.add(_serializer.decodeBytes(await file.readAsBytes()).document);
-      }
-    }
-    return docs;
-  }
+  Future<List<DiaryDocument>> draftDocumentsOfYear(int year) =>
+      _loadDocuments(
+        where: "state = 'draft' AND (date / 10000) = ?",
+        whereArgs: [year],
+      );
 
   @override
-  Future<List<DiaryDocument>> draftDocumentsOfMonth(
-    int year,
-    int month,
-  ) async {
-    // 月粒度：date 形如 yyyymmdd，除以 100 得 yyyymm。
+  Future<List<DiaryDocument>> draftDocumentsOfMonth(int year, int month) =>
+      _loadDocuments(
+        // 月粒度：date 形如 yyyymmdd，除以 100 得 yyyymm。
+        where: "state = 'draft' AND (date / 100) = ?",
+        whereArgs: [year * 100 + month],
+      );
+
+  @override
+  Future<List<DiaryDocument>> documentsOfYear(int year) => _loadDocuments(
+    // 全量导出：draft + exported；archived 正文已删，不参与打包。
+    where: "state IN ('draft', 'exported') AND (date / 10000) = ?",
+    whereArgs: [year],
+  );
+
+  @override
+  Future<List<DiaryDocument>> documentsOfMonth(int year, int month) =>
+      _loadDocuments(
+        where: "state IN ('draft', 'exported') AND (date / 100) = ?",
+        whereArgs: [year * 100 + month],
+      );
+
+  /// 按条件读取日文档（`date` 升序）：正文文件缺失的条目跳过。
+  ///
+  /// 导出相关的 draft / 全量查询共用，避免重复的解码循环。
+  Future<List<DiaryDocument>> _loadDocuments({
+    required String where,
+    required List<Object?> whereArgs,
+  }) async {
     final rows = await _db.query(
       _table,
-      where: "state = 'draft' AND (date / 100) = ?",
-      whereArgs: [year * 100 + month],
+      where: where,
+      whereArgs: whereArgs,
       orderBy: 'date ASC',
     );
     final docs = <DiaryDocument>[];

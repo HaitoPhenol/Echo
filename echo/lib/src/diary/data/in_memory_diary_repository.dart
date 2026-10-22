@@ -157,6 +157,36 @@ class InMemoryDiaryRepository extends DiaryRepository {
   }
 
   @override
+  Future<List<DiaryDocument>> documentsOfYear(int year) async {
+    final list =
+        _entries.values
+            .where(
+              (e) =>
+                  e.state != DiaryDocState.archived && e.date.year == year,
+            )
+            .map((e) => e.doc!)
+            .toList()
+          ..sort((a, b) => a.date.compareTo(b.date));
+    return list;
+  }
+
+  @override
+  Future<List<DiaryDocument>> documentsOfMonth(int year, int month) async {
+    final list =
+        _entries.values
+            .where(
+              (e) =>
+                  e.state != DiaryDocState.archived &&
+                  e.date.year == year &&
+                  e.date.month == month,
+            )
+            .map((e) => e.doc!)
+            .toList()
+          ..sort((a, b) => a.date.compareTo(b.date));
+    return list;
+  }
+
+  @override
   Future<DateTime?> oldestDraftBefore(DateTime cutoff) async {
     final cutoffDay = _dayOnly(cutoff);
     final candidates =

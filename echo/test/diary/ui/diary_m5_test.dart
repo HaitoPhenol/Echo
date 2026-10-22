@@ -36,8 +36,42 @@ class _FakeExportService extends DiaryExportService {
   handler;
   int calls = 0;
 
+  /// 年粒度导出调用次数与最近年份（年列表入口用）。
+  int yearCalls = 0;
+  int? lastYear;
+
   /// 最近一次调用所选渠道（null 表示尚未调用）。
   DiaryExportChannel? lastChannel;
+
+  @override
+  Future<DiaryExportOutcome> exportYear(
+    int year, {
+    DiaryExportChannel channel = DiaryExportChannel.share,
+    DiaryExportConfirm? confirmShared,
+  }) async {
+    yearCalls++;
+    lastYear = year;
+    lastChannel = channel;
+    // 年粒度只验证 UI 编排与文案，不做仓储迁移。
+    final confirmed = channel == DiaryExportChannel.share
+        ? await confirmShared?.call() ?? false
+        : true;
+    if (!confirmed) {
+      return DiaryExportOutcome(
+        year: year,
+        exportedCount: 0,
+        channel: channel,
+        userDenied: true,
+      );
+    }
+    return DiaryExportOutcome(
+      year: year,
+      exportedCount: 3,
+      markedCount: 1,
+      todayKeptCount: 1,
+      channel: channel,
+    );
+  }
 
   @override
   Future<DiaryExportOutcome> exportMonth(
@@ -61,6 +95,7 @@ class _FakeExportService extends DiaryExportService {
         month: month,
         exportedCount: 2,
         markedCount: 1,
+        todayKeptCount: 1,
         channel: channel,
       );
     }
@@ -82,6 +117,7 @@ class _FakeExportService extends DiaryExportService {
       month: month,
       exportedCount: 2,
       markedCount: 1,
+      todayKeptCount: 1,
       channel: channel,
     );
   }
@@ -164,6 +200,8 @@ void main() {
   Future<void> exportVia(WidgetTester tester, String choice) async {
     await tester.tap(find.byIcon(Icons.ios_share));
     await tester.pumpAndSettle();
+    // 渠道弹窗顶部固定提示当前导出范围。
+    expect(find.text('导出范围：2026 年 6 月'), findsOneWidget);
     expect(find.text('分享'), findsOneWidget);
     expect(find.text('另存'), findsOneWidget);
     await tester.tap(find.text(choice));
@@ -194,7 +232,7 @@ void main() {
         const DiaryExportOutcome(year: 2026, month: 6, exportedCount: 1),
       );
       await tester.pumpAndSettle();
-      expect(find.text('已分享 1 篇 · 标记为已导出'), findsOneWidget);
+      expect(find.text('已分享 2026 年 6 月 1 篇 · 标记 1 篇为已导出'), findsOneWidget);
       expect(find.byType(CircularProgressIndicator), findsNothing);
     });
 
@@ -214,7 +252,7 @@ void main() {
 
       await exportVia(tester, '分享');
       await tester.pumpAndSettle();
-      expect(find.text('2026 年 6 月没有待导出的草稿'), findsOneWidget);
+      expect(find.text('2026 年 6 月没有可导出的日记'), findsOneWidget);
     });
 
     testWidgets('分享后确认对话框：否认保留 draft，确认才置 exported', (tester) async {
@@ -236,7 +274,7 @@ void main() {
       expect(find.text('确认已发送？'), findsOneWidget);
       await tester.tap(find.text('尚未发送'));
       await tester.pump();
-      expect(find.text('未标记为已导出，草稿仍保留，可再次导出'), findsOneWidget);
+      expect(find.text('未标记为已导出，2026 年 6 月草稿仍保留'), findsOneWidget);
       expect(await repo.stateOfDay(DateTime(2026, 6, 14)), DiaryDocState.draft);
       expect(await repo.stateOfDay(DateTime(2026, 6, 15)), DiaryDocState.draft);
       expect(export.calls, 1);
@@ -250,7 +288,10 @@ void main() {
       await tester.tap(find.text('确认已发送'));
       await tester.pump();
       await tester.pumpAndSettle();
-      expect(find.text('已分享 2 篇 · 标记 1 篇，今日保持草稿'), findsOneWidget);
+      expect(
+        find.text('已分享 2026 年 6 月 2 篇 · 标记 1 篇为已导出 · 今日 1 篇保持草稿'),
+        findsOneWidget,
+      );
       expect(
         await repo.stateOfDay(DateTime(2026, 6, 14)),
         DiaryDocState.exported,
@@ -274,7 +315,10 @@ void main() {
       expect(export.lastChannel, DiaryExportChannel.save);
       // 另存有明确结果：不弹「确认已发送」，直接提示成功。
       expect(find.text('确认已发送？'), findsNothing);
-      expect(find.text('已另存 2 篇 · 标记 1 篇，今日保持草稿'), findsOneWidget);
+      expect(
+        find.text('已另存 2026 年 6 月 2 篇 · 标记 1 篇为已导出 · 今日 1 篇保持草稿'),
+        findsOneWidget,
+      );
       expect(
         await repo.stateOfDay(DateTime(2026, 6, 14)),
         DiaryDocState.exported,
@@ -293,6 +337,7 @@ void main() {
           month: 6,
           exportedCount: 1,
           markedCount: 0,
+          todayKeptCount: 1,
           channel: DiaryExportChannel.save,
         ),
       );
@@ -302,7 +347,7 @@ void main() {
 
       await exportVia(tester, '另存');
       await tester.pumpAndSettle();
-      expect(find.text('已另存 1 篇 · 今日日记保持草稿'), findsOneWidget);
+      expect(find.text('已另存 2026 年 6 月 1 篇 · 今日 1 篇保持草稿'), findsOneWidget);
       expect(await repo.stateOfDay(DateTime(2026, 6, 15)), DiaryDocState.draft);
     });
 
@@ -325,7 +370,7 @@ void main() {
 
       await exportVia(tester, '另存');
       await tester.pumpAndSettle();
-      expect(find.text('已取消另存，草稿仍保留，可再次导出'), findsOneWidget);
+      expect(find.text('已取消另存，2026 年 6 月日记仍保留'), findsOneWidget);
       expect(
         await repo.stateOfDay(DateTime(2026, 6, 15)),
         DiaryDocState.draft,
@@ -382,6 +427,35 @@ void main() {
         ),
         findsNothing,
         reason: '6 月含今天的 draft，不应显徽标',
+      );
+    });
+  });
+
+  group('M5 年行导出入口', () {
+    testWidgets('年行导出：范围提示全年，另存成功文案含年范围', (tester) async {
+      final repo = emptyRepo();
+      addTearDown(repo.dispose);
+      final export = _FakeExportService(repository: repo);
+      await tester.pumpWidget(app(repository: repo, exportService: export));
+      await tester.pumpAndSettle();
+
+      // 年列表当前只有 2026 年，行尾即年粒度导出入口。
+      await tester.tap(find.byIcon(Icons.ios_share));
+      await tester.pumpAndSettle();
+      expect(find.text('导出范围：2026 年'), findsOneWidget);
+      expect(
+        find.text('范围内全部日记都会完整打包（含已导出）'),
+        findsOneWidget,
+      );
+      await tester.tap(find.text('另存'));
+      await tester.pumpAndSettle();
+
+      expect(export.yearCalls, 1);
+      expect(export.lastYear, 2026);
+      expect(export.lastChannel, DiaryExportChannel.save);
+      expect(
+        find.text('已另存 2026 年 3 篇 · 标记 1 篇为已导出 · 今日 1 篇保持草稿'),
+        findsOneWidget,
       );
     });
   });

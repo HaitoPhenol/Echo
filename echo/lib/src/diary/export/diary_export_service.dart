@@ -54,30 +54,34 @@ enum DiaryExportChannel { share, save }
 typedef DiarySaveChannel =
     Future<bool> Function(String sourcePath, String suggestedName);
 
-/// 一次**月**导出的结果。
+/// 一次导出（年或月）的结果。
 class DiaryExportOutcome {
   const DiaryExportOutcome({
     required this.year,
-    required this.month,
+    this.month,
     required this.exportedCount,
     int? markedCount,
+    this.todayKeptCount = 0,
     this.channel = DiaryExportChannel.share,
     this.userDenied = false,
   }) : markedCount = markedCount ?? exportedCount;
 
   final int year;
 
-  /// 导出月份（1..12）。
-  final int month;
+  /// 导出月份（1..12）；null 表示年粒度（全年）。
+  final int? month;
 
-  /// 本次打包进 zip 的篇数；0 表示当月没有 draft，未生成 zip、未走
-  /// 任何渠道；分享否认 / 另存取消时也是 0（此时 [userDenied] 为 true，
-  /// draft 全部保留）。
+  /// 本次打包进 zip 的篇数（含已导出内容）；0 表示该范围没有可导出的
+  /// 日记，未生成 zip、未走任何渠道；分享否认 / 另存取消时也是 0
+  /// （此时 [userDenied] 为 true，草稿全部保留）。
   final int exportedCount;
 
-  /// 本次真正迁移为 exported 的篇数。今日（未结束）的日记会打进 zip
+  /// 本次真正迁移为 exported 的篇数。今日（未结束）的草稿会打进 zip
   /// 但保持 draft 可继续写，故可能小于 [exportedCount]（2026-10-22 用户裁定）。
   final int markedCount;
+
+  /// 本次入包但按规则保持草稿的今日篇数（用于完成文案）。
+  final int todayKeptCount;
 
   /// 本次实际使用的渠道（决定 UI 的完成文案）。
   final DiaryExportChannel channel;
@@ -88,6 +92,13 @@ class DiaryExportOutcome {
 
   /// 是否已通过所选渠道送出（打包内容非空即视为送出）。
   bool get didExport => exportedCount > 0;
+
+  /// 是否年粒度（全年导出）。
+  bool get isYear => month == null;
+
+  /// 导出范围提示文案（`2026 年` / `2026 年 10 月`）。
+  String get scopeLabel =>
+      month == null ? '$year 年' : '$year 年 $month 月';
 }
 
 /// 分享返回后的人工确认钩子（用户裁定 B）：
@@ -97,11 +108,13 @@ class DiaryExportOutcome {
 /// 正常完成 Future——故由 UI 弹二次确认兜底；iOS 同理保持一致交互。
 typedef DiaryExportConfirm = Future<bool> Function();
 
-/// 月行增量导出编排：取当月 draft → 打 .sy.zip → 所选渠道送出 →
-/// （分享）用户确认已发送 / （另存）写入成功 → 批量 draft→exported。
+/// 年 / 月范围导出编排：按范围取**全部可打包**日记（draft + exported）
+/// → 打 .sy.zip → 所选渠道送出 → （分享）用户确认已发送 / （另存）
+/// 写入成功 → 把范围内早于今天的 draft 批量 draft→exported。
 ///
-/// 导出粒度已于 2026-10-18 由年改月（用户裁定）；包内月标签为
-/// `yyyy-MM`，包名 `日记-yyyy-MM-<时间戳>.sy.zip`。
+/// 导出粒度由页面层级决定（2026-10-22 用户裁定）：年列表点导出为全年，
+/// 月列表点导出为当月。**已导出内容也完整重新打包**（同一裁定），
+/// 只有正文已清除的 archived 不参与。
 ///
 /// 渠道语义（2026-10-22 用户裁定）：点击导出先选「分享 / 另存」。
 /// 分享走系统面板，平台不回报真实发送结果（Android 取消也正常返回），
@@ -141,11 +154,10 @@ class DiaryExportService {
   final Future<Directory> Function() _tempDirectory;
   final DateTime Function() _now;
 
-  /// 导出指定年月的全部草稿。
+  /// 导出指定年月（该月全部可打包日记）。
   ///
-  /// 无 draft 时返回 [DiaryExportOutcome.exportedCount] 为 0，不走渠道。
   /// [channel] 为 [DiaryExportChannel.share] 时在分享流程结束后调
-  /// [confirmShared]（生产由月列表弹「确认已发送」对话框），确认后才
+  /// [confirmShared]（生产由 UI 弹「确认已发送」对话框），确认后才
   /// 批量迁移为 exported；为 [DiaryExportChannel.save] 时保存成功即迁移，
   /// [confirmShared] 不参与。
   ///
@@ -157,8 +169,27 @@ class DiaryExportService {
     int month, {
     DiaryExportChannel channel = DiaryExportChannel.share,
     DiaryExportConfirm? confirmShared,
+  }) => _export(year, month, channel: channel, confirmShared: confirmShared);
+
+  /// 导出指定年份（该年全部可打包日记，供年列表导出入口）。
+  ///
+  /// 包名 `日记-<年>-<时间戳>.sy.zip`，动作与迁移规则同 [exportMonth]。
+  Future<DiaryExportOutcome> exportYear(
+    int year, {
+    DiaryExportChannel channel = DiaryExportChannel.share,
+    DiaryExportConfirm? confirmShared,
+  }) => _export(year, null, channel: channel, confirmShared: confirmShared);
+
+  Future<DiaryExportOutcome> _export(
+    int year,
+    int? month, {
+    DiaryExportChannel channel = DiaryExportChannel.share,
+    DiaryExportConfirm? confirmShared,
   }) async {
-    final diaries = await repository.draftDocumentsOfMonth(year, month);
+    // 全量打包：draft + exported（2026-10-22 用户裁定）；archived 无正文。
+    final diaries = month == null
+        ? await repository.documentsOfYear(year)
+        : await repository.documentsOfMonth(year, month);
     if (diaries.isEmpty) {
       return DiaryExportOutcome(
         year: year,
@@ -168,9 +199,13 @@ class DiaryExportService {
       );
     }
 
+    // 只有 draft 参与状态迁移；今日草稿入包但保持可编辑。
+    final drafts = month == null
+        ? await repository.draftDocumentsOfYear(year)
+        : await repository.draftDocumentsOfMonth(year, month);
     final today = repository.today();
-    // 今日草稿入包但不迁移；更早的 draft 才批量置 exported。
-    final markable = diaries.where((doc) => doc.date.isBefore(today)).toList();
+    final markable = drafts.where((doc) => doc.date.isBefore(today)).toList();
+    final todayKept = drafts.length - markable.length;
 
     final exportedAt = _now();
     final bytes = _exporter.build(
@@ -180,8 +215,10 @@ class DiaryExportService {
     );
 
     final tempDir = await _tempDirectory();
-    final mm = month.toString().padLeft(2, '0');
-    final zipName = '$notebookName-$year-$mm-${_stamp(exportedAt)}.sy.zip';
+    final scope = month == null
+        ? '$year'
+        : '$year-${month.toString().padLeft(2, '0')}';
+    final zipName = '$notebookName-$scope-${_stamp(exportedAt)}.sy.zip';
     final zipFile = File('${tempDir.path}/$zipName');
     // flush: true 确保内容落地后再交给分享目标 / 另存读取。
     await zipFile.writeAsBytes(bytes, flush: true);
@@ -222,6 +259,7 @@ class DiaryExportService {
       month: month,
       exportedCount: diaries.length,
       markedCount: markable.length,
+      todayKeptCount: todayKept,
       channel: channel,
     );
   }
@@ -230,7 +268,7 @@ class DiaryExportService {
   /// 重新导出，临时 zip 清掉，下次导出以新时间戳重新生成。
   Future<DiaryExportOutcome> _denied(
     int year,
-    int month,
+    int? month,
     DiaryExportChannel channel,
     File zipFile,
   ) async {
