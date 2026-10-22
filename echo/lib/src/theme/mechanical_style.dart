@@ -39,6 +39,8 @@ abstract final class MechanicalStyle {
   /// 取细网格半个格距（16）：所有格线/点阵同步错开，边缘仍由
   /// 负向起点的循环保证铺满，不会出现半截新线。
   /// 2026-10-09 用户裁决「网格整体右移、下移一点」。
+  /// 2026-10-22 起再叠加每次冷启动随机 0~128dp 的抖动
+  /// （`MechanicalBackground` 的 State 内一次性生成，本值仍为基值）。
   static const double gridOriginShiftX = 16;
   static const double gridOriginShiftY = 16;
 

@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../../theme/app_colors.dart';
@@ -16,13 +18,14 @@ import '../../theme/mechanical_style.dart';
 /// * 纹理是周期图案（周期 = 粗网格 [MechanicalStyle.coarseGridSpacing]），
 ///   平移量取模后视觉仍与无限铺满的 1:1 平移一致；纹理绘制区左右各多铺
 ///   一个周期，平移后不会露出空白边；
-/// * 三层纹理相对绘制区左上角有整体平移（[MechanicalStyle.gridOriginShiftX/Y]）；
+/// * 三层纹理相对绘制区左上角有整体平移（[MechanicalStyle.gridOriginShiftX/Y]
+///   + 每次冷启动随机 0~128dp 的抖动，见 [_jitterX] / [_jitterY]）；
 /// * 不画实体描边框、不画底部十字：仅顶部两个十字标定
 ///   「状态栏下沿、左右各 14dp」的位置；
 /// * 静态绘制：纹理层与十字层各外包 [RepaintBoundary]，平移只改
 ///   [Transform] 偏移，导航动画不会引发背景重绘；
 /// * 只画"表皮"，不承载任何交互。
-class MechanicalBackground extends StatelessWidget {
+class MechanicalBackground extends StatefulWidget {
   const MechanicalBackground({super.key, this.panOffsetX = 0});
 
   /// 纹理层水平平移（dp）。
@@ -35,6 +38,21 @@ class MechanicalBackground extends StatelessWidget {
   ///
   /// 必须 ≥ 平移量的取值周期，否则平移后左/右边缘会露出空白底色。
   static const double _bleed = MechanicalStyle.coarseGridSpacing;
+
+  @override
+  State<MechanicalBackground> createState() => _MechanicalBackgroundState();
+}
+
+class _MechanicalBackgroundState extends State<MechanicalBackground> {
+  /// 本次冷启动固定的纹理原点随机抖动（各轴 0~128dp）。
+  ///
+  /// 与 [MechanicalStyle.gridOriginShiftX/Y] 相加后使用：静态基值保证
+  /// 纹理与十字/点阵的对位关系，随机量让每次启动的格线落点不同。
+  /// 取在 State 里且只算一次——热重载/重建/翻页都不会重新摇。
+  late final double _jitterX =
+      math.Random().nextDouble() * MechanicalStyle.coarseGridSpacing;
+  late final double _jitterY =
+      math.Random().nextDouble() * MechanicalStyle.coarseGridSpacing;
 
   @override
   Widget build(BuildContext context) {
@@ -56,15 +74,20 @@ class MechanicalBackground extends StatelessWidget {
 
           // -------- 会随页面平移的纹理层 --------
           Positioned(
-            left: -_bleed,
-            right: -_bleed,
+            left: -MechanicalBackground._bleed,
+            right: -MechanicalBackground._bleed,
             top: 0,
             bottom: 0,
             child: Transform.translate(
-              offset: Offset(panOffsetX, 0),
+              offset: Offset(widget.panOffsetX, 0),
               child: RepaintBoundary(
                 child: CustomPaint(
-                  painter: _MechanicalGridPainter(),
+                  painter: _MechanicalGridPainter(
+                    originShiftX:
+                        MechanicalStyle.gridOriginShiftX + _jitterX,
+                    originShiftY:
+                        MechanicalStyle.gridOriginShiftY + _jitterY,
+                  ),
                   size: Size.infinite,
                 ),
               ),
@@ -89,11 +112,22 @@ class MechanicalBackground extends StatelessWidget {
 /// 纹理绘制器：细网格 → 粗网格 → 点阵。
 ///
 /// 网格用单个 Path 收集全部线段后一次描边，点阵逐交点画圆；
-/// 不依赖任何动态入参，绘制一次即长期复用（_bleed 区域一并铺满）。
+/// 三层共用同一原点平移（[originShiftX/Y]，含冷启动随机抖动），
+/// 保证点阵仍压在粗网格交点上。绘制参数整次启动固定，
+/// 一次绘制长期复用（_bleed 区域一并铺满）。
 class _MechanicalGridPainter extends CustomPainter {
+  _MechanicalGridPainter({
+    required this.originShiftX,
+    required this.originShiftY,
+  });
+
+  /// 纹理原点平移（dp）= 静态基值 + 本次冷启动随机抖动。
+  final double originShiftX;
+  final double originShiftY;
+
   @override
   void paint(Canvas canvas, Size size) {
-    // -------- 细网格（32dp，白 α.05）--------
+    // -------- 细网格（16dp，白 α.03）--------
     final finePath = Path();
     _addGrid(finePath, size, MechanicalStyle.fineGridSpacing);
     canvas.drawPath(
@@ -105,7 +139,7 @@ class _MechanicalGridPainter extends CustomPainter {
         ..isAntiAlias = false,
     );
 
-    // -------- 粗网格（128dp，白 α.10）--------
+    // -------- 粗网格（128dp，白 α.07）--------
     final coarsePath = Path();
     _addGrid(coarsePath, size, MechanicalStyle.coarseGridSpacing);
     canvas.drawPath(
@@ -117,14 +151,14 @@ class _MechanicalGridPainter extends CustomPainter {
         ..isAntiAlias = false,
     );
 
-    // -------- 点阵（128dp 交点，r=1，白 α.22）--------
+    // -------- 点阵（128dp 交点，r=1，白 α.15）--------
     // 与粗网格同原点平移，点保持压在粗网格交点上。
     final dotPaint = Paint()
       ..color = AppColors.mechGridDot
       ..style = PaintingStyle.fill;
     final spacing = MechanicalStyle.dotGridSpacing;
-    final shiftX = MechanicalStyle.gridOriginShiftX % spacing;
-    final shiftY = MechanicalStyle.gridOriginShiftY % spacing;
+    final shiftX = originShiftX % spacing;
+    final shiftY = originShiftY % spacing;
     for (double x = -spacing + shiftX; x <= size.width; x += spacing) {
       for (double y = -spacing + shiftY; y <= size.height; y += spacing) {
         canvas.drawCircle(Offset(x, y), MechanicalStyle.dotRadius, dotPaint);
@@ -132,11 +166,11 @@ class _MechanicalGridPainter extends CustomPainter {
     }
   }
 
-  /// 画一组间距 [spacing] 的网格，整体平移取自 MechanicalStyle；
+  /// 画一组间距 [spacing] 的网格，整体平移取本绘制器的原点平移；
   /// 循环从 -spacing 起、到 size 边界止，保证平移后铺满整个绘制区。
   void _addGrid(Path path, Size size, double spacing) {
-    final shiftX = MechanicalStyle.gridOriginShiftX % spacing;
-    final shiftY = MechanicalStyle.gridOriginShiftY % spacing;
+    final shiftX = originShiftX % spacing;
+    final shiftY = originShiftY % spacing;
     // 竖线。
     for (double x = -spacing + shiftX; x <= size.width; x += spacing) {
       path
@@ -152,7 +186,9 @@ class _MechanicalGridPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _MechanicalGridPainter oldDelegate) => false;
+  bool shouldRepaint(covariant _MechanicalGridPainter oldDelegate) =>
+      oldDelegate.originShiftX != originShiftX ||
+      oldDelegate.originShiftY != originShiftY;
 }
 
 /// 顶部双十字绘制器：固定层，不随纹理平移。
