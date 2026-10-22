@@ -366,8 +366,8 @@ tone2、快捷弧选中按钮 = tone4**；**拇指滑块是特例**：使用不�
   也不进共享色板，就地定义在 `widgets/ai_bar.dart`。
 - **机能风视觉层色组**（`mech*` 前缀，RCR-2026-001 收编）：
   固定背景、三层纹理/点阵、读数条、空心大页码、kicker、3D 转鼓、
-  页名牌共用的 13 个皮肤 token（`mechBackground` / `mechFineGrid`(α.05) /
-  `mechCoarseGrid`(α.10) / `mechGridDot`(α.22) / `mechCoordsDim/Hi` /
+  页名牌共用的 13 个皮肤 token（`mechBackground` / `mechFineGrid`(α.03) /
+  `mechCoarseGrid`(α.07) / `mechGridDot`(α.15) / `mechCoordsDim/Hi` /
   `mechPageNumberStroke` / `mechInk`(#D8D8D8) / `mechInkDim`(#646464) /
   `mechDrumPanel` / `mechDrumLine` / `mechDrumNumber` /
   `mechDrumProgressTrack`），与四阶阶梯并列、互不混用，详见 3.11。
@@ -493,9 +493,9 @@ Stack 分层在 `SmartNavScreen.build`（机能风层见 3.11）：
 `MechanicalStyle`。
 
 - **固定背景** `MechanicalBackground`（widgets/mechanical_background.dart）：
-  `mechBackground`(#0C0C0C) 底上叠三层纹理——细网格 32dp
-  （1dp，白 α.05）、粗网格 128dp（1dp，白 α.10）、128dp 交点
-  r=1 点阵（白 α.22）；三层相对屏左上整体右下偏移 16dp（负向起点
+  `mechBackground`(#0C0C0C) 底上叠三层纹理——细网格 16dp
+  （1dp，白 α.03）、粗网格 128dp（1dp，白 α.07）、128dp 交点
+  r=1 点阵（白 α.15）；三层相对屏左上整体右下偏移 16dp（负向起点
   循环保证铺满）。顶部一对十字标定：中心在「状态栏下沿 + 8dp 与
   frameInset 取大」高度、左右各 14dp 处，边长 22、1dp、与粗网格
   同色；无实体描边框、无底部十字。纹理与页面轨道**1:1 同步平移**

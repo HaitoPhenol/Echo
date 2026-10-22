@@ -17,8 +17,8 @@ abstract final class MechanicalStyle {
   // 背景纹理三层（稿 L17-24：点阵 + 细网格 + 粗网格叠加）
   // ================================================================
 
-  /// 细网格间距（dp，稿 background-size:32px）
-  static const double fineGridSpacing = 32;
+  /// 细网格间距（dp，稿 background-size:16px）
+  static const double fineGridSpacing = 16;
 
   /// 细网格线宽（dp，稿为 1px CSS）
   static const double fineGridStrokeWidth = 1;

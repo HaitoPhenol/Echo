@@ -87,14 +87,14 @@ abstract final class AppColors {
   /// 冷灰 [background]（Scaffold 底色）不外露。
   static const Color mechBackground = Color(0xFF0C0C0C);
 
-  /// 背景细网格线（白 α.05，32dp 格距）
-  static const Color mechFineGrid = Color(0x0DFFFFFF);
+  /// 背景细网格线（白 α.03，32dp 格距）
+  static const Color mechFineGrid = Color(0x08FFFFFF);
 
-  /// 背景粗网格线与顶部十字标定（白 α.10，128dp 格距）
-  static const Color mechCoarseGrid = Color(0x1AFFFFFF);
+  /// 背景粗网格线与顶部十字标定（白 α.07，128dp 格距）
+  static const Color mechCoarseGrid = Color(0x12FFFFFF);
 
-  /// 背景点阵圆点（白 α.22，128dp 间距）
-  static const Color mechGridDot = Color(0x38FFFFFF);
+  /// 背景点阵圆点（白 α.15，128dp 间距）
+  static const Color mechGridDot = Color(0x26FFFFFF);
 
   /// 顶部读数条普通文字（白 α.30）
   static const Color mechCoordsDim = Color(0x4DFFFFFF);

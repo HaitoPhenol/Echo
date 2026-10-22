@@ -127,7 +127,7 @@
 
 | 分组 | token |
 |---|---|
-| 背景与纹理 | `mechBackground`(#0C0C0C)、`mechFineGrid`(白α.05)、`mechCoarseGrid`(白α.10)、`mechGridDot`(白α.22) |
+| 背景与纹理 | `mechBackground`(#0C0C0C)、`mechFineGrid`(白α.03)、`mechCoarseGrid`(白α.07)、`mechGridDot`(白α.15) |
 | 读数条/页码 | `mechCoordsDim`(白α.30)、`mechCoordsHi`(白α.55)、`mechPageNumberStroke`(白α.10) |
 | 墨水 | `mechInk`(#D8D8D8)、`mechInkDim`(#646464) |
 | 转鼓/页名牌 | `mechDrumPanel`(#0F0F0F，页名牌取同色 α.90)、`mechDrumLine`(#262626)、`mechDrumNumber`(#E1E1E1)、`mechDrumProgressTrack`(白α.05) |
@@ -143,7 +143,7 @@
 | 称呼 | 说明 | 代码位置 |
 |---|---|---|
 | **机能风视觉层** | 整套机能风皮肤的总称：固定背景 + 读数条 + 透明页面层（kicker/大标题/空心大页码）+ 页码转鼓与衬线页名牌，与导航手势体系叠加共存 | `navigation/widgets/mechanical_*.dart`、`theme/mechanical_style.dart` |
-| **固定背景** | 所有页面共用、纹理随翻页同步平移的 `CustomPaint` 底：#0C0C0C 上叠 32dp 细网格、128dp 粗网格、128 交点 r=1 点阵，整体右下偏移 16dp；纹理层按 128dp 周期取模平移、左右各多铺一个周期，顶部十字固定不动；纹理/十字各外包 `RepaintBoundary`，平移不重绘、不接手势 | `widgets/mechanical_background.dart` 的 `MechanicalBackground` |
+| **固定背景** | 所有页面共用、纹理随翻页同步平移的 `CustomPaint` 底：#0C0C0C 上叠 16dp 细网格、128dp 粗网格、128 交点 r=1 点阵，整体右下偏移 16dp；纹理层按 128dp 周期取模平移、左右各多铺一个周期，顶部十字固定不动；纹理/十字各外包 `RepaintBoundary`，平移不重绘、不接手势 | `widgets/mechanical_background.dart` 的 `MechanicalBackground` |
 | **十字标定** | 背景顶部左右各一道的 22×1dp 直角十字线（状态栏下沿 +8dp、左右 inset 14dp，粗网格同色），无实体边框、无底部十字 | `mechanical_background.dart` |
 | **读数条 / 设备读数条** | 状态栏下沿居中的 9sp 大字距读数：`DEV 型号 · T 电池温度 · P 瞬时功耗`，MethodChannel `echo/device_stats` 每 5 秒轮询、异常显「—」，`IgnorePointer` 不挡手势 | `widgets/mechanical_coords_bar.dart` 的 `MechanicalCoordsBar` |
 | **SEC kicker** | 模板页大标题上方的 11sp w700 大字距小标签（终端 SEC.01 // CONSOLE、笔记 SEC.03 // NOTES、主页 SEC.04 // ME；中文页名改为「终端」「笔记」「主页」后，英文 kicker 仍保留 CONSOLE/NOTES/ME），亮段 `mechInk`、暗段 `mechInkDim`；当前 `fontFamily: monospace` 在 Flutter/Android 不解析，并非真等宽 | `pages/template_page.dart` |
