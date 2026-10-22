@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../navigation/dock_geometry.dart';
 import '../../theme/app_colors.dart';
 import '../export/diary_export_service.dart';
 
@@ -12,10 +13,18 @@ import '../export/diary_export_service.dart';
 /// 「2026 年 10 月」），下方为分享 / 另存两个入口。
 ///
 /// 点遮罩 / 返回键关闭返回 null，调用方据此不触发导出。
+///
+/// 弹窗挂在日记内层 Navigator 的 Overlay 上，层级低于主屏底部停靠件
+/// （把手条 / AI 条 / 导航胶囊），三者不会让位、会直接盖住弹窗底边。
+/// 因此底部按 [DockGeometry] 额外留出「停靠件 + 间隙」的高度，
+/// 让分享 / 另存两个选项整体落在导航栏之上，不被遮挡。
 Future<DiaryExportChannel?> showDiaryExportChannelSheet(
   BuildContext context, {
   required String scopeLabel,
 }) {
+  // 停靠件上沿 = 安全区 + bottomMargin + barHeight；再留 12dp 间隙，
+  // 与 AI 对话框收在导航条上方的口径一致。
+  const dockClearance = DockGeometry.bottomMargin + DockGeometry.barHeight + 12;
   return showModalBottomSheet<DiaryExportChannel>(
     context: context,
     backgroundColor: AppColors.overlaySurface,
@@ -25,46 +34,49 @@ Future<DiaryExportChannel?> showDiaryExportChannelSheet(
     ),
     builder: (sheetContext) => SafeArea(
       top: false,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 10),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '导出范围：$scopeLabel',
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.pageLabel,
+      child: Padding(
+        padding: const EdgeInsets.only(bottom: dockClearance),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '导出范围：$scopeLabel',
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.pageLabel,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 4),
-                const Text(
-                  '范围内全部日记都会完整打包（含已导出）',
-                  style: TextStyle(fontSize: 11, color: AppColors.mechInkDim),
-                ),
-              ],
+                  const SizedBox(height: 4),
+                  const Text(
+                    '范围内全部日记都会完整打包（含已导出）',
+                    style: TextStyle(fontSize: 11, color: AppColors.mechInkDim),
+                  ),
+                ],
+              ),
             ),
-          ),
-          const Divider(height: 1),
-          ListTile(
-            leading: const Icon(Icons.ios_share, size: 20),
-            title: const Text('分享'),
-            subtitle: const Text('发送到思源或其他应用'),
-            onTap: () =>
-                Navigator.of(sheetContext).pop(DiaryExportChannel.share),
-          ),
-          ListTile(
-            leading: const Icon(Icons.save_alt, size: 20),
-            title: const Text('另存'),
-            subtitle: const Text('保存到本机选定的位置'),
-            onTap: () =>
-                Navigator.of(sheetContext).pop(DiaryExportChannel.save),
-          ),
-        ],
+            const Divider(height: 1),
+            ListTile(
+              leading: const Icon(Icons.ios_share, size: 20),
+              title: const Text('分享'),
+              subtitle: const Text('发送到思源或其他应用'),
+              onTap: () =>
+                  Navigator.of(sheetContext).pop(DiaryExportChannel.share),
+            ),
+            ListTile(
+              leading: const Icon(Icons.save_alt, size: 20),
+              title: const Text('另存'),
+              subtitle: const Text('保存到本机选定的位置'),
+              onTap: () =>
+                  Navigator.of(sheetContext).pop(DiaryExportChannel.save),
+            ),
+          ],
+        ),
       ),
     ),
   );
