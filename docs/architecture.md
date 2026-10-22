@@ -498,9 +498,11 @@ Stack 分层在 `SmartNavScreen.build`（机能风层见 3.11）：
   r=1 点阵（白 α.22）；三层相对屏左上整体右下偏移 16dp（负向起点
   循环保证铺满）。顶部一对十字标定：中心在「状态栏下沿 + 8dp 与
   frameInset 取大」高度、左右各 14dp 处，边长 22、1dp、与粗网格
-  同色；无实体描边框、无底部十字。静态 `CustomPaint` 外包
-  `RepaintBoundary`，`shouldRepaint` 仅随顶部边界变化，翻页动画
-  不引发背景重绘；只画表皮、不接手势。
+  同色；无实体描边框、无底部十字。纹理与页面轨道**1:1 同步平移**
+  （偏移 = 显示位置 × 屏宽，按 128dp 周期取模，纹理层左右各多铺
+  一个周期兜底）；顶部十字是屏幕标定物，始终固定在屏幕角上。
+  纹理层与十字层各外包 `RepaintBoundary`，平移只改 `Transform`
+  偏移，导航动画不引发背景重绘；只画表皮、不接手势。
 - **顶部读数条** `MechanicalCoordsBar`：状态栏下沿（coordsTop=0）
   居中，9sp、字距 3.6（.4em），文案 `DEV 型号 · T 电池温度 ·
   P 瞬时功耗`；数据来自原生 MethodChannel `echo/device_stats`

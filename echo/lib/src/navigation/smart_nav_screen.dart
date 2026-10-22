@@ -1136,12 +1136,23 @@ class _SmartNavScreenState extends State<SmartNavScreen>
     );
   }
 
-  /// 固定背景层：机能风纹理 + 顶部设备状态读数条（不随翻页移动）。
+  /// 固定背景层：机能风纹理 + 顶部设备状态读数条。
   List<Widget> _buildStaticBackdrop(BuildContext context) => [
-    // -------- 机能风固定背景（纹理不随翻页移动）--------
-    const Positioned.fill(
-      key: ValueKey<String>('mech-bg'),
-      child: MechanicalBackground(),
+    // -------- 机能风背景（纹理随翻页同步平移，十字固定）--------
+    //
+    // 纹理与页面轨道 1:1 同速率横移：偏移 = 显示位置 × 屏宽。
+    // 纹理周期取粗网格间距，取模后视觉仍是连续平移（图案无缝），
+    // 绘制区由 MechanicalBackground 左右各多铺一个周期兜底。
+    Positioned.fill(
+      key: const ValueKey<String>('mech-bg'),
+      child: AnimatedBuilder(
+        animation: _nav,
+        builder: (context, _) => MechanicalBackground(
+          panOffsetX:
+              (-_nav.displayPosition * MediaQuery.sizeOf(context).width) %
+              MechanicalStyle.coarseGridSpacing,
+        ),
+      ),
     ),
 
     // -------- 机能风设备状态读数条（固定顶部）--------

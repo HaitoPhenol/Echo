@@ -71,7 +71,7 @@
   置顶，`buildDefaultPageActions`）。竖单高度/按钮圆心随条数自适应
   （`DockGeometry.menuHeightFor`、`DockLayout.pageMenuPositionsFor`），
   笔记页单项竖单比旧的 3 项固定高度明显缩短。
-- 机能风视觉层（v0.6.0 转正，RCR-2026-001）：固定网格/点阵背景、
+- 机能风视觉层（v0.6.0 转正，RCR-2026-001）：随翻页同步平移的网格/点阵背景、
   顶部读数条、空心大页码、3D 转鼓、衬线页名牌；代码在
   `navigation/widgets/mechanical_*.dart`，token 在
   `theme/app_colors.dart` + `mechanical_style.dart`。
