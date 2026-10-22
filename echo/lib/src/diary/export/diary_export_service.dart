@@ -60,19 +60,24 @@ class DiaryExportOutcome {
     required this.year,
     required this.month,
     required this.exportedCount,
+    int? markedCount,
     this.channel = DiaryExportChannel.share,
     this.userDenied = false,
-  });
+  }) : markedCount = markedCount ?? exportedCount;
 
   final int year;
 
   /// 导出月份（1..12）。
   final int month;
 
-  /// 本次打包并标记 exported 的篇数；0 表示当月没有 draft，
-  /// 未生成 zip、未走任何渠道；分享否认 / 另存取消时也是 0
-  /// （此时 [userDenied] 为 true，draft 全部保留）。
+  /// 本次打包进 zip 的篇数；0 表示当月没有 draft，未生成 zip、未走
+  /// 任何渠道；分享否认 / 另存取消时也是 0（此时 [userDenied] 为 true，
+  /// draft 全部保留）。
   final int exportedCount;
+
+  /// 本次真正迁移为 exported 的篇数。今日（未结束）的日记会打进 zip
+  /// 但保持 draft 可继续写，故可能小于 [exportedCount]（2026-10-22 用户裁定）。
+  final int markedCount;
 
   /// 本次实际使用的渠道（决定 UI 的完成文案）。
   final DiaryExportChannel channel;
@@ -81,7 +86,7 @@ class DiaryExportOutcome {
   /// 草稿可再次导出。
   final bool userDenied;
 
-  /// 是否已通过所选渠道送出并完成状态迁移。
+  /// 是否已通过所选渠道送出（打包内容非空即视为送出）。
   bool get didExport => exportedCount > 0;
 }
 
@@ -143,6 +148,10 @@ class DiaryExportService {
   /// [confirmShared]（生产由月列表弹「确认已发送」对话框），确认后才
   /// 批量迁移为 exported；为 [DiaryExportChannel.save] 时保存成功即迁移，
   /// [confirmShared] 不参与。
+  ///
+  /// **今日（未结束）的日记仍打进 zip，但不迁移状态**（2026-10-22 用户
+  /// 裁定）：当天还在写，导出后应保持 draft 可继续编辑；下次导出会再次
+  /// 打包当日内容，直到它变成已结束日期。
   Future<DiaryExportOutcome> exportMonth(
     int year,
     int month, {
@@ -158,6 +167,10 @@ class DiaryExportService {
         channel: channel,
       );
     }
+
+    final today = repository.today();
+    // 今日草稿入包但不迁移；更早的 draft 才批量置 exported。
+    final markable = diaries.where((doc) => doc.date.isBefore(today)).toList();
 
     final exportedAt = _now();
     final bytes = _exporter.build(
@@ -192,10 +205,12 @@ class DiaryExportService {
 
     // 渠道完成且确认后才迁移状态；markExported 整批校验，
     // 任一日期已非 draft 则整批不迁移（StateError 上抛）。
-    await repository.markExported(
-      diaries.map((doc) => doc.date),
-      exportedAt: exportedAt,
-    );
+    if (markable.isNotEmpty) {
+      await repository.markExported(
+        markable.map((doc) => doc.date),
+        exportedAt: exportedAt,
+      );
+    }
     try {
       if (await zipFile.exists()) await zipFile.delete();
     } catch (_) {
@@ -206,6 +221,7 @@ class DiaryExportService {
       year: year,
       month: month,
       exportedCount: diaries.length,
+      markedCount: markable.length,
       channel: channel,
     );
   }

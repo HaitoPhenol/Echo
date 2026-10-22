@@ -89,6 +89,8 @@ void main() {
 
       final outcome = await service.exportMonth(2026, 6);
       expect(outcome.exportedCount, 2);
+      // 今天（6/15）入包但保持 draft：只有昨日迁移。
+      expect(outcome.markedCount, 1);
       expect(outcome.didExport, isTrue);
       expect(outcome.channel, DiaryExportChannel.share);
       expect(share.calls, hasLength(1));
@@ -142,9 +144,9 @@ void main() {
       ) as Map;
       expect(conf['name'], '日记');
 
-      // 分享成功后两篇 draft → exported，上月草稿不受影响（月隔离）。
+      // 分享成功后昨日 draft → exported；今天的仍保持 draft 可继续写。
       expect(await repo.stateOfDay(d1), DiaryDocState.exported);
-      expect(await repo.stateOfDay(d2), DiaryDocState.exported);
+      expect(await repo.stateOfDay(d2), DiaryDocState.draft);
       expect(await repo.stateOfDay(otherMonth), DiaryDocState.draft);
       // 临时 zip 已清理。
       expect(await File(files.single.path).exists(), isFalse);
@@ -160,7 +162,7 @@ void main() {
     });
 
     test('第二次导出：已 exported 不再入包，当月待导出为 0', () async {
-      final d = DateTime(2026, 6, 15);
+      final d = DateTime(2026, 6, 14);
       await repo.upsertDraft(draft(d, mood: '🙂'));
       final first = await service.exportMonth(2026, 6);
       expect(first.exportedCount, 1);
@@ -171,8 +173,26 @@ void main() {
       expect(await repo.stateOfDay(d), DiaryDocState.exported);
     });
 
-    test('分享抛错：draft 全部保留、临时 zip 不删除、错误上抛', () async {
+    test('今日 draft：入包但不迁状态，再次导出仍会打包当天', () async {
       final d = DateTime(2026, 6, 15);
+      await repo.upsertDraft(draft(d, text: '今天还没写完'));
+
+      final first = await service.exportMonth(2026, 6);
+      expect(first.exportedCount, 1);
+      expect(first.markedCount, 0);
+      expect(first.didExport, isTrue);
+      expect(await repo.stateOfDay(d), DiaryDocState.draft);
+
+      // 今日保持 draft，所以再次导出会重复打包当天（用户裁定接受）。
+      final second = await service.exportMonth(2026, 6);
+      expect(second.exportedCount, 1);
+      expect(second.markedCount, 0);
+      expect(share.calls, hasLength(2));
+      expect(await repo.stateOfDay(d), DiaryDocState.draft);
+    });
+
+    test('分享抛错：draft 全部保留、临时 zip 不删除、错误上抛', () async {
+      final d = DateTime(2026, 6, 14);
       await repo.upsertDraft(draft(d));
       share.shouldThrow = true;
 
@@ -186,7 +206,7 @@ void main() {
     });
 
     test('确认钩子返回 false（用户否认）：draft 保留、zip 清理、可再次导出', () async {
-      final d = DateTime(2026, 6, 15);
+      final d = DateTime(2026, 6, 14);
       await repo.upsertDraft(draft(d, text: '写好的正文'));
 
       final denied = await service.exportMonth(
@@ -244,7 +264,7 @@ void main() {
     });
 
     test('另存成功：不走分享、直接迁移 exported、临时 zip 清理', () async {
-      final d = DateTime(2026, 6, 15);
+      final d = DateTime(2026, 6, 14);
       await repo.upsertDraft(draft(d, mood: '🙂'));
 
       final outcome = await saveService.exportMonth(
@@ -263,7 +283,7 @@ void main() {
     });
 
     test('另存取消：草稿保留、临时 zip 清理、可再次导出', () async {
-      final d = DateTime(2026, 6, 15);
+      final d = DateTime(2026, 6, 14);
       await repo.upsertDraft(draft(d, text: '写好的正文'));
       saveResult = false;
 

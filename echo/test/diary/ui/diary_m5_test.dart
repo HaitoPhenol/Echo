@@ -8,6 +8,9 @@ import 'package:echo/src/diary/data/diary_data_provider.dart';
 import 'package:echo/src/diary/data/diary_repository.dart';
 import 'package:echo/src/diary/data/in_memory_diary_repository.dart';
 import 'package:echo/src/diary/export/diary_export_service.dart';
+import 'package:echo/src/diary/sy/diary_model.dart';
+import 'package:echo/src/diary/sy/sy_id.dart';
+import 'package:echo/src/diary/sy/sy_serializer.dart';
 import 'package:echo/src/diary/template/daily_default_template.dart';
 import 'package:echo/src/diary/template/diary_composer.dart';
 import 'package:echo/src/diary/ui/browser/day_editor_page.dart';
@@ -48,14 +51,16 @@ class _FakeExportService extends DiaryExportService {
     final h = handler;
     if (h != null) return h(year, month, confirmShared);
     // 另存有明确结果：直接模拟保存成功，不弹人工确认。
+    // 与服务同口径：今日草稿入包但不迁移，昨日才置 exported。
     if (channel == DiaryExportChannel.save) {
       await repository.markExported([
-        DateTime(2026, 6, 15),
+        DateTime(2026, 6, 14),
       ], exportedAt: DateTime(2026, 6, 15, 12));
       return DiaryExportOutcome(
         year: year,
         month: month,
-        exportedCount: 1,
+        exportedCount: 2,
+        markedCount: 1,
         channel: channel,
       );
     }
@@ -70,12 +75,13 @@ class _FakeExportService extends DiaryExportService {
       );
     }
     await repository.markExported([
-      DateTime(2026, 6, 15),
+      DateTime(2026, 6, 14),
     ], exportedAt: DateTime(2026, 6, 15, 12));
     return DiaryExportOutcome(
       year: year,
       month: month,
-      exportedCount: 1,
+      exportedCount: 2,
+      markedCount: 1,
       channel: channel,
     );
   }
@@ -97,6 +103,26 @@ void main() {
       template: template,
       provider: FakeDiaryDataProvider(),
       idGenerator: repo.idGenerator,
+    );
+  }
+
+  /// 造一篇「已结束日期」的非空草稿：进笔记页时空稿会被清理，
+  /// 故必须有正文才能活到导出那一刻。
+  Future<void> seedPastDraft(
+    InMemoryDiaryRepository repo,
+    DateTime date, {
+    String text = '昨日正文',
+  }) async {
+    final day8 = SyIdGenerator.timestamp(
+      DateTime(date.year, date.month, date.day, 21),
+    ).substring(0, 8);
+    await repo.upsertDraft(
+      DiaryDocument(
+        id: SyIdGenerator.dayContainer(date),
+        date: DateTime(date.year, date.month, date.day),
+        title: SySerializer.dayTitle(date),
+        blocks: [DiaryBlock(id: '${day8}210000-daaaaaa', text: text)],
+      ),
     );
   }
 
@@ -196,6 +222,8 @@ void main() {
       addTearDown(repo.dispose);
       // 无自定义 handler：默认假服务模拟真实确认编排（不碰文件 IO）。
       final export = _FakeExportService(repository: repo);
+      // 昨日草稿用于验证「只有早于今天的 draft 被标记」。
+      await seedPastDraft(repo, DateTime(2026, 6, 14));
       await tester.pumpWidget(app(repository: repo, exportService: export));
       await tester.pumpAndSettle(); // bootstrap 自动成稿今天（draft）
       await openMonthList(tester);
@@ -209,6 +237,7 @@ void main() {
       await tester.tap(find.text('尚未发送'));
       await tester.pump();
       expect(find.text('未标记为已导出，草稿仍保留，可再次导出'), findsOneWidget);
+      expect(await repo.stateOfDay(DateTime(2026, 6, 14)), DiaryDocState.draft);
       expect(await repo.stateOfDay(DateTime(2026, 6, 15)), DiaryDocState.draft);
       expect(export.calls, 1);
 
@@ -221,11 +250,12 @@ void main() {
       await tester.tap(find.text('确认已发送'));
       await tester.pump();
       await tester.pumpAndSettle();
-      expect(find.text('已分享 1 篇 · 标记为已导出'), findsOneWidget);
+      expect(find.text('已分享 2 篇 · 标记 1 篇，今日保持草稿'), findsOneWidget);
       expect(
-        await repo.stateOfDay(DateTime(2026, 6, 15)),
+        await repo.stateOfDay(DateTime(2026, 6, 14)),
         DiaryDocState.exported,
       );
+      expect(await repo.stateOfDay(DateTime(2026, 6, 15)), DiaryDocState.draft);
       expect(export.calls, 2);
     });
 
@@ -233,6 +263,7 @@ void main() {
       final repo = emptyRepo();
       addTearDown(repo.dispose);
       final export = _FakeExportService(repository: repo);
+      await seedPastDraft(repo, DateTime(2026, 6, 14));
       await tester.pumpWidget(app(repository: repo, exportService: export));
       await tester.pumpAndSettle(); // bootstrap 自动成稿今天（draft）
       await openMonthList(tester);
@@ -243,11 +274,36 @@ void main() {
       expect(export.lastChannel, DiaryExportChannel.save);
       // 另存有明确结果：不弹「确认已发送」，直接提示成功。
       expect(find.text('确认已发送？'), findsNothing);
-      expect(find.text('已另存 1 篇 · 标记为已导出'), findsOneWidget);
+      expect(find.text('已另存 2 篇 · 标记 1 篇，今日保持草稿'), findsOneWidget);
       expect(
-        await repo.stateOfDay(DateTime(2026, 6, 15)),
+        await repo.stateOfDay(DateTime(2026, 6, 14)),
         DiaryDocState.exported,
       );
+      // 今日仍在写：导出后保持 draft。
+      expect(await repo.stateOfDay(DateTime(2026, 6, 15)), DiaryDocState.draft);
+    });
+
+    testWidgets('当月只有今日草稿：入包但不标记，文案说明保持草稿', (tester) async {
+      final repo = emptyRepo();
+      addTearDown(repo.dispose);
+      final export = _FakeExportService(
+        repository: repo,
+        handler: (_, _, _) async => const DiaryExportOutcome(
+          year: 2026,
+          month: 6,
+          exportedCount: 1,
+          markedCount: 0,
+          channel: DiaryExportChannel.save,
+        ),
+      );
+      await tester.pumpWidget(app(repository: repo, exportService: export));
+      await tester.pumpAndSettle(); // bootstrap 自动成稿今天（draft）
+      await openMonthList(tester);
+
+      await exportVia(tester, '另存');
+      await tester.pumpAndSettle();
+      expect(find.text('已另存 1 篇 · 今日日记保持草稿'), findsOneWidget);
+      expect(await repo.stateOfDay(DateTime(2026, 6, 15)), DiaryDocState.draft);
     });
 
     testWidgets('另存取消：草稿保留且不迁移', (tester) async {

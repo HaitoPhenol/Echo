@@ -228,6 +228,10 @@
     Kotlin 侧后台线程把临时 zip 拷到目标 Uri），保存成功即直接迁移
     exported，取消（`userDenied`）则保留草稿。
   `exportMonth` 返回的 `DiaryExportOutcome.channel` 决定 UI 完成/中止文案。
+  **今日（未结束）的日记仍入包但不迁移**（2026-10-22 用户裁定）：只有
+  早于 `repository.today()` 的 draft 批量置 exported，今日保持 draft 可继续
+  写；`exportedCount` 为入包篇数、`markedCount` 为实际迁移篇数，UI 成功
+  文案据此区分（「今日保持草稿」）。
   Android 思源不响应 ACTION_SEND，实际走思源内 SAF 导入。该月所有笔记都
   无未导出（`isMonthFullyExported`）时，导出按钮左侧显「已导出」徽标
   （与日行同款 `DiaryStateBadge`）。

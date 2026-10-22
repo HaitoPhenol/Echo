@@ -5,8 +5,8 @@ import '../../data/diary_repository.dart';
 import '../../export/diary_export_service.dart';
 import '../diary_export_scope.dart';
 import '../diary_route.dart';
-import '../widgets/diary_shell.dart';
 import '../widgets/diary_list_row.dart';
+import '../widgets/diary_shell.dart';
 import 'day_list_page.dart';
 
 /// 月级别：只列含日记的月份；当前月由自动成稿保证存在（§5.2 裁定 3）。
@@ -20,10 +20,11 @@ import 'day_list_page.dart';
 /// 本页顶栏不再有「+」。
 ///
 /// 每行 trailing 为**月**增量导出入口（2026-10-18 由年行迁来）：
-/// 打包该月全部 draft 为「日记」笔记本 .sy.zip 并经系统分享送出，
-/// 用户在「确认已发送」对话框确认后批量置 exported；否认则保留
-/// draft 可再次导出。该月所有笔记都无未导出时，导出按钮左侧另显
-/// 「已导出」徽标（2026-10-19）。
+/// 点导出先选渠道（分享 / 另存，2026-10-22），打包该月全部 draft 为
+/// 「日记」笔记本 .sy.zip；分享经「确认已发送」、另存保存成功后才把
+/// 早于今天的 draft 批量置 exported。**今日（未结束）的日记仍入包，
+/// 但保持 draft 可继续写**，故当月再次导出会重复包含今日内容。
+/// 该月所有笔记都无未导出时，导出按钮左侧另显「已导出」徽标（2026-10-19）。
 class MonthListPage extends StatefulWidget {
   const MonthListPage({super.key, required this.year});
 
@@ -80,17 +81,7 @@ class _MonthListPageState extends State<MonthListPage> {
       messenger?.clearSnackBars();
       messenger?.showSnackBar(
         SnackBar(
-          content: Text(
-            outcome.didExport
-                ? (outcome.channel == DiaryExportChannel.save
-                      ? '已另存 ${outcome.exportedCount} 篇 · 标记为已导出'
-                      : '已分享 ${outcome.exportedCount} 篇 · 标记为已导出')
-                : outcome.userDenied
-                ? (channel == DiaryExportChannel.save
-                      ? '已取消另存，草稿仍保留，可再次导出'
-                      : '未标记为已导出，草稿仍保留，可再次导出')
-                : '$year 年 $month 月没有待导出的草稿',
-          ),
+          content: Text(_exportResultText(outcome, year, month)),
           duration: const Duration(seconds: 2),
         ),
       );
@@ -105,6 +96,25 @@ class _MonthListPageState extends State<MonthListPage> {
     } finally {
       if (mounted) setState(() => _exportingMonth = null);
     }
+  }
+
+  /// 导出结果文案：今日日记会入包但保持 draft，故成功文案按实际
+  /// 迁移篇数（`markedCount`）与入包篇数（`exportedCount`）区分。
+  String _exportResultText(DiaryExportOutcome outcome, int year, int month) {
+    if (!outcome.didExport) {
+      if (!outcome.userDenied) return '$year 年 $month 月没有待导出的草稿';
+      return outcome.channel == DiaryExportChannel.save
+          ? '已取消另存，草稿仍保留，可再次导出'
+          : '未标记为已导出，草稿仍保留，可再次导出';
+    }
+    final verb = outcome.channel == DiaryExportChannel.save ? '已另存' : '已分享';
+    final keptDraft = outcome.exportedCount - outcome.markedCount;
+    if (keptDraft == 0) return '$verb ${outcome.exportedCount} 篇 · 标记为已导出';
+    if (outcome.markedCount == 0) {
+      return '$verb ${outcome.exportedCount} 篇 · 今日日记保持草稿';
+    }
+    return '$verb ${outcome.exportedCount} 篇 · 标记 ${outcome.markedCount} 篇，'
+        '今日保持草稿';
   }
 
   /// 导出渠道选择：分享（系统面板）或另存（系统「保存到」对话框）。
@@ -314,7 +324,10 @@ class _MonthExportButton extends StatelessWidget {
               ? SizedBox(
                   width: 16,
                   height: 16,
-                  child: CircularProgressIndicator(strokeWidth: 2, color: color),
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: color,
+                  ),
                 )
               : Icon(Icons.ios_share, size: 17, color: color),
         ),
