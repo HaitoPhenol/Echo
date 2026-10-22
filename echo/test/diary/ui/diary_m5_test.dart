@@ -33,28 +33,51 @@ class _FakeExportService extends DiaryExportService {
   handler;
   int calls = 0;
 
+  /// 最近一次调用所选渠道（null 表示尚未调用）。
+  DiaryExportChannel? lastChannel;
+
   @override
   Future<DiaryExportOutcome> exportMonth(
     int year,
     int month, {
+    DiaryExportChannel channel = DiaryExportChannel.share,
     DiaryExportConfirm? confirmShared,
   }) async {
     calls++;
+    lastChannel = channel;
     final h = handler;
     if (h != null) return h(year, month, confirmShared);
+    // 另存有明确结果：直接模拟保存成功，不弹人工确认。
+    if (channel == DiaryExportChannel.save) {
+      await repository.markExported([
+        DateTime(2026, 6, 15),
+      ], exportedAt: DateTime(2026, 6, 15, 12));
+      return DiaryExportOutcome(
+        year: year,
+        month: month,
+        exportedCount: 1,
+        channel: channel,
+      );
+    }
     final confirmed = await confirmShared?.call() ?? false;
     if (!confirmed) {
       return DiaryExportOutcome(
         year: year,
         month: month,
         exportedCount: 0,
+        channel: channel,
         userDenied: true,
       );
     }
     await repository.markExported([
       DateTime(2026, 6, 15),
     ], exportedAt: DateTime(2026, 6, 15, 12));
-    return DiaryExportOutcome(year: year, month: month, exportedCount: 1);
+    return DiaryExportOutcome(
+      year: year,
+      month: month,
+      exportedCount: 1,
+      channel: channel,
+    );
   }
 }
 
@@ -111,6 +134,16 @@ void main() {
     expect(find.text('6 月'), findsOneWidget);
   }
 
+  /// 点月行导出按钮，在渠道弹窗里选「分享」或「另存」。
+  Future<void> exportVia(WidgetTester tester, String choice) async {
+    await tester.tap(find.byIcon(Icons.ios_share));
+    await tester.pumpAndSettle();
+    expect(find.text('分享'), findsOneWidget);
+    expect(find.text('另存'), findsOneWidget);
+    await tester.tap(find.text(choice));
+    await tester.pump();
+  }
+
   group('M5 月行导出入口', () {
     testWidgets('点分享：进行中转圈，完成 SnackBar 反馈', (tester) async {
       final repo = emptyRepo();
@@ -125,9 +158,9 @@ void main() {
       await openMonthList(tester);
 
       expect(find.byIcon(Icons.ios_share), findsOneWidget);
-      await tester.tap(find.byIcon(Icons.ios_share));
-      await tester.pump();
+      await exportVia(tester, '分享');
       expect(export.calls, 1);
+      expect(export.lastChannel, DiaryExportChannel.share);
       // 进行中：按钮位转圈。
       expect(find.byType(CircularProgressIndicator), findsOneWidget);
 
@@ -153,7 +186,7 @@ void main() {
       await tester.pumpAndSettle();
       await openMonthList(tester);
 
-      await tester.tap(find.byIcon(Icons.ios_share));
+      await exportVia(tester, '分享');
       await tester.pumpAndSettle();
       expect(find.text('2026 年 6 月没有待导出的草稿'), findsOneWidget);
     });
@@ -168,8 +201,10 @@ void main() {
       await openMonthList(tester);
 
       // 第一次：点分享 → 确认对话框 → 否认。
-      await tester.tap(find.byIcon(Icons.ios_share));
+      // 不能用 pumpAndSettle：确认未返回时按钮位转圈一直在动。
+      await exportVia(tester, '分享');
       await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
       expect(find.text('确认已发送？'), findsOneWidget);
       await tester.tap(find.text('尚未发送'));
       await tester.pump();
@@ -179,8 +214,9 @@ void main() {
 
       // SnackBar 让其自行消失，再次导出 → 对话框 → 确认。
       await tester.pump(const Duration(seconds: 3));
-      await tester.tap(find.byIcon(Icons.ios_share));
+      await exportVia(tester, '分享');
       await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
       expect(find.text('确认已发送？'), findsOneWidget);
       await tester.tap(find.text('确认已发送'));
       await tester.pump();
@@ -191,6 +227,71 @@ void main() {
         DiaryDocState.exported,
       );
       expect(export.calls, 2);
+    });
+
+    testWidgets('点另存：直接迁移 exported，无人工确认', (tester) async {
+      final repo = emptyRepo();
+      addTearDown(repo.dispose);
+      final export = _FakeExportService(repository: repo);
+      await tester.pumpWidget(app(repository: repo, exportService: export));
+      await tester.pumpAndSettle(); // bootstrap 自动成稿今天（draft）
+      await openMonthList(tester);
+
+      await exportVia(tester, '另存');
+      await tester.pumpAndSettle();
+      expect(export.calls, 1);
+      expect(export.lastChannel, DiaryExportChannel.save);
+      // 另存有明确结果：不弹「确认已发送」，直接提示成功。
+      expect(find.text('确认已发送？'), findsNothing);
+      expect(find.text('已另存 1 篇 · 标记为已导出'), findsOneWidget);
+      expect(
+        await repo.stateOfDay(DateTime(2026, 6, 15)),
+        DiaryDocState.exported,
+      );
+    });
+
+    testWidgets('另存取消：草稿保留且不迁移', (tester) async {
+      final repo = emptyRepo();
+      addTearDown(repo.dispose);
+      final export = _FakeExportService(
+        repository: repo,
+        handler: (_, _, _) async => const DiaryExportOutcome(
+          year: 2026,
+          month: 6,
+          exportedCount: 0,
+          channel: DiaryExportChannel.save,
+          userDenied: true,
+        ),
+      );
+      await tester.pumpWidget(app(repository: repo, exportService: export));
+      await tester.pumpAndSettle();
+      await openMonthList(tester);
+
+      await exportVia(tester, '另存');
+      await tester.pumpAndSettle();
+      expect(find.text('已取消另存，草稿仍保留，可再次导出'), findsOneWidget);
+      expect(
+        await repo.stateOfDay(DateTime(2026, 6, 15)),
+        DiaryDocState.draft,
+      );
+    });
+
+    testWidgets('关闭渠道弹窗：不调用导出服务', (tester) async {
+      final repo = emptyRepo();
+      addTearDown(repo.dispose);
+      final export = _FakeExportService(repository: repo);
+      await tester.pumpWidget(app(repository: repo, exportService: export));
+      await tester.pumpAndSettle();
+      await openMonthList(tester);
+
+      await tester.tap(find.byIcon(Icons.ios_share));
+      await tester.pumpAndSettle();
+      expect(find.text('另存'), findsOneWidget);
+      // 点遮罩关闭 sheet（默认 800x600 视口左上角在遮罩内）。
+      await tester.tapAt(const Offset(20, 20));
+      await tester.pumpAndSettle();
+      expect(find.text('另存'), findsNothing);
+      expect(export.calls, 0);
     });
 
     testWidgets('月行「已导出」徽标：该月全部笔记无未导出时才显示', (tester) async {

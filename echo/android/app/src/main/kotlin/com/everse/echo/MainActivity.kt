@@ -3,6 +3,7 @@ package com.everse.echo
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.ActivityInfo
+import android.net.Uri
 import android.os.BatteryManager
 import android.os.Build
 import android.os.Bundle
@@ -12,6 +13,7 @@ import androidx.annotation.NonNull
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
+import java.io.File
 
 class MainActivity : FlutterActivity() {
 
@@ -21,6 +23,16 @@ class MainActivity : FlutterActivity() {
     /// 设备状态快照通道名（机能风顶部读数条的数据源）。
     /// Dart 端消费方：MechanicalCoordsBar。
     private val deviceStatsChannelName = "echo/device_stats"
+
+    /// 文件另存通道名（Dart 端 DiaryExportService 的「另存」渠道）。
+    private val filesChannelName = "echo/files"
+
+    /// ACTION_CREATE_DOCUMENT 的请求码（避开插件常用值）。
+    private val createDocumentRequestCode = 0x4543
+
+    /// 等待系统保存对话框返回的通道结果；null 表示无进行中的请求。
+    private var pendingSaveResult: MethodChannel.Result? = null
+    private var pendingSaveSource: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -62,6 +74,82 @@ class MainActivity : FlutterActivity() {
                     else -> result.notImplemented()
                 }
             }
+
+        // -------- 日记导出「另存」（ACTION_CREATE_DOCUMENT / SAF）--------
+        // 用户自选目录与文件名，无需存储权限；只负责把临时 zip 拷过去。
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, filesChannelName)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "saveFile" -> {
+                        val sourcePath = call.argument<String>("sourcePath")
+                        val fileName = call.argument<String>("fileName")
+                        val mimeType =
+                            call.argument<String>("mimeType") ?: "application/octet-stream"
+                        when {
+                            sourcePath == null || fileName == null ->
+                                result.error("bad_args", "sourcePath / fileName 不能为空", null)
+                            pendingSaveResult != null ->
+                                result.error("busy", "已有另存请求在进行中", null)
+                            else -> startSave(sourcePath, fileName, mimeType, result)
+                        }
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+    }
+
+    /// 拉起系统「保存到」对话框。
+    private fun startSave(
+        sourcePath: String,
+        fileName: String,
+        mimeType: String,
+        result: MethodChannel.Result,
+    ) {
+        pendingSaveResult = result
+        pendingSaveSource = sourcePath
+        val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = mimeType
+            putExtra(Intent.EXTRA_TITLE, fileName)
+        }
+        try {
+            startActivityForResult(intent, createDocumentRequestCode)
+        } catch (e: Exception) {
+            // 无文件选择器（极简系统）时直接回报未保存。
+            finishPendingSave(false)
+        }
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        if (requestCode == createDocumentRequestCode) {
+            val uri: Uri? = data?.data
+            val source = pendingSaveSource
+            if (resultCode != RESULT_OK || uri == null || source == null) {
+                finishPendingSave(false)
+                return
+            }
+            // 拷贝放后台线程：整月 zip 可能较大，避免阻塞主线程。
+            Thread {
+                val saved = try {
+                    contentResolver.openOutputStream(uri)?.use { out ->
+                        File(source).inputStream().use { input -> input.copyTo(out) }
+                    } != null
+                } catch (e: Exception) {
+                    false
+                }
+                runOnUiThread { finishPendingSave(saved) }
+            }.start()
+            return
+        }
+        super.onActivityResult(requestCode, resultCode, data)
+    }
+
+    /// 结束当前另存请求并回报结果（必须在主线程调用）。
+    private fun finishPendingSave(saved: Boolean) {
+        val result = pendingSaveResult ?: return
+        pendingSaveResult = null
+        pendingSaveSource = null
+        result.success(saved)
     }
 
     /// 读取一次设备状态：型号 / 电池温度 / 瞬时功耗绝对值。

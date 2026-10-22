@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../theme/app_colors.dart';
 import '../../data/diary_repository.dart';
+import '../../export/diary_export_service.dart';
 import '../diary_export_scope.dart';
 import '../diary_route.dart';
 import '../widgets/diary_shell.dart';
@@ -59,6 +60,8 @@ class _MonthListPageState extends State<MonthListPage> {
 
   Future<void> _exportMonth(int month) async {
     if (_exportingMonth != null) return;
+    final channel = await _pickExportChannel();
+    if (channel == null || !mounted) return;
     setState(() => _exportingMonth = month);
     final service = DiaryExportServiceScope.of(context);
     final messenger = ScaffoldMessenger.maybeOf(context);
@@ -67,18 +70,25 @@ class _MonthListPageState extends State<MonthListPage> {
       final outcome = await service.exportMonth(
         year,
         month,
-        // Android 分享面板取消/成功无法区分，返回后由用户人工确认
-        // 是否真的送达；否认则草稿保留、可再次导出。
-        confirmShared: _confirmSent,
+        channel: channel,
+        // 分享面板取消/成功无法区分，返回后由用户人工确认是否真的送达；
+        // 否认则草稿保留、可再次导出。另存有明确结果，无需确认。
+        confirmShared: channel == DiaryExportChannel.share
+            ? _confirmSent
+            : null,
       );
       messenger?.clearSnackBars();
       messenger?.showSnackBar(
         SnackBar(
           content: Text(
-            outcome.didShare
-                ? '已分享 ${outcome.exportedCount} 篇 · 标记为已导出'
+            outcome.didExport
+                ? (outcome.channel == DiaryExportChannel.save
+                      ? '已另存 ${outcome.exportedCount} 篇 · 标记为已导出'
+                      : '已分享 ${outcome.exportedCount} 篇 · 标记为已导出')
                 : outcome.userDenied
-                ? '未标记为已导出，草稿仍保留，可再次导出'
+                ? (channel == DiaryExportChannel.save
+                      ? '已取消另存，草稿仍保留，可再次导出'
+                      : '未标记为已导出，草稿仍保留，可再次导出')
                 : '$year 年 $month 月没有待导出的草稿',
           ),
           duration: const Duration(seconds: 2),
@@ -95,6 +105,42 @@ class _MonthListPageState extends State<MonthListPage> {
     } finally {
       if (mounted) setState(() => _exportingMonth = null);
     }
+  }
+
+  /// 导出渠道选择：分享（系统面板）或另存（系统「保存到」对话框）。
+  ///
+  /// 点遮罩 / 返回键关闭返回 null，不触发导出。
+  Future<DiaryExportChannel?> _pickExportChannel() {
+    return showModalBottomSheet<DiaryExportChannel>(
+      context: context,
+      backgroundColor: AppColors.overlaySurface,
+      barrierColor: Colors.black54,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (sheetContext) => SafeArea(
+        top: false,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.ios_share, size: 20),
+              title: const Text('分享'),
+              subtitle: const Text('发送到思源或其他应用'),
+              onTap: () =>
+                  Navigator.of(sheetContext).pop(DiaryExportChannel.share),
+            ),
+            ListTile(
+              leading: const Icon(Icons.save_alt, size: 20),
+              title: const Text('另存'),
+              subtitle: const Text('保存到本机选定的位置'),
+              onTap: () =>
+                  Navigator.of(sheetContext).pop(DiaryExportChannel.save),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   /// 系统分享返回后的人工确认（share_plus 不回报真实发送结果）。

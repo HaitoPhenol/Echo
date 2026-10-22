@@ -89,7 +89,8 @@ void main() {
 
       final outcome = await service.exportMonth(2026, 6);
       expect(outcome.exportedCount, 2);
-      expect(outcome.didShare, isTrue);
+      expect(outcome.didExport, isTrue);
+      expect(outcome.channel, DiaryExportChannel.share);
       expect(share.calls, hasLength(1));
       final files = share.calls.single;
       expect(files, hasLength(1));
@@ -153,7 +154,7 @@ void main() {
       await repo.upsertDraft(draft(DateTime(2025, 1, 1)));
       final outcome = await service.exportMonth(2026, 6);
       expect(outcome.exportedCount, 0);
-      expect(outcome.didShare, isFalse);
+      expect(outcome.didExport, isFalse);
       expect(share.calls, isEmpty);
       expect(tempDir.listSync(), isEmpty);
     });
@@ -194,7 +195,7 @@ void main() {
         confirmShared: () async => false,
       );
       expect(denied.userDenied, isTrue);
-      expect(denied.didShare, isFalse);
+      expect(denied.didExport, isFalse);
       expect(denied.exportedCount, 0);
       expect(share.calls, hasLength(1));
       // 草稿与正文都在，临时 zip 已清理。
@@ -216,6 +217,77 @@ void main() {
       expect(confirmed.userDenied, isFalse);
       expect(confirmed.exportedCount, 1);
       expect(share.calls, hasLength(2));
+      expect(await repo.stateOfDay(d), DiaryDocState.exported);
+    });
+  });
+
+  group('DiaryExportService · 另存渠道', () {
+    late List<String> savedNames;
+    late bool saveResult;
+    late DiaryExportService saveService;
+
+    setUp(() {
+      savedNames = [];
+      saveResult = true;
+      saveService = DiaryExportService(
+        repository: repo,
+        shareChannel: share.call,
+        saveChannel: (path, name) async {
+          savedNames.add(name);
+          // 另存成功时目标位置会有一份拷贝，临时 zip 仍是原文。
+          expect(await File(path).exists(), isTrue);
+          return saveResult;
+        },
+        tempDirectory: () async => tempDir,
+        now: () => now,
+      );
+    });
+
+    test('另存成功：不走分享、直接迁移 exported、临时 zip 清理', () async {
+      final d = DateTime(2026, 6, 15);
+      await repo.upsertDraft(draft(d, mood: '🙂'));
+
+      final outcome = await saveService.exportMonth(
+        2026,
+        6,
+        channel: DiaryExportChannel.save,
+      );
+
+      expect(outcome.channel, DiaryExportChannel.save);
+      expect(outcome.didExport, isTrue);
+      expect(outcome.exportedCount, 1);
+      expect(share.calls, isEmpty, reason: '另存不触发系统分享');
+      expect(savedNames, ['日记-2026-06-20260615-203000.sy.zip']);
+      expect(await repo.stateOfDay(d), DiaryDocState.exported);
+      expect(tempDir.listSync(), isEmpty);
+    });
+
+    test('另存取消：草稿保留、临时 zip 清理、可再次导出', () async {
+      final d = DateTime(2026, 6, 15);
+      await repo.upsertDraft(draft(d, text: '写好的正文'));
+      saveResult = false;
+
+      final denied = await saveService.exportMonth(
+        2026,
+        6,
+        channel: DiaryExportChannel.save,
+      );
+
+      expect(denied.userDenied, isTrue);
+      expect(denied.didExport, isFalse);
+      expect(denied.channel, DiaryExportChannel.save);
+      expect(await repo.stateOfDay(d), DiaryDocState.draft);
+      expect(tempDir.listSync(), isEmpty);
+
+      // 再次另存并成功：重新打包，状态迁移。
+      saveResult = true;
+      final confirmed = await saveService.exportMonth(
+        2026,
+        6,
+        channel: DiaryExportChannel.save,
+      );
+      expect(confirmed.exportedCount, 1);
+      expect(savedNames, hasLength(2));
       expect(await repo.stateOfDay(d), DiaryDocState.exported);
     });
   });

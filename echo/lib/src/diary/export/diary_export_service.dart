@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
@@ -41,12 +42,25 @@ class DiaryExportEmptyException implements Exception {
 /// 生产实现走 share_plus；测试注入假实现捕获 [XFile]，不碰平台通道。
 typedef DiaryShareChannel = Future<void> Function(List<XFile> files);
 
+/// 导出渠道：交给系统分享面板，或另存到用户选定的位置。
+enum DiaryExportChannel { share, save }
+
+/// 另存通道：把打包好的临时 zip 写到用户通过系统「保存到」对话框
+/// 选定的位置。
+///
+/// 返回 true 表示已写入（可据此直接迁移 exported），false 表示用户
+/// 取消或写入失败。生产实现走 Android `echo/files` 通道（SAF），
+/// 测试注入假实现，不碰平台通道与文件系统选择器。
+typedef DiarySaveChannel =
+    Future<bool> Function(String sourcePath, String suggestedName);
+
 /// 一次**月**导出的结果。
 class DiaryExportOutcome {
   const DiaryExportOutcome({
     required this.year,
     required this.month,
     required this.exportedCount,
+    this.channel = DiaryExportChannel.share,
     this.userDenied = false,
   });
 
@@ -56,16 +70,19 @@ class DiaryExportOutcome {
   final int month;
 
   /// 本次打包并标记 exported 的篇数；0 表示当月没有 draft，
-  /// 未生成 zip、未触发分享；用户在确认对话框否认发送时也是 0
+  /// 未生成 zip、未走任何渠道；分享否认 / 另存取消时也是 0
   /// （此时 [userDenied] 为 true，draft 全部保留）。
   final int exportedCount;
 
-  /// 已触发分享但用户在「确认已发送」对话框选择尚未发送：
-  /// 状态未迁移，草稿可再次导出。
+  /// 本次实际使用的渠道（决定 UI 的完成文案）。
+  final DiaryExportChannel channel;
+
+  /// 已走所选渠道但用户否认发送 / 取消另存：状态未迁移，
+  /// 草稿可再次导出。
   final bool userDenied;
 
-  /// 是否实际触发了分享并完成状态迁移。
-  bool get didShare => exportedCount > 0;
+  /// 是否已通过所选渠道送出并完成状态迁移。
+  bool get didExport => exportedCount > 0;
 }
 
 /// 分享返回后的人工确认钩子（用户裁定 B）：
@@ -75,26 +92,29 @@ class DiaryExportOutcome {
 /// 正常完成 Future——故由 UI 弹二次确认兜底；iOS 同理保持一致交互。
 typedef DiaryExportConfirm = Future<bool> Function();
 
-/// 月行增量导出编排：取当月 draft → 打 .sy.zip → 系统分享 →
-/// 用户确认已发送后批量 draft→exported。
+/// 月行增量导出编排：取当月 draft → 打 .sy.zip → 所选渠道送出 →
+/// （分享）用户确认已发送 / （另存）写入成功 → 批量 draft→exported。
 ///
 /// 导出粒度已于 2026-10-18 由年改月（用户裁定）；包内月标签为
 /// `yyyy-MM`，包名 `日记-yyyy-MM-<时间戳>.sy.zip`。
 ///
-/// 状态语义：分享 Future 正常完成只代表系统分享面板流程结束
-/// （share_plus 平台语义，不保证对方已收到），Android 取消分享同样
-/// 正常返回；故必须经 [DiaryExportConfirm] 人工确认（UI 弹对话框），
-/// 用户否认则保留全部 draft、删除临时 zip，可再次导出。
+/// 渠道语义（2026-10-22 用户裁定）：点击导出先选「分享 / 另存」。
+/// 分享走系统面板，平台不回报真实发送结果（Android 取消也正常返回），
+/// 故必须经 [DiaryExportConfirm] 人工确认，否认则保留全部 draft；
+/// 另存走系统「保存到」对话框，能明确回报成功/取消，保存成功即直接
+/// 迁移 exported，取消则保留全部 draft。
 /// 故名 exported——正文仍留本机只读；用户在思源确认导入后再手动归档。
-/// 分享抛异常时保留全部 draft、临时 zip 不删除并上抛错误。
+/// 渠道抛异常时保留全部 draft、临时 zip 不删除并上抛错误。
 class DiaryExportService {
   DiaryExportService({
     required this.repository,
     DiaryShareChannel? shareChannel,
+    DiarySaveChannel? saveChannel,
     SyZipExporter? exporter,
     Future<Directory> Function()? tempDirectory,
     DateTime Function()? now,
   }) : _share = shareChannel ?? _defaultShare,
+       _save = saveChannel ?? _defaultSave,
        // 导出编码需要生成超级块/合成胶囊段 ID，注入与仓储同源的 ID 源，
        // 避免与既有块 ID 冲突（plan H 节）。
        _exporter =
@@ -105,27 +125,38 @@ class DiaryExportService {
   /// 导出笔记本名固定为「日记」（用户裁定 3.A）。
   static const String notebookName = '日记';
 
+  /// 另存通道的 Android 侧方法通道（ACTION_CREATE_DOCUMENT，跳过
+  /// 第三方插件；Android 的 file_selector 不支持保存位置选择）。
+  static const MethodChannel _filesChannel = MethodChannel('echo/files');
+
   final DiaryRepository repository;
   final DiaryShareChannel _share;
+  final DiarySaveChannel _save;
   final SyZipExporter _exporter;
   final Future<Directory> Function() _tempDirectory;
   final DateTime Function() _now;
 
   /// 导出指定年月的全部草稿。
   ///
-  /// 无 draft 时返回 [DiaryExportOutcome.exportedCount] 为 0，不分享；
-  /// 分享流程结束后调 [confirmShared]（生产由月列表弹「确认已发送」
-  /// 对话框）：确认后才批量迁移为 exported 并删除临时 zip；否认则
-  /// 保留全部 draft、清理临时 zip，返回 userDenied=true。
-  /// 为 null 时默认确认（仅供测试 / 无 UI 调用方）。
+  /// 无 draft 时返回 [DiaryExportOutcome.exportedCount] 为 0，不走渠道。
+  /// [channel] 为 [DiaryExportChannel.share] 时在分享流程结束后调
+  /// [confirmShared]（生产由月列表弹「确认已发送」对话框），确认后才
+  /// 批量迁移为 exported；为 [DiaryExportChannel.save] 时保存成功即迁移，
+  /// [confirmShared] 不参与。
   Future<DiaryExportOutcome> exportMonth(
     int year,
     int month, {
+    DiaryExportChannel channel = DiaryExportChannel.share,
     DiaryExportConfirm? confirmShared,
   }) async {
     final diaries = await repository.draftDocumentsOfMonth(year, month);
     if (diaries.isEmpty) {
-      return DiaryExportOutcome(year: year, month: month, exportedCount: 0);
+      return DiaryExportOutcome(
+        year: year,
+        month: month,
+        exportedCount: 0,
+        channel: channel,
+      );
     }
 
     final exportedAt = _now();
@@ -137,38 +168,29 @@ class DiaryExportService {
 
     final tempDir = await _tempDirectory();
     final mm = month.toString().padLeft(2, '0');
-    final zipFile = File(
-      '${tempDir.path}/$notebookName-$year-$mm-${_stamp(exportedAt)}.sy.zip',
-    );
-    // flush: true 确保内容落地后再交给分享目标读取。
+    final zipName = '$notebookName-$year-$mm-${_stamp(exportedAt)}.sy.zip';
+    final zipFile = File('${tempDir.path}/$zipName');
+    // flush: true 确保内容落地后再交给分享目标 / 另存读取。
     await zipFile.writeAsBytes(bytes, flush: true);
 
-    try {
-      await _share([XFile(zipFile.path, mimeType: 'application/zip')]);
-    } catch (_) {
-      // 分享失败：draft 原样保留，临时 zip 留作排查，错误上抛。
-      rethrow;
-    }
-
-    // 平台不回报真实发送结果（Android 取消也正常返回），由人工确认。
-    final confirmed = confirmShared == null || await confirmShared();
-    if (!confirmed) {
-      // 用户否认：draft 全部保留以便重新打包导出；临时 zip 清掉，
-      // 下次导出会以新时间戳重新生成。
+    if (channel == DiaryExportChannel.save) {
+      // 另存有明确结果：保存成功即视为已导出，取消则原样保留草稿。
+      final saved = await _save(zipFile.path, zipName);
+      if (!saved) return _denied(year, month, channel, zipFile);
+    } else {
       try {
-        if (await zipFile.exists()) await zipFile.delete();
+        await _share([XFile(zipFile.path, mimeType: 'application/zip')]);
       } catch (_) {
-        // 清理失败不影响结论（系统缓存目录会自行回收）。
+        // 分享失败：draft 原样保留，临时 zip 留作排查，错误上抛。
+        rethrow;
       }
-      return DiaryExportOutcome(
-        year: year,
-        month: month,
-        exportedCount: 0,
-        userDenied: true,
-      );
+
+      // 平台不回报真实发送结果（Android 取消也正常返回），由人工确认。
+      final confirmed = confirmShared == null || await confirmShared();
+      if (!confirmed) return _denied(year, month, channel, zipFile);
     }
 
-    // 确认已发送后才迁移状态；markExported 整批校验，
+    // 渠道完成且确认后才迁移状态；markExported 整批校验，
     // 任一日期已非 draft 则整批不迁移（StateError 上抛）。
     await repository.markExported(
       diaries.map((doc) => doc.date),
@@ -184,6 +206,29 @@ class DiaryExportService {
       year: year,
       month: month,
       exportedCount: diaries.length,
+      channel: channel,
+    );
+  }
+
+  /// 用户在所选渠道中止（分享否认发送 / 另存取消）：草稿全部保留以便
+  /// 重新导出，临时 zip 清掉，下次导出以新时间戳重新生成。
+  Future<DiaryExportOutcome> _denied(
+    int year,
+    int month,
+    DiaryExportChannel channel,
+    File zipFile,
+  ) async {
+    try {
+      if (await zipFile.exists()) await zipFile.delete();
+    } catch (_) {
+      // 清理失败不影响结论（系统缓存目录会自行回收）。
+    }
+    return DiaryExportOutcome(
+      year: year,
+      month: month,
+      exportedCount: 0,
+      channel: channel,
+      userDenied: true,
     );
   }
 
@@ -272,4 +317,20 @@ class DiaryExportService {
 
   static Future<void> _defaultShare(List<XFile> files) =>
       SharePlus.instance.share(ShareParams(files: files));
+
+  /// 默认另存通道：Android 侧走 ACTION_CREATE_DOCUMENT（SAF），由用户
+  /// 选目录与文件名，无需存储权限；返回 false 表示用户取消。
+  ///
+  /// 传临时文件路径而非字节，大包不在通道里搬运。
+  static Future<bool> _defaultSave(
+    String sourcePath,
+    String suggestedName,
+  ) async {
+    final saved = await _filesChannel.invokeMethod<bool>('saveFile', {
+      'sourcePath': sourcePath,
+      'fileName': suggestedName,
+      'mimeType': 'application/zip',
+    });
+    return saved ?? false;
+  }
 }

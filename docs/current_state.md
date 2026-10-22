@@ -92,7 +92,7 @@
 | `template/` | 模板 JSON 解析、每日成稿 `DiaryComposer`（幂等/并发去重/custom-* 数据面填充） |
 | `editor/` | 分块编辑器：命令、控制器（50 步撤销重做、`applyCustomPatch` 批量写文档根 custom-*、`moveBlockAt` 拖拽重排）、块视图（`CustomScrollView` + `SliverReorderableList`、`header` 可挂滚动区首项）、块左侧「类型图标 + 拖拽把手」纵向簇、块标浮层 |
 | `export/` | 导出服务（月行增量导出 .sy.zip，`exportMonth`） |
-| `ui/` | 年→月→日浏览页、日记编辑页、三态 UI、胶囊行（`diary_capsule_row.dart`，心情入口）、分享确认流 |
+| `ui/` | 年→月→日浏览页、日记编辑页、三态 UI、胶囊行（`diary_capsule_row.dart`，心情入口）、导出渠道弹窗与分享确认流 |
 
 - **生产装配用持久仓储**（M5 起）：sqflite 库
   `<app_flutter>/echo_diary/diary.db`（diary_meta 单表：状态/时间戳/
@@ -218,11 +218,19 @@
   测试注入时钟，生产取墙钟。
 - **空稿清理**：进模块 prune 早于今天的空草稿（meta+.sy 双删）。
 - **导出**（2026-10-18 起改为**按月**）：入口在**月列表每行右侧**
-  （年列表不再有年导出），打该月 draft 成一个 zip → share_plus 调系统
-  分享 → 返回后人工「确认已发送」才把该月 draft 批量置 exported；否认
-  保留草稿可再次导出。Android 思源不响应 ACTION_SEND，实际走思源内
-  SAF 导入。该月所有笔记都无未导出（`isMonthFullyExported`）时，
-  导出按钮左侧显「已导出」徽标（与日行同款 `DiaryStateBadge`）。
+  （年列表不再有年导出）；点击后先由 `showModalBottomSheet` 选渠道
+  （`DiaryExportChannel.share|save`，关闭弹窗不导出），打包该月 draft
+  成一个 zip 后分流：
+  - **分享**：share_plus 调系统分享 → 返回后人工「确认已发送」才把该月
+    draft 批量置 exported，否认保留草稿可再次导出；
+  - **另存**（2026-10-22）：走自建 `echo/files` 通道 + Android
+    `ACTION_CREATE_DOCUMENT`（SAF，每次自选目录与文件名、零存储权限，
+    Kotlin 侧后台线程把临时 zip 拷到目标 Uri），保存成功即直接迁移
+    exported，取消（`userDenied`）则保留草稿。
+  `exportMonth` 返回的 `DiaryExportOutcome.channel` 决定 UI 完成/中止文案。
+  Android 思源不响应 ACTION_SEND，实际走思源内 SAF 导入。该月所有笔记都
+  无未导出（`isMonthFullyExported`）时，导出按钮左侧显「已导出」徽标
+  （与日行同款 `DiaryStateBadge`）。
 - **导出编码 vs 扁平编码（双链路，2026-10-18）**：**落盘/撤销/导入回读**仍走
   **扁平编码** `SySerializer.encodeJson` / `encodeBytes`（不含超级块与行内
   标记；本轮新增携带**块级** `custom-*`，时间戳标志随草稿往返）；**导出**走
