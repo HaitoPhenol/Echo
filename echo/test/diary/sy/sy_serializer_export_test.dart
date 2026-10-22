@@ -121,11 +121,32 @@ void main() {
       expect(capsules.map(codeText).toList(), ['🌡️21°C', '☁️ 多云', '🙂']);
     });
 
-    test('五个槽位全空：不生成首行胶囊超级块', () {
+    test('五个槽位全空：信息栏仅保留右侧心情占位块', () {
       final children = childrenOf(exportRoot(sampleDoc()));
-      // 首行无胶囊 → 第一个节点直接是首个 row 段（首个时间戳前不插空行）。
+      // 心情恒定输出：即使其余槽位全空，仍生成只含 ☺️ 的水平超级块。
       expect(children.first['Type'], 'NodeSuperBlock');
-      expect(childrenOf(children.first)[1]['Data'], 'row');
+      final kids = childrenOf(children.first);
+      expect(kids[1]['Data'], 'col');
+      expect(
+        kids.sublist(2, kids.length - 1).map(codeText).toList(),
+        ['☺️'],
+      );
+      // 其后直接是首个 row 段（首个时间戳前不插空行）。
+      expect(children[1]['Type'], 'NodeSuperBlock');
+      expect(childrenOf(children[1])[1]['Data'], 'row');
+    });
+
+    test('心情未设置：作为最右子块输出 ☺️ 占位', () {
+      final children = childrenOf(
+        exportRoot(sampleDoc(custom: {kCapsuleTempKey: '21'})),
+      );
+      final kids = childrenOf(children.first);
+      expect(kids[1]['Data'], 'col');
+      // 有值数据槽位在前，心情占位固定在最后（右侧）。
+      expect(
+        kids.sublist(2, kids.length - 1).map(codeText).toList(),
+        ['🌡️21°C', '☺️'],
+      );
     });
 
     test('无时间戳段的文档：胶囊行后跟顶层扁平段落', () {
@@ -173,11 +194,12 @@ void main() {
   group('每段垂直超级块', () {
     test('两个时间戳 = 两个 row 超级块，段内正文同包，stamp 带 code 与块级标志', () {
       final children = childrenOf(exportRoot(sampleDoc()));
-      // [段1, 空行, 段2]：首个时间戳前不加空行，后续段才插空段落。
-      expect(children, hasLength(3));
-      expect(children[1]['Type'], 'NodeParagraph');
-      expect(children[1].containsKey('Children'), isFalse);
-      for (final i in [0, 2]) {
+      // [信息栏 col, 段1, 空行, 段2]：心情恒定输出，故首行也有胶囊超级块。
+      expect(children, hasLength(4));
+      expect(childrenOf(children.first)[1]['Data'], 'col');
+      expect(children[2]['Type'], 'NodeParagraph');
+      expect(children[2].containsKey('Children'), isFalse);
+      for (final i in [1, 3]) {
         final seg = children[i];
         expect(seg['Type'], 'NodeSuperBlock');
         final kids = childrenOf(seg);
@@ -188,7 +210,7 @@ void main() {
       }
 
       // 第一段：open, layout, stamp, 正文 a, 正文 b, close
-      final seg1 = childrenOf(children[0]);
+      final seg1 = childrenOf(children[1]);
       expect(seg1, hasLength(6));
       expect(codeText(seg1[2]), '2026-10-18 10:00');
       final stampProps = (seg1[2]['Properties'] as Map).cast<String, Object?>();
@@ -199,7 +221,7 @@ void main() {
       expect(childrenOf(seg1[3]).single['Data'], '第一段正文');
 
       // 第二段：open, layout, stamp, 正文 c, close
-      final seg2 = childrenOf(children[2]);
+      final seg2 = childrenOf(children[3]);
       expect(seg2, hasLength(5));
       expect(codeText(seg2[2]), '2026-10-18 10:30');
       expect(
@@ -221,11 +243,12 @@ void main() {
         ],
       );
       final children = childrenOf(exportRoot(doc));
-      // [散块, 段]：首个时间戳块前不加空行。
-      expect(children, hasLength(2));
-      expect(children.first['Type'], 'NodeParagraph');
-      expect(children.first['ID'], '20261018090000-prepre1');
-      expect(children[1]['Type'], 'NodeSuperBlock');
+      // [信息栏 col, 散块, 段]：心情占位保证首行有胶囊超级块。
+      expect(children, hasLength(3));
+      expect(childrenOf(children.first)[1]['Data'], 'col');
+      expect(children[1]['Type'], 'NodeParagraph');
+      expect(children[1]['ID'], '20261018090000-prepre1');
+      expect(children[2]['Type'], 'NodeSuperBlock');
     });
   });
 

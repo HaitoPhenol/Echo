@@ -46,6 +46,8 @@ class DiaryCapsuleItem {
 ///
 /// 导出文本与参考样本保持一致（`🌡️21°C` / `💧45%` / `☁️ 多云` / `📅3 条`
 /// / 心情 emoji）；温度单位沿用 App 显示口径 `°C`。
+/// **心情是唯一恒定导出的槽位**：未设置时用 `☺️` 占位，作为信息栏水平
+/// 超级块最右子块（2026-10-22 用户裁定）。
 List<DiaryCapsuleItem> buildDiaryCapsuleItems(Map<String, String> custom) {
   String? value(String key) {
     final raw = custom[key];
@@ -92,10 +94,12 @@ List<DiaryCapsuleItem> buildDiaryCapsuleItems(Map<String, String> custom) {
     ),
     DiaryCapsuleItem(
       key: kCapsuleMoodKey,
-      // 未设置心情时给导出兜底表情（该槽位无 exportText，导出不输出）。
+      // 未设置心情时给导出兜底表情，保证信息栏右侧始终有心情子块。
       emoji: mood ?? '☺️',
       label: mood,
-      exportText: mood,
+      // 2026-10-22 用户裁定：心情子块恒定输出在水平超级块最右，
+      // 未设置时用 ☺️ 占位（其余槽位仍按缺值省略）。
+      exportText: mood ?? '☺️',
     ),
   ];
 }

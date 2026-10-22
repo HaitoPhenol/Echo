@@ -240,7 +240,8 @@
   **扁平编码** `SySerializer.encodeJson` / `encodeBytes`（不含超级块与行内
   标记；本轮新增携带**块级** `custom-*`，时间戳标志随草稿往返）；**导出**走
   `encodeExportBytes(doc, ids)`，仅在导出时叠加 ① 文档**首行水平超级块**
-  （`Data:'col'`，含 5 个带 `code` 行内标记的胶囊段落，只输出有值槽位）+
+  （`Data:'col'`，带 `code` 行内标记的胶囊段落，只输出有值槽位；**心情恒定
+  输出为最右子块**，未设置时 `☺️` 占位，2026-10-22 用户裁定）+
   ② 每个「段」一个**垂直超级块**（`Data:'row'`，首块为带 `code` 标记的时间戳
   段落）。`SyZipExporter` 构造增可选 `SyIdGenerator? idGenerator`，
   `DiaryExportService` 传 `repository.idGenerator`（导出的超级块/合成段 ID
