@@ -222,15 +222,20 @@ class SySerializer {
       out.add(_encodeBlock(blocks[i]));
       i++;
     }
+    // 首个时间戳块前不加空行（2026-10-22 用户裁定）：导出到思源后标题下
+    // 不再多出一条空段；后续时间戳段才在上一行插空行拉开视觉间距，
+    // 等价于 App 内时间戳胶囊的上方留白。
+    var firstSegment = true;
     while (i < blocks.length) {
       final start = i;
       i++; // 跳过本段首个 stamp
       while (i < blocks.length && !blocks[i].isStamp) {
         i++;
       }
-      // 时间戳块**上一行**插入空行（用户裁定）：导出到思源后与前一段
-      // 内容拉开视觉间距，等价于 App 内时间戳胶囊的上方留白。
-      out.add(_blankParagraph(ids.next(), updated: blocks[start].updatedAt));
+      if (!firstSegment) {
+        out.add(_blankParagraph(ids.next(), updated: blocks[start].updatedAt));
+      }
+      firstSegment = false;
       out.add(_segmentSuperBlock(blocks.sublist(start, i), ids));
     }
     return out;
