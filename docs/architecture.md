@@ -504,15 +504,16 @@ Stack 分层在 `SmartNavScreen.build`（机能风层见 3.11）：
   一个周期兜底）；顶部十字是屏幕标定物，始终固定在屏幕角上。
   纹理层与十字层各外包 `RepaintBoundary`，平移只改 `Transform`
   偏移，导航动画不引发背景重绘；只画表皮、不接手势。
-- **冷启动示意底图** `BlueprintSheet`（widgets/blueprint_sheet.dart）：
-  参照 `ideas/Map.html` 的有限子集——32dp 格细碎标记（16% 概率）、
-  128dp 格块状速写（50%，十字/圆孔/尺寸线/圆弧/剖面框/坐标注记）、
-  整屏 4~6 条引线标注。种子取 `DateTime.microsecondsSinceEpoch`
-  （进程内固定），同种子/尺寸产出完全一致；整张速写按 dpr
-  **一次性栅格化为 `ui.Image` 并缓存**，背景层每帧只 `drawImageRect`。
-  生成延到首帧后（不与启动帧争 raster 线程），尺寸/像素密度变化才重建；
-  该层**不随翻页平移**（与平移纹理形成两个深度）。线色白 α.03~.055、
-  注记 α.10，6dp 字号，刻意稀疏、不抢正文。
+- **冷启动示意底图** `BlueprintCanvas`（widgets/blueprint_canvas.dart）：
+  直接移植 `ideas/Map.html` 的**无限画布**生成方式——坐标系取
+  「1 单位 = 4 个细网格 = 64dp」，细碎标记按 0.5 单位格（35% 概率）、
+  块状速写按 1.0 单位格（60%，十字/圆孔/尺寸线/圆弧/箭头/公式注记），
+  每格图案由 `hash2(格坐标) + mulberry32` 决定，与视口无关。种子取
+  `DateTime.microsecondsSinceEpoch`（进程内固定），同种子/格坐标产出
+  完全一致。每帧只枚举视口内可见格并即时绘制，**不预生成图片、不
+  平铺、不取模**；翻页位移传入未取模的连续值，因此图案与网格同原点、
+  同速平移，翻页/不同屏幕尺寸都不会跳变。线色白 α.03~.055、
+  注记 α.10、字号约 6.4~8.3dp。
 - **顶部读数条** `MechanicalCoordsBar`：状态栏下沿（coordsTop=0）
   居中，9sp、字距 3.6（.4em），文案 `DEV 型号 · T 电池温度 ·
   P 瞬时功耗`；数据来自原生 MethodChannel `echo/device_stats`

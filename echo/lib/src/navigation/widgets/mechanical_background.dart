@@ -1,14 +1,13 @@
 import 'dart:math' as math;
-import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
 import '../../theme/app_colors.dart';
 import '../../theme/mechanical_style.dart';
-import 'blueprint_sheet.dart';
+import 'blueprint_canvas.dart';
 
 /// 机能风背景：底色 + 三层工程纹理（细网格 / 粗网格 / 点阵）
-/// + 冷启动生成的示意底图 + 顶部一对十字定位标记。
+/// + 无限画布示意底图 + 顶部一对十字定位标记。
 ///
 /// 颜色取自 [AppColors] 的机能风视觉层色组，几何取自
 /// [MechanicalStyle]（稿号溯源见两文件注释）。
@@ -24,20 +23,30 @@ import 'blueprint_sheet.dart';
 ///   + 每次冷启动随机 0~128dp 的抖动，见 [_jitterX] / [_jitterY]）；
 /// * 不画实体描边框、不画底部十字：仅顶部两个十字标定
 ///   「状态栏下沿、左右各 14dp」的位置；
-/// * 示意底图（[BlueprintSheet]）是**整屏一张静态图**：冷启动按时间种子
-///   生成一次并缓存，翻页时不平移（与纹理层形成两个深度），
-///   尺寸/像素密度变化时重新生成；
-/// * 静态绘制：纹理层、底图层与十字层各外包 [RepaintBoundary]，平移只改
-///   [Transform] 偏移，导航动画不会引发背景重绘；
+/// * 示意底图（[BlueprintCanvas]）是**画在网格图纸上的内容**：冷启动固定
+///   种子，按世界格坐标即时生成可见图元（无限画布），随 [canvasOffsetX]
+///   连续平移，与网格同原点、同速率，不做平铺/取模，因此不会跳变；
+/// * 静态绘制：纹理层与底图层各外包 [RepaintBoundary]，网格平移只改
+///   [Transform] 偏移；底图层仅在翻页过程中重绘自身；
 /// * 只画"表皮"，不承载任何交互。
 class MechanicalBackground extends StatefulWidget {
-  const MechanicalBackground({super.key, this.panOffsetX = 0});
+  const MechanicalBackground({
+    super.key,
+    this.panOffsetX = 0,
+    this.canvasOffsetX = 0,
+  });
 
   /// 纹理层水平平移（dp）。
   ///
   /// 由调用方按「页面显示位置 × 屏宽」计算并取模一个纹理周期；
   /// 传入任意实数都安全——绘制区已左右各多铺一个周期。
   final double panOffsetX;
+
+  /// 示意底图层水平平移（dp，**未取模**）。
+  ///
+  /// 底图是无限画布，不是周期图案：必须传连续的翻页位移，
+  /// 取模会让世界坐标瞬间跳回，图案随之跳变。
+  final double canvasOffsetX;
 
   /// 纹理层左右额外绘制宽度 = 一个粗网格周期。
   ///
@@ -59,37 +68,6 @@ class _MechanicalBackgroundState extends State<MechanicalBackground> {
   late final double _jitterY =
       math.Random().nextDouble() * MechanicalStyle.coarseGridSpacing;
 
-  /// 冷启动示意底图（整屏一张，栅格化后由绘制器直接贴图）。
-  ui.Image? _sheet;
-
-  /// 正在生成的尺寸（避免依赖变化时对同一尺寸重复排队）。
-  Size? _sheetRequest;
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    final size = MediaQuery.sizeOf(context);
-    final dpr = MediaQuery.devicePixelRatioOf(context);
-    final cached = BlueprintSheet.peek(size, dpr);
-    if (cached != null) {
-      _sheet = cached;
-      return;
-    }
-    if (_sheetRequest == size) return;
-    _sheetRequest = size;
-    // 延到首帧之后再栅格化：不与启动帧争用 raster 线程。
-    WidgetsBinding.instance.addPostFrameCallback(
-      (_) => _loadSheet(size, dpr),
-    );
-  }
-
-  Future<void> _loadSheet(Size size, double dpr) async {
-    final image = await BlueprintSheet.ensure(size, dpr);
-    if (!mounted || image == null) return;
-    if (MediaQuery.sizeOf(context) != size) return;
-    setState(() => _sheet = image);
-  }
-
   @override
   Widget build(BuildContext context) {
     // 虚拟顶边：状态栏下沿 + 8dp 呼吸位（顶部十字位置）。
@@ -97,6 +75,10 @@ class _MechanicalBackgroundState extends State<MechanicalBackground> {
         MediaQuery.viewPaddingOf(context).top + 8 > MechanicalStyle.frameInset
         ? MediaQuery.viewPaddingOf(context).top + 8
         : MechanicalStyle.frameInset;
+
+    // 网格与底图共用同一世界原点（静态基值 + 冷启动抖动）。
+    final originX = MechanicalStyle.gridOriginShiftX + _jitterX;
+    final originY = MechanicalStyle.gridOriginShiftY + _jitterY;
 
     // 纯装饰视觉层，无障碍树中排除播报（G6）。
     return ExcludeSemantics(
@@ -119,10 +101,8 @@ class _MechanicalBackgroundState extends State<MechanicalBackground> {
               child: RepaintBoundary(
                 child: CustomPaint(
                   painter: _MechanicalGridPainter(
-                    originShiftX:
-                        MechanicalStyle.gridOriginShiftX + _jitterX,
-                    originShiftY:
-                        MechanicalStyle.gridOriginShiftY + _jitterY,
+                    originShiftX: originX,
+                    originShiftY: originY,
                   ),
                   size: Size.infinite,
                 ),
@@ -130,16 +110,17 @@ class _MechanicalBackgroundState extends State<MechanicalBackground> {
             ),
           ),
 
-          // -------- 冷启动生成的示意底图（静态，不随翻页平移） --------
-          if (_sheet != null)
-            Positioned.fill(
-              child: RepaintBoundary(
-                child: CustomPaint(
-                  painter: _BlueprintPainter(_sheet!),
-                  size: Size.infinite,
+          // -------- 无限画布示意底图（画在网格纸上，同原点同速平移） --------
+          Positioned.fill(
+            child: RepaintBoundary(
+              child: CustomPaint(
+                painter: _BlueprintCanvasPainter(
+                  camera: Offset(widget.canvasOffsetX + originX, originY),
                 ),
+                size: Size.infinite,
               ),
             ),
+          ),
 
           // -------- 钉在屏幕上的顶部双十字 --------
           Positioned.fill(
@@ -156,30 +137,32 @@ class _MechanicalBackgroundState extends State<MechanicalBackground> {
   }
 }
 
-/// 示意底图绘制器：把冷启动栅格化的整屏图按逻辑尺寸贴回背景。
+/// 示意底图绘制器：按当前相机位置枚举可见世界格，即时生成并绘制。
 ///
-/// 图已按设备像素密度生成，这里只做一次缩放贴图，无任何生成/排版开销；
-/// 只在换图（尺寸或种子变化）时重绘。
-class _BlueprintPainter extends CustomPainter {
-  _BlueprintPainter(this.image);
+/// 图案只取决于格坐标与冷启动种子，与视口位置无关；
+/// 平移即换一批可见格，边缘处的图案天然连续，不存在平铺跳变。
+class _BlueprintCanvasPainter extends CustomPainter {
+  const _BlueprintCanvasPainter({required this.camera});
 
-  final ui.Image image;
+  /// 世界原点在屏幕上的 dp 坐标。
+  final Offset camera;
 
   @override
   void paint(Canvas canvas, Size size) {
-    canvas.drawImageRect(
-      image,
-      Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble()),
-      Offset.zero & size,
-      Paint()..filterQuality = FilterQuality.medium,
+    final ops = BlueprintCanvas.build(
+      size: size,
+      camera: camera,
+      seed: BlueprintCanvas.seed,
     );
+    for (final op in ops) {
+      op.paint(canvas);
+    }
   }
 
   @override
-  bool shouldRepaint(covariant _BlueprintPainter oldDelegate) =>
-      oldDelegate.image != image;
+  bool shouldRepaint(covariant _BlueprintCanvasPainter oldDelegate) =>
+      oldDelegate.camera != camera;
 }
-
 
 /// 纹理绘制器：细网格 → 粗网格 → 点阵。
 ///
