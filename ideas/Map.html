@@ -1,0 +1,1498 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>无限画布 - WFC 巨构 CAD（公式库）</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet" />
+<style>
+  html,body{margin:0;height:100%;background:#070707;overflow:hidden;overscroll-behavior:none}
+  canvas{position:fixed;inset:0;display:block;width:100vw;height:100vh;touch-action:none;cursor:grab}
+  canvas.dragging{cursor:grabbing}
+  #badge{position:fixed;right:12px;bottom:12px;z-index:10;font:12px/1.6 "Share Tech Mono",monospace;
+    color:rgba(220,245,255,.55);background:rgba(0,0,0,.45);border:1px solid rgba(220,245,255,.18);
+    padding:5px 12px;letter-spacing:1px;user-select:none;pointer-events:none}
+  #bar{position:fixed;left:50%;bottom:14px;transform:translateX(-50%);z-index:10;display:flex;gap:10px}
+  .btn{display:flex;align-items:center;gap:9px;font:12px/1 "Share Tech Mono",monospace;letter-spacing:1.5px;
+    color:rgba(220,245,255,.72);background:rgba(10,12,14,.6);border:1px solid rgba(220,245,255,.22);
+    padding:8px 16px;cursor:pointer;user-select:none;backdrop-filter:blur(4px);transition:all .15s}
+  .btn:hover{border-color:rgba(220,245,255,.5);color:rgba(220,245,255,.95)}
+  .btn .dot{width:7px;height:7px;border-radius:50%;flex:none;background:#7fd8ff;box-shadow:0 0 7px #7fd8ff;transition:all .15s}
+  .btn.off{color:rgba(220,245,255,.35);border-style:dashed}
+  .btn.off .dot{background:transparent;border:1px solid rgba(220,245,255,.4);box-shadow:none}
+  .btn.zen-on .dot{animation:pulse 2.4s ease-in-out infinite}
+  @keyframes pulse{0%,100%{box-shadow:0 0 4px #7fd8ff;opacity:.7}50%{box-shadow:0 0 12px #7fd8ff;opacity:1}}
+</style>
+</head>
+<body>
+<canvas id="stage"></canvas>
+<div id="bar">
+  <button class="btn" id="toggle"><span class="dot"></span>坐标 LABELS</button>
+  <button class="btn off" id="zen"><span class="dot"></span>禅境 ZEN</button>
+</div>
+<div id="badge"></div>
+<script>
+/* ============================================================ 基础 */
+const canvas=document.getElementById("stage");
+const ctx=canvas.getContext("2d",{alpha:false});
+const badge=document.getElementById("badge");
+let dpr=1,W=0,H=0,u=150;
+const U_MIN=40,U_MAX=600;
+const FONT='"Share Tech Mono","JetBrains Mono",ui-monospace,Menlo,Consolas,monospace';
+const BG="#070707";
+const SUB_GRID="rgba(255,255,255,0.025)";
+const GRID="rgba(255,255,255,0.07)";
+const LABEL="rgba(220,245,255,0.30)";
+const GEOM="rgba(195,228,248,0.38)";
+const ANNO="rgba(195,228,248,0.22)";
+const FAINT="rgba(195,228,248,0.14)";
+const SOLID=0,DASHED=1,CENTER=2,HIDDEN=3;
+const CELLS=5,BW=6,SITE=CELLS*BW;
+const M_FIG=10.5,M_DOODLE=1.2,M_MICRO=0.5;
+const DOODLE_STEP=1.0,DOODLE_P=0.94;
+const MICRO_STEP=0.5,MICRO_P=0.6;
+const SITE_CACHE_MAX=40;
+
+let SEED=(Math.random()*0xFFFFFFFF)>>>0;
+const urlSeed=new URLSearchParams(location.search).get("seed");
+if(urlSeed){let h=2166136261>>>0;for(let i=0;i<urlSeed.length;i++){h^=urlSeed.charCodeAt(i);h=Math.imul(h,16777619);}SEED=h>>>0;}
+function hash2(a,b,salt){let h=SEED^salt;h=Math.imul(h^0x9E3779B9,0x85EBCA6B);
+  h=Math.imul(h^a,0xC2B2AE35);h=Math.imul(h^b,0x27D4EB2F);h^=h>>>15;
+  h=Math.imul(h,0x85EBCA6B);h^=h>>>13;return h>>>0;}
+function mulberry32(a){return function(){a|=0;a=(a+0x6D2B79F5)|0;
+  let t=Math.imul(a^(a>>>15),1|a);t=(t+Math.imul(t^(t>>>7),61|t))^t;
+  return((t^t>>>14)>>>0)/4294967296;};}
+const pick=(r,a)=>a[(r()*a.length)|0];
+
+/* ============================================================ 数学引擎：迷你 LaTeX 解析 */
+const GREEK={alpha:"α",beta:"β",gamma:"γ",delta:"δ",epsilon:"ε",zeta:"ζ",eta:"η",theta:"θ",
+  lambda:"λ",mu:"μ",nu:"ν",xi:"ξ",pi:"π",rho:"ρ",sigma:"σ",tau:"τ",phi:"φ",varphi:"φ",
+  chi:"χ",psi:"ψ",omega:"ω",Gamma:"Γ",Delta:"Δ",Theta:"Θ",Lambda:"Λ",Pi:"Π",Sigma:"Σ",
+  Phi:"Φ",Psi:"Ψ",Omega:"Ω",hbar:"ħ",partial:"∂",nabla:"∇",infty:"∞",pm:"±",mp:"∓",
+  times:"×",cdot:"·",approx:"≈",propto:"∝",leq:"≤",geq:"≥",neq:"≠",to:"→",deg:"°",ell:"ℓ"};
+
+function parseMath(src){
+  let i=0;
+  function group(){const out=[];while(i<src.length&&src[i]!=="}")one(out);return out;}
+  function atom(){
+    if(i>=src.length)return null;
+    if(src[i]==="{"){i++;const g=group();if(src[i]==="}")i++;return g;}
+    if(src[i]==="\\"){
+      i++;let nm="";
+      while(i<src.length&&/[a-zA-Z]/.test(src[i])){nm+=src[i];i++;}
+      if(nm==="frac"){const n=atom(),d=atom();return{k:"frac",n,d};}
+      if(nm==="sqrt"){return{k:"sqrt",v:atom()};}
+      if(nm==="vec"){return{k:"vec",v:atom()};}
+      if(nm==="bar"){return{k:"bar",v:atom()};}
+      if(nm==="hat"){return{k:"hat",v:atom()};}
+      if(nm==="int"||nm==="oint"||nm==="sum"||nm==="prod"||nm==="iint"){
+        let sub=null,sup=null;
+        while(i<src.length&&(src[i]==="_"||src[i]==="^")){
+          const c=src[i];i++;const a=atom();
+          if(c==="_")sub=a;else sup=a;}
+        return{k:"big",g:nm,sub,sup};}
+      return{k:"t",v:GREEK[nm]!==undefined?GREEK[nm]:nm};}
+    const ch=src[i];i++;
+    return{k:"t",v:ch};
+  }
+  function one(out){
+    const base=atom();if(!base)return;
+    let node=base;
+    while(i<src.length&&(src[i]==="_"||src[i]==="^")){
+      const c=src[i];i++;const a=atom();if(!a)break;
+      if(c==="_")node.sub=a;else node.sup=a;
+    }
+    out.push(node);
+  }
+  return group();
+}
+const pCacheM=new Map();
+const pCache=src=>{let v=pCacheM.get(src);if(!v){v=parseMath(src);pCacheM.set(src,v);}return v;};
+
+/* 修复①：atom 可能返回单记号（如 E_k 的 "k"）或数组（{...} 组）。
+   所有消费点统一归一化，杜绝 "x is not iterable" */
+const oneOf=a=>Array.isArray(a)?a:[a];
+
+/* ---- 数学排版测量（像素级） ---- */
+function mMsT(toks0,fs){
+  const toks=oneOf(toks0);
+  let w=0,asc=fs*0.72,desc=fs*0.22;
+  for(const tk of toks){const r=mMs(tk,fs);
+    w+=r.w;asc=Math.max(asc,r.asc);desc=Math.max(desc,r.desc);}
+  return{w,asc,desc};
+}
+function mMs(tk,fs){
+  let w=0,asc=fs*0.72,desc=fs*0.22;
+  switch(tk.k){
+    case "t":ctx.font=fs+"px "+FONT;w=ctx.measureText(tk.v).width;break;
+    case "frac":{const s=fs*0.85;
+      const rn=mMsT(tk.n,s),rd=mMsT(tk.d,s);
+      w=Math.max(rn.w,rd.w)+fs*0.2;
+      asc=Math.max(asc,rn.asc+s*0.5);desc=Math.max(desc,rd.desc+s*0.5);break;}
+    case "sqrt":{const s=fs*0.85;const r=mMsT(tk.v,s);
+      w=r.w+s*0.75;asc=Math.max(asc,r.asc+s*0.22);desc=Math.max(desc,r.desc);break;}
+    case "big":{
+      w=fs*0.9;let bA=fs*0.85,bD=fs*0.45;
+      if(tk.sub){const s=fs*0.55,r=mMsT(tk.sub,s);w+=r.w+fs*0.05;bD=Math.max(bD,fs*0.3+r.desc);}
+      if(tk.sup){const s=fs*0.55,r=mMsT(tk.sup,s);w+=r.w+fs*0.05;bA=Math.max(bA,fs*0.8+r.asc);}
+      asc=bA;desc=bD;break;}
+    case "vec":case "bar":case "hat":{
+      const r=mMsT(tk.v,fs);
+      w=r.w+fs*0.08;asc=r.asc+fs*0.3;desc=r.desc;break;}
+  }
+  if(tk.k!=="big"){
+    if(tk.sub){const s=fs*0.6,r=mMsT(tk.sub,s);w+=r.w+fs*0.04;desc=Math.max(desc,fs*0.18+r.desc);}
+    if(tk.sup){const s=fs*0.6,r=mMsT(tk.sup,s);w+=r.w+fs*0.04;asc=Math.max(asc,fs*0.35+r.asc);}
+  }
+  return{w,asc,desc};
+}
+/* ---- 大算符矢量绘制 ---- */
+function drawBigOp(g,x,topY,botY,fs){
+  const h=botY-topY;
+  if(g==="int"||g==="oint"||g==="iint"){
+    const w=fs*0.5;
+    ctx.lineWidth=Math.max(1,fs*0.09);ctx.lineCap="round";
+    ctx.beginPath();
+    ctx.moveTo(x+w*0.95,topY+h*0.06);
+    ctx.bezierCurveTo(x+w*0.55,topY+h*0.10,x+w*0.42,topY+h*0.22,x+w*0.40,topY+h*0.5);
+    ctx.bezierCurveTo(x+w*0.38,topY+h*0.78,x+w*0.30,topY+h*0.92,x+w*0.08,botY-h*0.02);
+    ctx.stroke();
+    if(g==="oint"){ctx.lineWidth=Math.max(1,fs*0.06);
+      ctx.beginPath();ctx.ellipse(x+w*0.58,topY+h*0.5,w*0.42,h*0.14,0,0,6.2832);ctx.stroke();}
+    if(g==="iint"){ctx.lineWidth=Math.max(1,fs*0.06);
+      ctx.beginPath();ctx.ellipse(x+w*0.30,topY+h*0.5,w*0.16,h*0.10,0,0,6.2832);ctx.stroke();
+      ctx.beginPath();ctx.ellipse(x+w*0.72,topY+h*0.5,w*0.16,h*0.10,0,0,6.2832);ctx.stroke();}
+    ctx.lineCap="butt";
+    return w;
+  }
+  if(g==="sum"){
+    const w=fs*0.85,lw=Math.max(1,fs*0.09);
+    ctx.lineWidth=lw;ctx.beginPath();
+    ctx.moveTo(x,topY+lw);ctx.lineTo(x+w,topY+lw);
+    ctx.lineTo(x+w*0.30,(topY+botY)/2);
+    ctx.lineTo(x+w,botY-lw);ctx.lineTo(x,botY-lw);
+    ctx.stroke();return w;
+  }
+  if(g==="prod"){
+    const w=fs*0.95;
+    ctx.lineWidth=Math.max(1,fs*0.07);ctx.beginPath();
+    ctx.moveTo(x,topY+fs*0.04);ctx.lineTo(x+w,topY+fs*0.04);
+    ctx.moveTo(x+w*0.18,topY+fs*0.04);ctx.lineTo(x+w*0.18,botY);
+    ctx.moveTo(x+w*0.82,topY+fs*0.04);ctx.lineTo(x+w*0.82,botY);
+    ctx.stroke();return w;
+  }
+  return fs*0.6;
+}
+/* ---- 数学排版绘制 ---- */
+function mDrT(toks0,x,y,fs){
+  const toks=oneOf(toks0);
+  let cx=x;
+  for(const tk of toks)cx=mDr(tk,cx,y,fs);
+  return cx;
+}
+function mDr(tk,x,y,fs){
+  let cx=x;
+  switch(tk.k){
+    case "t":{ctx.font=fs+"px "+FONT;
+      ctx.textAlign="left";ctx.textBaseline="alphabetic";
+      ctx.fillText(tk.v,cx,y);
+      cx+=ctx.measureText(tk.v).width;break;}
+    case "frac":{const s=fs*0.85;
+      const rn=mMsT(tk.n,s),rd=mMsT(tk.d,s);
+      const fw=Math.max(rn.w,rd.w);
+      mDrT(tk.n,cx+(fw-rn.w)/2,y-s*0.5,s);
+      mDrT(tk.d,cx+(fw-rd.w)/2,y+s*0.62,s);
+      ctx.lineWidth=Math.max(1,fs*0.055);
+      ctx.beginPath();ctx.moveTo(cx-fs*0.04,y);ctx.lineTo(cx+fw+fs*0.04,y);ctx.stroke();
+      cx+=fw+fs*0.22;break;}
+    case "sqrt":{const s=fs*0.85;
+      const r=mMsT(tk.v,s);const hook=s*0.5;
+      const top=y-r.asc,bot=y+r.desc;
+      ctx.lineWidth=Math.max(1,fs*0.06);
+      ctx.beginPath();
+      ctx.moveTo(cx,y+r.desc*0.35);
+      ctx.lineTo(cx+hook*0.32,y+r.desc*0.35);
+      ctx.lineTo(cx+hook*0.62,bot);
+      ctx.lineTo(cx+hook*0.92,top);
+      ctx.lineTo(cx+hook+r.w+s*0.15,top);
+      ctx.stroke();
+      mDrT(tk.v,cx+hook+s*0.08,y,s);
+      cx+=hook+r.w+s*0.2;break;}
+    case "big":{
+      const top=y-fs*0.85,bot=y+fs*0.45;
+      const gw=drawBigOp(tk.g,cx,top,bot,fs);
+      let ox=gw+fs*0.06;
+      if(tk.sub){const s=fs*0.55;const r=mMsT(tk.sub,s);
+        mDrT(tk.sub,cx+ox,y+fs*0.32,s);ox+=r.w+fs*0.05;}
+      if(tk.sup){const s=fs*0.55;const r=mMsT(tk.sup,s);
+        mDrT(tk.sup,cx+ox,y-fs*0.72,s);ox+=r.w+fs*0.05;}
+      cx+=Math.max(fs*0.9,ox);break;}
+    case "vec":{
+      const r=mMsT(tk.v,fs);
+      mDrT(tk.v,cx,y,fs);
+      const ay=y-r.asc-fs*0.14;
+      ctx.lineWidth=Math.max(1,fs*0.05);
+      ctx.beginPath();ctx.moveTo(cx,ay);ctx.lineTo(cx+r.w,ay);ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(cx+r.w,ay);ctx.lineTo(cx+r.w-fs*0.16,ay-fs*0.09);
+      ctx.moveTo(cx+r.w,ay);ctx.lineTo(cx+r.w-fs*0.16,ay+fs*0.09);
+      ctx.stroke();
+      cx+=r.w+fs*0.1;break;}
+    case "bar":{
+      const r=mMsT(tk.v,fs);
+      mDrT(tk.v,cx,y,fs);
+      ctx.lineWidth=Math.max(1,fs*0.05);
+      ctx.beginPath();ctx.moveTo(cx,y-r.asc-fs*0.1);ctx.lineTo(cx+r.w,y-r.asc-fs*0.1);ctx.stroke();
+      cx+=r.w+fs*0.08;break;}
+    case "hat":{
+      const r=mMsT(tk.v,fs);
+      mDrT(tk.v,cx,y,fs);
+      ctx.lineWidth=Math.max(1,fs*0.05);
+      ctx.beginPath();
+      ctx.moveTo(cx+r.w*0.15,y-r.asc-fs*0.04);
+      ctx.lineTo(cx+r.w*0.5,y-r.asc-fs*0.3);
+      ctx.lineTo(cx+r.w*0.85,y-r.asc-fs*0.04);
+      ctx.stroke();
+      cx+=r.w+fs*0.08;break;}
+  }
+  if(tk.k!=="big"){
+    if(tk.sub){const s=fs*0.6,r=mMsT(tk.sub,s);mDrT(tk.sub,cx,y+fs*0.2,s);cx+=r.w+fs*0.04;}
+    if(tk.sup){const s=fs*0.6,r=mMsT(tk.sup,s);mDrT(tk.sup,cx,y-fs*0.38,s);cx+=r.w+fs*0.04;}
+  }
+  return cx;
+}
+function measureMath(toks,h){const S=64;const r=mMsT(toks,h*S);
+  return{w:r.w/S,asc:r.asc/S,desc:r.desc/S};}
+
+/* ============================================================ 公式库 */
+const FORMULAS=[
+ {c:"F = ma",tag:"mech",note:"F = force [N]"},
+ {c:"E_k = \\frac{1}{2}mv^2",tag:"mech",note:"kinetic energy [J]"},
+ {c:"p = mv",tag:"mech"},
+ {c:"W = \\int_{s_1}^{s_2}F\\cdot ds",tag:"mech",note:"work [J]"},
+ {c:"F = G\\frac{m_1 m_2}{r^2}",tag:"mech"},
+ {c:"a_c = \\frac{v^2}{r}",tag:"mech",note:"centripetal"},
+ {c:"x(t) = A\\cos(\\omega t+\\varphi)",tag:"mech"},
+ {c:"T = 2\\pi\\sqrt{L/g}",tag:"mech"},
+ {c:"\\tau = rF\\sin\\theta",tag:"mech"},
+ {c:"L = I\\omega",tag:"mech"},
+ {c:"\\sigma = \\frac{F}{A}",tag:"mat",note:"normal stress [Pa]"},
+ {c:"\\epsilon = \\frac{\\Delta L}{L}",tag:"mat"},
+ {c:"\\sigma = E\\epsilon",tag:"mat",note:"Hooke's law"},
+ {c:"\\delta = \\frac{FL^3}{3EI}",tag:"mat",note:"beam deflection"},
+ {c:"\\tau = \\frac{Tc}{J}",tag:"mat",note:"torsion"},
+ {c:"P_{cr} = \\frac{\\pi^2 EI}{(KL)^2}",tag:"mat",note:"Euler buckling"},
+ {c:"PV = nRT",tag:"thermo",note:"ideal gas"},
+ {c:"\\Delta U = Q - W",tag:"thermo"},
+ {c:"\\eta = 1-\\frac{T_c}{T_h}",tag:"thermo",note:"Carnot eff."},
+ {c:"Q = mc\\Delta T",tag:"thermo"},
+ {c:"\\Delta S \\geq 0",tag:"thermo"},
+ {c:"V = IR",tag:"em",note:"Ohm's law"},
+ {c:"P = VI",tag:"em"},
+ {c:"F = q(E + v\\times B)",tag:"em",note:"Lorentz force"},
+ {c:"\\nabla\\cdot E = \\frac{\\rho}{\\epsilon_0}",tag:"em"},
+ {c:"\\nabla\\times B = \\mu_0 J",tag:"em"},
+ {c:"c = \\frac{1}{\\sqrt{\\epsilon_0\\mu_0}}",tag:"em"},
+ {c:"v = f\\lambda",tag:"wave"},
+ {c:"d\\sin\\theta = m\\lambda",tag:"wave",note:"grating eq."},
+ {c:"n_1\\sin\\theta_1 = n_2\\sin\\theta_2",tag:"wave",note:"Snell's law"},
+ {c:"E = h\\nu",tag:"quantum",note:"photon energy"},
+ {c:"\\lambda = \\frac{h}{p}",tag:"quantum"},
+ {c:"i\\hbar\\frac{\\partial\\psi}{\\partial t} = \\hat{H}\\psi",tag:"quantum",note:"Schrödinger"},
+ {c:"\\Delta x\\Delta p \\geq \\frac{\\hbar}{2}",tag:"quantum"},
+ {c:"P(x) = |\\psi(x)|^2",tag:"quantum"},
+ {c:"E = mc^2",tag:"rel"},
+ {c:"E^2 = (pc)^2+(mc^2)^2",tag:"rel"},
+ {c:"t' = \\frac{t}{\\sqrt{1-v^2/c^2}}",tag:"rel",note:"time dilation"},
+ {c:"L = L_0\\sqrt{1-\\frac{v^2}{c^2}}",tag:"rel"},
+ {c:"e^{i\\pi}+1 = 0",tag:"math",note:"Euler's identity"},
+ {c:"a^2+b^2 = c^2",tag:"math"},
+ {c:"x = \\frac{-b\\pm\\sqrt{b^2-4ac}}{2a}",tag:"math"},
+ {c:"\\int_{-\\infty}^{\\infty}e^{-x^2}dx = \\sqrt{\\pi}",tag:"math"},
+ {c:"\\sum_{n=1}^{\\infty}\\frac{1}{n^2} = \\frac{\\pi^2}{6}",tag:"math",note:"Basel problem"},
+ {c:"\\frac{d}{dx}e^x = e^x",tag:"math"},
+ {c:"\\lim_{x\\to 0}\\frac{\\sin x}{x} = 1",tag:"math"},
+ {c:"A = \\pi r^2",tag:"math"},
+ {c:"V = \\frac{4}{3}\\pi r^3",tag:"math"},
+ {c:"P + \\frac{1}{2}\\rho v^2 + \\rho gh = const",tag:"fluid",note:"Bernoulli"},
+ {c:"Re = \\frac{\\rho vD}{\\mu}",tag:"fluid",note:"Reynolds num."},
+ {c:"F_d = \\frac{1}{2}\\rho v^2C_d A",tag:"fluid",note:"drag force"},
+ {c:"P(A|B) = \\frac{P(B|A)P(A)}{P(B)}",tag:"stats",note:"Bayes"},
+ {c:"\\bar{x} = \\frac{1}{N}\\sum_{i=1}^{N}x_i",tag:"stats"},
+ {c:"\\sigma^2 = \\frac{\\sum(x-\\mu)^2}{N}",tag:"stats"}
+];
+const FTAGS=["mech","mat","thermo","fluid","em","wave","quantum","rel","math","stats"];
+function pickFormula(R,s){
+  const themed=FORMULAS.filter(f=>f.tag===s.ftag);
+  return(themed.length&&R()<0.7)?themed[(R()*themed.length)|0]:FORMULAS[(R()*FORMULAS.length)|0];
+}
+const SHORTF=["E=mc^2","F=ma","v=f\\lambda","PV=nRT","a^2+b^2=c^2","V=IR",
+  "\\sigma=E\\epsilon","E=h\\nu","p=mv","Q=mc\\Delta T","\\nabla\\cdot B = 0"];
+
+/* ============================================================ WFC */
+const MODS={MEGA:{w:0},AXIS_H:{w:18},AXIS_V:{w:18},DETAIL:{w:30},ANNO:{w:16},EMPTY:{w:5}};
+const ADJ={"MEGA|MEGA":1,"MEGA|AXIS_H":1,"MEGA|AXIS_V":1,"MEGA|DETAIL":1,"MEGA|ANNO":1,
+  "AXIS_H|AXIS_H":1,"AXIS_H|DETAIL":1,"AXIS_H|AXIS_V":1,"AXIS_V|AXIS_V":1,"AXIS_V|DETAIL":1,
+  "DETAIL|DETAIL":1,"DETAIL|ANNO":1,"DETAIL|EMPTY":1,"ANNO|ANNO":1,"ANNO|EMPTY":1,"EMPTY|EMPTY":1};
+function canAdj(a,b){return ADJ[a+"|"+b]||ADJ[b+"|"+a]||0;}
+const MOD_LIST=Object.keys(MODS);
+function runWFC(seed){
+  const rng=mulberry32(seed);
+  const N=CELLS*CELLS;
+  const cells=[],collapsed=new Array(N).fill(null);
+  for(let i=0;i<N;i++)cells.push(new Set(MOD_LIST));
+  const nb=i=>{const x=i%CELLS,y=(i/CELLS)|0,out=[];
+    if(x>0)out.push(i-1);if(x<CELLS-1)out.push(i+1);
+    if(y>0)out.push(i-CELLS);if(y<CELLS-1)out.push(i+CELLS);return out;};
+  const collapse=(i,v)=>{
+    collapsed[i]=v;cells[i]=new Set([v]);
+    const q=[...nb(i)],seen=new Set([i]);
+    while(q.length){
+      const c=q.shift();
+      if(collapsed[c]||seen.has(c))continue;
+      seen.add(c);
+      const nbs=nb(c),before=cells[c].size;
+      for(const n2 of nbs){const cv=collapsed[n2];if(!cv)continue;
+        cells[c]=new Set([...cells[c]].filter(o=>canAdj(cv,o)));}
+      if(cells[c].size===0)cells[c].add("EMPTY");
+      if(cells[c].size<before)q.push(...nbs);
+    }};
+  const pickW=set=>{const opts=[...set];let tw=0;
+    for(const o of opts)tw+=MODS[o].w;
+    let r=rng()*tw;
+    for(const o of opts){r-=MODS[o].w;if(r<=0)return o;}
+    return opts[opts.length-1];};
+  const c0=((CELLS/2)|0)-1;
+  for(let r2=c0;r2<c0+3;r2++)for(let c2=c0;c2<c0+3;c2++){
+    const idx=r2*CELLS+c2;if(!collapsed[idx])collapse(idx,"MEGA");}
+  let guard=0;
+  while(guard++<N*3){
+    let minE=Infinity,minI=-1;
+    for(let i=0;i<N;i++){if(collapsed[i])continue;
+      if(cells[i].size<minE){minE=cells[i].size;minI=i;}}
+    if(minI<0||minE===0)break;
+    collapse(minI,pickW(cells[minI]));
+  }
+  for(let i=0;i<N;i++)if(!collapsed[i])collapsed[i]=[...cells[i]][0]||"EMPTY";
+  return collapsed;
+}
+
+/* ============================================================ 图元构建器 */
+function mk(o,R){
+  const P=[];
+  const L=(x1,y1,x2,y2,s=SOLID)=>P.push({t:"L",x1,y1,x2,y2,s});
+  const Rc=(x,y,w,h,s=SOLID)=>{L(x,y,x+w,y,s);L(x+w,y,x+w,y+h,s);L(x+w,y+h,x,y+h,s);L(x,y+h,x,y,s);};
+  const C=(x,y,r,s=SOLID)=>P.push({t:"C",x,y,r,s});
+  const A=(x,y,r,a0,a1,s=SOLID)=>P.push({t:"A",x,y,r,a0,a1,s});
+  const T=(x,y,str,h=0.15,r=0)=>P.push({t:"T",x,y,str,h,r});
+  const DL=(x1,y1,x2,y2,off,txt)=>P.push({t:"DL",x1,y1,x2,y2,off,txt});
+  const DR=(x,y,r,a,txt)=>P.push({t:"DR",x,y,r,a,txt});
+  const DD=(x,y,r,a,txt)=>P.push({t:"DD",x,y,r,a,txt});
+  const CM=(x,y,e)=>P.push({t:"CM",x,y,e});
+  const HT=(x,y,w,h,a,step=0.1)=>P.push({t:"H",x,y,w,h,a,step});
+  const SEC=(x1,y1,x2,y2,ch)=>P.push({t:"SEC",x1,y1,x2,y2,ch});
+  const AR=(x1,y1,x2,y2)=>P.push({t:"AR",x1,y1,x2,y2});
+  const M=(x,y,h,toks)=>P.push({t:"M",x,y,h,toks});
+  return{P,L,Rc,C,A,T,DL,DR,DD,CM,HT,SEC,AR,M};
+}
+function geoHelpers(k,segs,circles){
+  return{
+    seg(x1,y1,x2,y2,s=SOLID){k.L(x1,y1,x2,y2,s);if(s===SOLID)segs.push({x1,y1,x2,y2});},
+    box(x,y,w,h,s=SOLID){k.Rc(x,y,w,h,s);
+      if(s===SOLID)segs.push({x1:x,y1:y,x2:x+w,y2:y},{x1:x+w,y1:y,x2:x+w,y2:y+h},
+        {x1:x+w,y1:y+h,x2:x,y2:y+h},{x1:x,y1:y+h,x2:x,y2:y});},
+    circ(x,y,r,s=SOLID){k.C(x,y,r,s);if(s===SOLID)circles.push({x,y,r});}
+  };
+}
+
+/* ============================================================ 站点上下文 */
+function makeCtx(rng){
+  const iface={};
+  const style={
+    slender:0.6+rng()*0.9,
+    chunk:0.65+rng()*0.85,
+    hatch:0.05+rng()*0.05,
+    dimScale:0.7+rng()*0.7
+  };
+  const ftag=pick(rng,FTAGS);
+  let eqc=0;
+  return{
+    style,ftag,iface,
+    pub(k,v){iface[k]=v;},
+    use(k){return iface[k]!==undefined?iface[k]:null;},
+    nextEq(){return ++eqc;},
+    dimOff(R){return(0.10+R()*0.50)*style.dimScale;}
+  };
+}
+function favPick(gens,R,last,fav){
+  let gi=(R()<0.3&&fav<gens.length)?fav:(R()*gens.length)|0;
+  if(gi===last&&R()<0.75)gi=(gi+1+((R()*(gens.length-1))|0))%gens.length;
+  return gi;
+}
+
+/* ============================================================ MEGA（7 种） */
+const MEGA_GENS=[
+(R,o,k,geo)=>{const s=geo.sctx,g=geoHelpers(k,geo.segs,geo.circles);
+  s.pub("megaName","TURBINE");
+  const cx=geo.snapX??(o.x+geo.mw/2),cy=geo.snapY??(o.y+geo.mh/2);
+  const R1=Math.min(geo.mw,geo.mh)*0.36*s.style.chunk;
+  g.circ(cx,cy,R1);g.circ(cx,cy,R1*0.92);g.circ(cx,cy,R1*0.22);g.circ(cx,cy,R1*0.10);
+  k.C(cx,cy,R1*0.62,DASHED);
+  const nb2=12+(R()*6|0),a0=R()*0.5;
+  for(let i=0;i<nb2;i++){const a=a0+i/nb2*6.2832;
+    g.seg(cx+Math.cos(a)*R1*0.24,cy+Math.sin(a)*R1*0.24,cx+Math.cos(a)*R1*0.90,cy+Math.sin(a)*R1*0.90);}
+  for(let i=0;i<nb2;i++){const a=a0+(i+0.5)/nb2*6.2832;
+    g.circ(cx+Math.cos(a)*R1*0.62,cy+Math.sin(a)*R1*0.62,R1*0.055);}
+  k.CM(cx,cy,R1*1.12);
+  if(geo.snapY!==null)k.L(cx-R1*1.3,cy,cx+R1*1.3,cy,CENTER);
+  if(geo.snapX!==null)k.L(cx,cy-R1*1.3,cx,cy+R1*1.3,CENTER);
+  k.DD(cx,cy,R1,a0+0.9,"Ø"+(R1*2).toFixed(1));
+  k.DR(cx,cy,R1*0.62,a0+2.4,"R"+(R1*0.62).toFixed(1)+" B.C.");
+  const num=s.nextEq();
+  k.M(cx-R1*0.9,cy+R1*1.6,0.3,pCache("\\omega = v/r"));
+  k.T(cx+0.9,cy+R1*1.6,"("+num+")",0.16);
+  return;},
+(R,o,k,geo)=>{const s=geo.sctx,g=geoHelpers(k,geo.segs,geo.circles);
+  s.pub("megaName","HULL SEC");
+  const cx=geo.snapX??(o.x+geo.mw/2),cy=geo.snapY??(o.y+geo.mh/2);
+  const B=geo.mw*0.42,D=geo.mh*0.24*s.style.chunk;
+  const yDeck=cy+D*0.45,yBase=cy-D*0.55;
+  const pts=[];
+  for(let i=0;i<=8;i++){const t=i/8;
+    pts.push([cx-B*(0.32+0.68*Math.sin(t*Math.PI/2)),yBase+t*(yDeck-yBase)]);}
+  for(let i=1;i<pts.length;i++)g.seg(pts[i-1][0],pts[i-1][1],pts[i][0],pts[i][1]);
+  for(let i=1;i<pts.length;i++)g.seg(2*cx-pts[i-1][0],pts[i-1][1],2*cx-pts[i][0],pts[i][1]);
+  g.seg(cx-B,yDeck,cx+B,yDeck);
+  g.seg(cx-B*0.50,yBase+D*0.18,cx+B*0.50,yBase+D*0.18);
+  g.seg(cx-B*0.56,yBase+D*0.32,cx+B*0.56,yBase+D*0.32);
+  const nb3=4+(R()*3|0);
+  for(let i=1;i<=nb3;i++){const x=cx-B+i/(nb3+1)*2*B;g.seg(x,yBase+D*0.32,x,yDeck);}
+  for(let i=0;i<=12;i++){const x=cx-B*0.9+i/12*B*1.8;k.L(x,yBase,x,yDeck,CENTER);}
+  k.L(cx-B,yBase+D*0.52,cx+B,yBase+D*0.52,DASHED);
+  k.T(cx+B+0.35,yBase+D*0.52,"WL",0.15);
+  k.DL(cx-B,yDeck,cx+B,yDeck,s.dimOff(R),(2*B).toFixed(1));
+  k.DL(cx+B,yBase,cx+B,yDeck,s.dimOff(R),(yDeck-yBase).toFixed(1));
+  const num=s.nextEq();
+  k.M(cx,cy-D*1.1,0.32,pCache("F_b = \\rho gV"));
+  k.T(cx+1.6,cy-D*1.1,"("+num+")",0.16);
+  return;},
+(R,o,k,geo)=>{const s=geo.sctx,g=geoHelpers(k,geo.segs,geo.circles);
+  s.pub("megaName","FRAME");
+  const cx=geo.snapX??(o.x+geo.mw/2),cy=geo.snapY??(o.y+geo.mh/2);
+  const W2=geo.mw*0.62,H2=geo.mh*0.55;
+  const x0=cx-W2/2,y0=cy-H2*0.35;
+  const cols=4+(R()*3|0),floors=3+(R()*3|0);
+  for(let i=0;i<=cols;i++){const x=x0+i/cols*W2;
+    g.seg(x,y0,x,y0+H2);g.seg(x-0.09,y0,x+0.09,y0);}
+  for(let f=0;f<=floors;f++){const y=y0+f/floors*H2;g.seg(x0,y,x0+W2,y);}
+  const tw=W2*0.15;
+  g.box(cx-tw/2,y0+H2*0.28,tw,H2*0.72);
+  k.HT(cx-tw/2,y0+H2*0.28,tw,H2*0.72,Math.PI/4,s.style.hatch*2.5);
+  const sh=y0+H2/floors-y0;
+  g.seg(x0+W2*0.84,y0,x0+W2*0.96,y0+sh);
+  g.seg(x0+W2*0.84,y0,x0+W2*0.84,y0+sh);
+  for(let i=0;i<=cols;i++){const x=x0+i/cols*W2;
+    k.L(x,y0+H2,x,y0+H2+0.23,CENTER);k.C(x,y0+H2+0.46,0.23);k.T(x,y0+H2+0.46,String(i+1),0.22);}
+  k.DL(x0,x0+W2,y0,-s.dimOff(R),W2.toFixed(1));
+  k.DL(x0+W2,y0,x0+W2,y0+H2,s.dimOff(R),H2.toFixed(1));return;},
+(R,o,k,geo)=>{const s=geo.sctx,g=geoHelpers(k,geo.segs,geo.circles);
+  s.pub("megaName","TANK FARM");
+  const cy0=geo.snapY??(o.y+geo.mh/2);
+  const totalW=geo.mw*0.78;
+  const x0=geo.snapX!==null?geo.snapX-totalW/2:o.x+geo.mw*0.11;
+  const n=3+(R()*2|0),tw2=totalW/n;
+  const byy=cy0-geo.mh*0.24;
+  g.box(x0-0.7,byy-0.5,totalW+1.4,geo.mh*0.66);
+  for(let i=0;i<n;i++){
+    const cxx=x0+tw2*(i+0.5),w=tw2*0.60,h=geo.mh*(0.30+R()*0.16);
+    g.seg(cxx-w/2,byy,cxx-w/2,byy+h);g.seg(cxx+w/2,byy,cxx+w/2,byy+h);
+    g.seg(cxx-w/2,byy,cxx+w/2,byy);
+    g.seg(cxx-w/2,byy+h,cxx,byy+h+0.4);g.seg(cxx+w/2,byy+h,cxx,byy+h+0.4);
+    k.L(cxx-w/2,byy+h*0.68,cxx+w/2,byy+h*0.68,DASHED);
+    k.DL(cxx-w/2,cxx+w/2,byy-0.28,-s.dimOff(R),w.toFixed(1));}
+  g.seg(x0-0.7,byy-0.22,x0+totalW+0.7,byy-0.22);
+  g.seg(x0-0.7,byy-0.34,x0+totalW+0.7,byy-0.34);
+  k.DL(x0,x0+totalW,byy+geo.mh*0.44,s.dimOff(R),totalW.toFixed(1));return;},
+(R,o,k,geo)=>{const s=geo.sctx,g=geoHelpers(k,geo.segs,geo.circles);
+  s.pub("megaName","GEARBOX");
+  const axY=geo.snapY??(o.y+geo.mh/2);
+  const x0=geo.snapX!==null?geo.snapX-geo.mw*0.36:o.x+geo.mw*0.14;
+  const len=geo.mw*0.72;
+  g.box(x0,axY-geo.mh*0.30,len,geo.mh*0.07);
+  k.HT(x0,axY-geo.mh*0.30,len,geo.mh*0.07,Math.PI/4,s.style.hatch*2);
+  for(let r2=0;r2<2;r2++){
+    const ay=axY+(r2===0?geo.mh*0.05:-geo.mh*0.12);
+    const n=4+(R()*3|0),ws2=[];let tot2=0;
+    for(let i=0;i<n;i++){const w=len*0.66/n*(0.7+R()*0.6);ws2.push(w);tot2+=w;}
+    let xx=x0+(len-tot2)/2;
+    for(let i=0;i<n;i++){const h=0.30+R()*0.22;g.box(xx,ay-h/2,ws2[i],h);xx+=ws2[i];}
+    g.box(x0+len*0.05,ay-0.30,len*0.05,0.60);
+    g.box(x0+len*0.90,ay-0.30,len*0.05,0.60);
+    k.L(x0-0.5,ay,x0+len+0.5,ay,CENTER);}
+  g.box(x0-2.4,axY-0.8,2.0,1.6);
+  for(let i=0;i<6;i++)k.L(x0-2.3+i*0.32,axY+0.8,x0-2.3+i*0.32,axY+1.02);
+  g.circ(x0-0.2,axY,0.44);g.circ(x0-0.2,axY,0.18);
+  k.DL(x0,x0+len,axY-geo.mh*0.36,-s.dimOff(R)*1.4,len.toFixed(1));
+  const num=s.nextEq();
+  k.M(x0+len*0.35,axY+geo.mh*0.34,0.3,pCache("i = \\frac{\\omega_1}{\\omega_2}"));
+  k.T(x0+len*0.35+1.2,axY+geo.mh*0.34,"("+num+")",0.16);
+  return;},
+(R,o,k,geo)=>{const s=geo.sctx,g=geoHelpers(k,geo.segs,geo.circles);
+  s.pub("megaName","TRUSS BR");
+  const cx=geo.snapX??(o.x+geo.mw/2),cy=geo.snapY??(o.y+geo.mh/2);
+  const sp=geo.mw*0.80,th=geo.mh*0.26;
+  const x0=cx-sp/2,x1=cx+sp/2,yB=cy+th*0.5,yT=yB-th;
+  g.seg(x0,yB,x1,yB);g.seg(x0,yT,x1,yT);
+  const n=6+(R()*4|0);
+  const nodes=[];
+  for(let i=0;i<=n;i++){const x=x0+sp*i/n;nodes.push(x);
+    g.seg(x,yB,x,yT);
+    if(i<n){const xm=x0+sp*(i+0.5)/n;
+      if(i%2===0){g.seg(x,yB,xm,yT);g.seg(xm,yT,x+sp/n,yB);}
+      else{g.seg(x,yT,xm,yB);g.seg(xm,yB,x+sp/n,yT);}}}
+  for(const x of nodes){g.circ(x,yB,0.09);g.circ(x,yT,0.09);}
+  g.seg(x0-0.5,yB,x1+0.5,yB);
+  k.HT(x0-0.5,yB-0.45,sp+1,0.45,Math.PI/4,s.style.hatch*1.5);
+  [[x0,yB],[x1,yB]].forEach(([x,y])=>{
+    g.seg(x-0.35,y+0.5,x,y);g.seg(x+0.35,y+0.5,x,y);g.seg(x-0.35,y+0.5,x+0.35,y+0.5);});
+  k.DL(x0,x1,yT-0.4,-s.dimOff(R),sp.toFixed(1));
+  k.DL(x1,yB,x1,yT,s.dimOff(R),th.toFixed(1));return;},
+(R,o,k,geo)=>{const s=geo.sctx,g=geoHelpers(k,geo.segs,geo.circles);
+  s.pub("megaName","PLAN L1");
+  const cx=geo.snapX??(o.x+geo.mw/2),cy=geo.snapY??(o.y+geo.mh/2);
+  const W2=geo.mw*0.72,H2=geo.mh*0.50;
+  const x0=cx-W2/2,y0=cy-H2/2;
+  g.box(x0,y0,W2,H2);
+  const cxN=2+(R()*2|0),cyN=1+(R()*2|0);
+  for(let i=1;i<cxN;i++){const x=x0+W2*i/cxN;
+    const gy=y0+H2*(0.3+R()*0.4),gap=0.5+R()*0.4;
+    g.seg(x,y0,x,gy);g.seg(x,gy+gap,x,y0+H2);}
+  for(let j=1;j<cyN;j++){const y=y0+H2*j/cyN;
+    const gx=x0+W2*(0.3+R()*0.4),gap=0.5+R()*0.4;
+    g.seg(x0,y,gx,y);g.seg(x0+gx+gap,y,x0+W2,y);}
+  const ncx=4+(R()*3|0),ncy=3+(R()*2|0);
+  for(let i=1;i<ncx;i++)for(let j=1;j<ncy;j++){
+    const px=x0+W2*i/ncx,py=y0+H2*j/ncy;
+    g.seg(px-0.08,py-0.08,px+0.08,py+0.08);g.seg(px-0.08,py+0.08,px+0.08,py-0.08);}
+  const rw=W2/cxN,rh=H2/cyN;
+  k.HT(x0,y0,rw,rh,Math.PI/4,s.style.hatch*1.5);
+  k.T(x0+rw/2,y0+rh/2+0.3,(rw*rh*56.25).toFixed(0)+" m²",0.16);
+  k.T(cx,y0+H2+0.5,"LEVEL 1",0.16);
+  k.DL(x0,x0+W2,y0,-s.dimOff(R),W2.toFixed(1));
+  k.DL(x0+W2,y0,x0+W2,y0+H2,s.dimOff(R),H2.toFixed(1));return;}
+];
+
+/* ============================================================ AXIS_H（5 种） */
+const AXIS_H_GENS=[
+(R,o,k,geo)=>{const s=geo.sctx,g=geoHelpers(k,geo.segs,geo.circles);
+  const cy=geo.snapY??(o.y+BW/2);
+  const n=3+(R()*3|0),ws=[],hs=[];let tw=0;
+  for(let i=0;i<n;i++){const w=(0.5+R()*0.8)*s.style.slender,h=(0.16+R()*0.26)*s.style.chunk;
+    ws.push(w);hs.push(h);tw+=w;}
+  let x=o.x+(BW-tw)/2;const x0=x,segsArr=[];
+  for(let i=0;i<n;i++){g.box(x,cy-hs[i],ws[i],hs[i]*2);segsArr.push({x,w:ws[i]});x+=ws[i];}
+  s.pub("shaftY",cy);s.pub("shaftR",hs[n-1]);
+  s.pub("shaftSpan",{x0,x1:x});s.pub("shaftSegs",segsArr);
+  k.L(o.x,cy,o.x+BW,cy,CENTER);
+  x=x0;
+  for(let i=0;i<n;i++){k.DL(x+ws[i]/2,cy-hs[i],x+ws[i]/2,cy+hs[i],s.dimOff(R),"Ø"+(hs[i]*2).toFixed(1));x+=ws[i];}
+  let base=cy-hs[0]-s.dimOff(R);
+  x=x0;
+  for(let i=0;i<n;i++){k.DL(x,x+ws[i],base,-Math.abs(base-cy),ws[i].toFixed(1));x+=ws[i];base-=0.15;}
+  return;},
+(R,o,k,geo)=>{const s=geo.sctx,g=geoHelpers(k,geo.segs,geo.circles);
+  const cy=geo.snapY??(o.y+BW/2);
+  const len=BW-0.5,d=(0.30+R()*0.20)*s.style.chunk;
+  const x0=o.x+0.25,y0=cy-d/2;
+  g.box(x0,y0,len,d);
+  k.L(x0,y0+d*0.3,x0+len,y0+d*0.3);
+  [[x0+0.35,y0+d],[x0+len-0.35,y0+d]].forEach(([x,y])=>{
+    k.L(x-0.12,y+0.18,x,y);k.L(x+0.12,y+0.18,x,y);k.L(x-0.12,y+0.18,x+0.12,y+0.18);});
+  s.pub("shaftY",cy);s.pub("shaftR",d/2);
+  k.L(o.x,cy,o.x+BW,cy,CENTER);
+  k.DL(x0,x0+len,y0,-s.dimOff(R),len.toFixed(1));
+  k.DL(x0+len,y0,x0+len,y0+d,s.dimOff(R),d.toFixed(1));
+  k.T(x0+len/2,y0+d+0.42,pick(R,["GL-1","KL-3","W12×26","B-2"]),0.14);return;},
+(R,o,k,geo)=>{const s=geo.sctx,g=geoHelpers(k,geo.segs,geo.circles);
+  const cy=geo.snapY??(o.y+BW/2);
+  const r=(0.20+R()*0.16)*s.style.chunk;
+  const x0=o.x+0.3,x1=o.x+BW-0.3;
+  g.seg(x0,cy-r,x1,cy-r);g.seg(x0,cy+r,x1,cy+r);
+  k.A(x0,cy,r,Math.PI*0.5,Math.PI*1.5);
+  k.A(x1,cy,r,-Math.PI*0.5,Math.PI*0.5);
+  s.pub("shaftY",cy);s.pub("shaftR",r);
+  k.L(o.x,cy,o.x+BW,cy,CENTER);
+  k.DL(x0,cy-r,x0,cy+r,s.dimOff(R),(r*2).toFixed(1));
+  k.T(x0+(x1-x0)/2,cy-r-0.25,"Ø"+(r*2).toFixed(1)+" WALL 2.5",0.12);return;},
+(R,o,k,geo)=>{const s=geo.sctx,g=geoHelpers(k,geo.segs,geo.circles);
+  const cy=geo.snapY??(o.y+BW/2);
+  const r1=0.34+R()*0.22,r2=r1*(0.5+R()*0.35);
+  const p1x=o.x+1.3,p2x=o.x+BW-1.3;
+  g.circ(p1x,cy,r1);g.circ(p1x,cy,r1*0.16);
+  g.circ(p2x,cy,r2);g.circ(p2x,cy,r2*0.18);
+  g.seg(p1x,cy-r1,p2x,cy-r2);
+  g.seg(p1x,cy+r1,p2x,cy+r2);
+  g.seg(p1x,cy-r1,p1x,cy+r1,CENTER);g.seg(p2x,cy-r2,p2x,cy+r2,CENTER);
+  s.pub("shaftY",cy);s.pub("shaftR",r2);
+  k.L(o.x,cy,o.x+BW,cy,CENTER);
+  k.DR(p1x,cy,r1,R()*6.28,"R"+r1.toFixed(1));
+  k.DR(p2x,cy,r2,R()*6.28,"R"+r2.toFixed(1));
+  const num=s.nextEq();
+  k.M((p1x+p2x)/2-0.8,cy-r1-0.62,0.26,pCache("v = \\pi D n / 60"));
+  k.T((p1x+p2x)/2+0.75,cy-r1-0.62,"("+num+")",0.15);
+  return;},
+(R,o,k,geo)=>{const s=geo.sctx,g=geoHelpers(k,geo.segs,geo.circles);
+  const cy=geo.snapY??(o.y+BW/2);
+  const r=(0.13+R()*0.08)*s.style.chunk;
+  const x0=o.x+0.3,x1=o.x+BW-0.3;
+  g.box(x0,cy-r,x1-x0,r*2);
+  const n=Math.floor((x1-x0)/0.16);
+  for(let i=0;i<n;i++){const xx=x0+0.08+i*0.16;
+    k.L(xx,cy-r,xx+0.08,cy+r);}
+  s.pub("shaftY",cy);s.pub("shaftR",r);
+  k.L(o.x,cy,o.x+BW,cy,CENTER);
+  k.DL(x0,x1,cy+r,-s.dimOff(R),(x1-x0).toFixed(1));
+  k.T(x0+(x1-x0)/2,cy-r-0.25,pick(R,["M12×1.75","M16×2.0","TR20×4"]),0.12);return;}
+];
+
+/* ============================================================ AXIS_V（5 种） */
+const AXIS_V_GENS=[
+(R,o,k,geo)=>{const s=geo.sctx,g=geoHelpers(k,geo.segs,geo.circles);
+  const cx=geo.snapX??(o.x+BW/2);
+  const n=3+(R()*2|0),seg2=[];let th=0,maxW=0.25;
+  for(let i=0;i<n;i++){const h=(0.55+R()*0.7)*s.style.slender,w=(0.20+R()*0.26)*s.style.chunk;
+    seg2.push([h,w]);th+=h;maxW=Math.max(maxW,w);}
+  const y0=o.y+(BW-th)/2;let y=y0;
+  k.L(cx,o.y,cx,o.y+BW,CENTER);
+  for(let i=0;i<n;i++){const[h,w]=seg2[i];
+    g.box(cx-w,y,w*2,h);
+    k.DL(cx-w,y+h/2,cx+w,y+h/2,s.dimOff(R),"Ø"+(w*2).toFixed(1));y+=h;}
+  s.pub("shaftX",cx);s.pub("shaftR",maxW);
+  k.DL(cx-maxW-0.3,y0,cx-maxW-0.3,y0+th,-s.dimOff(R),th.toFixed(1));return;},
+(R,o,k,geo)=>{const s=geo.sctx,g=geoHelpers(k,geo.segs,geo.circles);
+  const cx=geo.snapX??(o.x+BW/2);
+  const w=(0.8+R()*0.4)*s.style.chunk,len=BW-0.6,n=9+(R()*6|0);
+  const y0=o.y+0.3;
+  g.seg(cx-w/2,y0,cx-w/2,y0+len);g.seg(cx+w/2,y0,cx+w/2,y0+len);
+  for(let i=1;i<n;i++){const y=y0+len*i/n;k.L(cx-w/2,y,cx+w/2,y);}
+  k.L(cx,y0-0.15,cx,y0+len+0.15,CENTER);
+  s.pub("shaftX",cx);
+  k.C(cx,y0+0.14,0.055);
+  k.AR(cx,y0+0.14,cx,y0+len-0.14);
+  k.T(cx+w/2+0.18,y0+len/2,"UP",0.12);
+  k.DL(cx+w/2,y0,cx+w/2,y0+len,s.dimOff(R),len.toFixed(1));return;},
+(R,o,k,geo)=>{const s=geo.sctx,g=geoHelpers(k,geo.segs,geo.circles);
+  const cx=geo.snapX??(o.x+BW/2);
+  const len=BW-0.4,th=0.16,gap=0.7+R()*0.3;
+  const x0=cx-th/2,y0=o.y+0.2;
+  const gy=y0+0.35+R()*(len-gap-0.7);
+  g.seg(x0,y0,x0,gy);g.seg(x0,gy+gap,x0,y0+len);
+  g.seg(x0+th,y0,x0+th,gy);g.seg(x0+th,gy+gap,x0+th,y0+len);
+  [y0,gy,gy+gap,y0+len].forEach(y=>k.L(x0,y,x0+th,y));
+  k.L(x0+th,gy,x0+th+gap,gy);
+  k.A(x0+th,gy,gap,Math.PI/2,Math.PI);
+  s.pub("shaftX",cx);
+  k.DL(x0,y0,x0,y0+len,-s.dimOff(R),len.toFixed(1));return;},
+(R,o,k,geo)=>{const s=geo.sctx,g=geoHelpers(k,geo.segs,geo.circles);
+  const cx=geo.snapX??(o.x+BW/2);
+  const bw2=(0.5+R()*0.2)*s.style.chunk,bh2=1.6+R()*0.8;
+  const rw2=bw2*0.42,rl=1.0+R()*0.8;
+  const y0=o.y+BW/2-bh2/2;
+  g.box(cx-bw2/2,y0,bw2,bh2);
+  k.HT(cx-bw2/2,y0,bw2,bh2,Math.PI/4,s.style.hatch);
+  g.box(cx-rw2/2,y0+bh2,rw2,rl);
+  g.seg(cx-bw2/2,y0+bh2*0.2,cx-bw2/2-0.2,y0+bh2*0.2);
+  g.seg(cx+bw2/2,y0+bh2*0.2,cx+bw2/2+0.2,y0+bh2*0.2);
+  s.pub("shaftX",cx);s.pub("shaftR",bw2/2);
+  k.L(cx,y0-0.2,cx,y0+bh2+rl+0.2,CENTER);
+  k.DL(cx-bw2/2,cx+bw2/2,y0-0.25,-s.dimOff(R),"Ø"+bw2.toFixed(1));
+  k.DL(cx-bw2/2,y0,cx-bw2/2,y0+bh2,-s.dimOff(R),bh2.toFixed(1));
+  const num=s.nextEq();
+  k.M(cx-bw2/2-0.1,y0+bh2+rl+0.45,0.24,pCache("p = F/A"));
+  k.T(cx-bw2/2+0.5,y0+bh2+rl+0.45,"("+num+")",0.14);
+  return;},
+(R,o,k,geo)=>{const s=geo.sctx,g=geoHelpers(k,geo.segs,geo.circles);
+  const cx=geo.snapX??(o.x+BW/2);
+  const wB=(1.0+R()*0.4)*s.style.chunk,wT=wB*0.5;
+  const y0=o.y+0.3,y1=o.y+BW-0.5;
+  g.seg(cx-wB/2,y0,cx-wT/2,y1);g.seg(cx+wB/2,y0,cx+wT/2,y1);
+  const n=5+(R()*4|0);
+  for(let i=0;i<=n;i++){const t=i/n;
+    const xl=cx-wB/2+(-wT/2+wB/2)*t,xr=cx+wB/2+(wT/2-wB/2)*t;
+    const y=y0+(y1-y0)*t;
+    g.seg(xl,y,xr,y);
+    if(i<n){const t2=(i+1)/n;
+      const xl2=cx-wB/2+(-wT/2+wB/2)*t2,xr2=cx+wB/2+(wT/2-wB/2)*t2;
+      const y2=y0+(y1-y0)*t2;
+      if(i%2===0){g.seg(xl,y,xr2,y2);}else{g.seg(xr,y,xl2,y2);}}}
+  g.box(cx-wB*0.7,y0-0.14,wB*1.4,0.14);
+  s.pub("shaftX",cx);
+  k.DL(cx-wB/2,y0,cx+wB/2,y0,s.dimOff(R),wB.toFixed(1));return;}
+];
+
+/* ============================================================ DETAIL（13 种） */
+const DETAIL_GENS=[
+(R,o,k,geo)=>{const s=geo.sctx,g=geoHelpers(k,geo.segs,geo.circles);
+  const cy=s.use("shaftY")??o.y+BW/2;
+  const sr=s.use("shaftR")??0.22;
+  const Wd=Math.max(0.24,sr*0.9),r=Wd/2;
+  const L2=1.4+R()*0.9;
+  const x0=geo.snapX!==null?geo.snapX-L2/2:o.x+(BW-L2)/2;
+  k.A(x0+r,cy,r,Math.PI/2,Math.PI*1.5);
+  k.A(x0+L2-r,cy,r,-Math.PI/2,Math.PI/2);
+  g.seg(x0+r,cy+r,x0+L2-r,cy+r);g.seg(x0+r,cy-r,x0+L2-r,cy-r);
+  k.CM(x0+L2/2,cy,L2/2+0.18);
+  k.DL(x0,cy-r,x0,cy+r,-s.dimOff(R),"Ø"+Wd.toFixed(1));
+  k.DR(x0+r,cy,r,Math.PI*1.3,"R"+r.toFixed(1));
+  k.DL(x0,x0+L2,cy+r+0.2,s.dimOff(R),L2.toFixed(1));return;},
+(R,o,k,geo)=>{const s=geo.sctx,g=geoHelpers(k,geo.segs,geo.circles);
+  const w=2.0+R()*1.6,h=1.3+R()*0.9;
+  const cx=geo.snapX??(o.x+BW/2),cy=geo.snapY??(o.y+BW/2);
+  const x0=cx-w/2,y0=cy-h/2;
+  g.box(x0,y0,w,h);
+  k.HT(x0,y0,w,h,Math.PI/4,s.style.hatch);
+  k.SEC(x0+w/2,y0-0.4,x0+w/2,y0+h+0.4,pick(R,["A","B","C"]));
+  k.DL(x0,x0+w,y0,-s.dimOff(R),w.toFixed(1));
+  if(R()<0.7)k.DL(x0+w,y0,x0+w,y0+h,s.dimOff(R),h.toFixed(1));return;},
+(R,o,k,geo)=>{const s=geo.sctx,g=geoHelpers(k,geo.segs,geo.circles);
+  const t=(0.14+R()*0.1)*s.style.chunk,a=1.6+R()*0.9,b=1.2+R()*0.8;
+  const x0=geo.snapX!==null?geo.snapX-a/2:o.x+(BW-a)/2;
+  const y0=geo.snapY!==null?geo.snapY-b/2:o.y+(BW-b)/2;
+  g.seg(x0,y0,x0+a,y0);g.seg(x0,y0,x0,y0+b);
+  g.seg(x0,y0+t,x0+a,y0+t);g.seg(x0+t,y0,x0+t,y0+b);
+  k.A(x0+t,y0+b-t,t,0,Math.PI/2);
+  g.circ(x0+a*0.6,y0+t*0.5,0.05);
+  k.DL(x0,x0+a,y0,-s.dimOff(R),a.toFixed(1));
+  k.DL(x0,y0,x0,y0+b,-s.dimOff(R),b.toFixed(1));return;},
+(R,o,k,geo)=>{const s=geo.sctx,g=geoHelpers(k,geo.segs,geo.circles);
+  const n=3+(R()*3|0),c=[];
+  for(let i=0;i<n;i++){
+    const x=geo.snapX!==null?geo.snapX+(R()-0.5)*2:o.x+0.9+R()*(BW-1.8);
+    const y=geo.snapY!==null?geo.snapY+(R()-0.5)*2:o.y+0.9+R()*(BW-1.8);
+    const r=0.2+R()*0.42;
+    g.circ(x,y,r);k.CM(x,y,r+0.14);c.push({x,y,r});}
+  k.DR(c[0].x,c[0].y,c[0].r,R()*6.28,"R"+c[0].r.toFixed(1));
+  if(R()<0.7&&c.length>1){const e=c[c.length-1],a=R()*6.28;
+    k.A(e.x,e.y,e.r*1.3,a,a+Math.PI*(0.5+R()*1.2),CENTER);}return;},
+(R,o,k,geo)=>{const s=geo.sctx,g=geoHelpers(k,geo.segs,geo.circles);
+  const s2=1.1+R()*0.6,hh=0.7+R()*0.4;
+  const cx=geo.snapX??(o.x+BW/2),cy=(geo.snapY??(o.y+BW/2))+0.45;
+  g.seg(cx-s2,cy,cx+s2,cy);g.seg(cx-s2,cy,cx,cy-hh);g.seg(cx+s2,cy,cx,cy-hh);
+  k.L(cx,cy,cx,cy-hh);
+  if(R()<0.7){g.seg(cx-s2*0.5,cy,cx,cy-hh);g.seg(cx+s2*0.5,cy,cx,cy-hh);}
+  [[cx-s2,cy],[cx+s2,cy],[cx,cy-hh],[cx,cy]].forEach(p=>k.C(p[0],p[1],0.06));
+  k.DL(cx-s2,cy,cx+s2,cy,-s.dimOff(R),(s2*2).toFixed(1));return;},
+(R,o,k,geo)=>{const s=geo.sctx,g=geoHelpers(k,geo.segs,geo.circles);
+  const cx=geo.snapX??(o.x+BW/2),cy=geo.snapY??(o.y+BW/2);
+  const cr=0.6+R()*0.3;
+  k.C(cx,cy,cr,DASHED);
+  g.circ(cx-0.08,cy+0.04,0.16+R()*0.1);
+  k.L(cx-0.3,cy-0.2,cx+0.3,cy-0.2);
+  if(R()<0.6){const a0=R()*3;k.A(cx+0.15,cy-0.15,0.14,a0,a0+2);}
+  const a=Math.PI*0.25,ex=cx+Math.cos(a)*cr,ey=cy+Math.sin(a)*cr;
+  k.AR(ex,ey,ex+0.4,ey+0.4);
+  k.T(ex+0.45,ey+0.52,"DETAIL A",0.12);
+  k.T(ex+0.45,ey+0.32,"SCALE 2:1",0.1);return;},
+(R,o,k,geo)=>{const s=geo.sctx,g=geoHelpers(k,geo.segs,geo.circles);
+  const cy=s.use("shaftY")??o.y+BW/2;
+  const sr=s.use("shaftR")??0.18+R()*0.1;
+  const span=s.use("shaftSpan")??{x0:o.x+0.8,x1:o.x+BW-0.8};
+  const segsArr=s.use("shaftSegs");
+  let jx;
+  if(segsArr&&segsArr.length>1){
+    const ji=1+((R()*(segsArr.length-1))|0);
+    jx=segsArr[ji].x;
+  }else jx=span.x0+(span.x1-span.x0)*(0.3+R()*0.4);
+  const fw=0.3+R()*0.16,fr=sr*1.6;
+  g.box(jx-fw,cy-fr,fw,fr*2);
+  g.box(jx,cy-fr,fw,fr*2);
+  [[-fw/2,-fr*0.6],[-fw/2,fr*0.6],[fw/2,-fr*0.6],[fw/2,fr*0.6]].forEach(([dx,dy])=>{
+    g.circ(jx+dx,cy+dy,0.05);});
+  k.L(o.x,cy,o.x+BW,cy,CENTER);
+  k.DL(jx-fw,jx+fw,cy+fr,s.dimOff(R),(2*fw).toFixed(1));
+  k.T(jx,cy-fr-0.3,"COUPLING",0.11);return;},
+(R,o,k,geo)=>{const s=geo.sctx,g=geoHelpers(k,geo.segs,geo.circles);
+  const cy=s.use("shaftY")??o.y+BW/2;
+  const sr=s.use("shaftR")??0.2;
+  const bx=geo.snapX??(o.x+BW/2);
+  const h2=sr*2.6;
+  g.circ(bx,cy,sr);
+  k.A(bx,cy,sr*1.35,0,Math.PI);
+  g.box(bx-sr*1.35,cy,sr*2.7,h2);
+  g.box(bx-sr*2.0,cy+h2,sr*4.0,0.16);
+  [[-1.6],[1.6]].forEach(([dx])=>{
+    g.circ(bx+dx*sr,cy+h2+0.08,0.055);});
+  k.L(o.x,cy,o.x+BW,cy,CENTER);
+  k.DL(bx-sr,bx+sr,cy-sr-0.2,-s.dimOff(R),"Ø"+(sr*2).toFixed(1));
+  k.T(bx,cy+h2+0.5,"PILLAR BLK",0.11);return;},
+(R,o,k,geo)=>{const s=geo.sctx,g=geoHelpers(k,geo.segs,geo.circles);
+  const cy=s.use("shaftY")??o.y+BW/2;
+  const sr=s.use("shaftR");
+  const amp=(sr?sr*1.5:0.28)*(0.8+R()*0.6);
+  const x0=o.x+0.5,x1=o.x+BW-0.5;
+  const n=7+(R()*5|0);
+  g.seg(x0-0.15,cy-amp,x0+0.15,cy-amp);
+  g.seg(x0-0.15,cy+amp,x0+0.15,cy+amp);
+  let up=true;
+  for(let i=0;i<n;i++){
+    const xa=x0+0.15+(x1-x0-0.3)*i/n,xb=x0+0.15+(x1-x0-0.3)*(i+1)/n;
+    g.seg(xa,up?cy-amp:cy+amp,xb,up?cy+amp:cy-amp);
+    up=!up;}
+  k.L(o.x,cy,o.x+BW,cy,CENTER);
+  k.DL(x0,x1,cy+amp,s.dimOff(R),(x1-x0).toFixed(1));
+  k.T((x0+x1)/2,cy-amp-0.25,"SPRING Ø"+(amp*2).toFixed(1),0.11);return;},
+(R,o,k,geo)=>{const s=geo.sctx,g=geoHelpers(k,geo.segs,geo.circles);
+  const w=1.7+R()*1.0,h=1.1+R()*0.8;
+  const cx=geo.snapX??(o.x+BW/2),cy=geo.snapY??(o.y+BW/2);
+  const x0=cx-w/2,y0=cy-h/2;
+  g.box(x0,y0,w,h);
+  g.seg(x0,y0,x0+w,y0+h);
+  [[x0,y0],[x0+w,y0],[x0,y0+h]].forEach(([px,py])=>{
+    if(R()<0.7){
+      g.seg(px-0.1,py+0.06,px+0.06,py-0.1);
+      g.seg(px-0.1,py+0.06,px+0.02,py+0.1);
+      g.seg(px+0.06,py-0.1,px+0.02,py+0.1);}});
+  k.AR(x0+w*0.3,y0+h*0.3,x0+w*0.3-0.4,y0+h*0.3-0.35);
+  k.T(x0+w*0.3-0.5,y0+h*0.3-0.5,(3+(R()*5|0))+" △",0.12);
+  k.DL(x0,x0+w,y0,-s.dimOff(R),w.toFixed(1));return;},
+(R,o,k,geo)=>{const s=geo.sctx,g=geoHelpers(k,geo.segs,geo.circles);
+  const w=2.2+R()*1.2,h=1.4+R()*0.7;
+  const cx=geo.snapX??(o.x+BW/2),cy=geo.snapY??(o.y+BW/2);
+  const x0=cx-w/2,y0=cy-h/2;
+  g.box(x0,y0,w,h);
+  const cols2=2+(R()*2|0),rows=1+(R()*2|0);
+  const sw2=w/(cols2+0.6),sh2=0.14+R()*0.1,sr2=sh2/2;
+  for(let i=0;i<cols2;i++)for(let j=0;j<rows;j++){
+    const sx=x0+sw2*(i+0.8),sy=y0+h*(j+1)/(rows+1);
+    k.A(sx,sy,sr2,Math.PI/2,Math.PI*1.5);
+    k.A(sx+sw2*0.55,sy,sr2,-Math.PI/2,Math.PI/2);
+    g.seg(sx,sy-sr2,sx+sw2*0.55,sy-sr2);
+    g.seg(sx,sy+sr2,sx+sw2*0.55,sy+sr2);}
+  k.DL(x0,x0+w,y0,-s.dimOff(R),w.toFixed(1));
+  k.DL(x0+w,y0,x0+w,y0+h,s.dimOff(R),h.toFixed(1));return;},
+(R,o,k,geo)=>{const s=geo.sctx,g=geoHelpers(k,geo.segs,geo.circles);
+  const cy=s.use("shaftY")??o.y+BW/2;
+  const r1=0.3+R()*0.2,r2=r1*(0.5+R()*0.4);
+  const p1x=geo.snapX??o.x+BW*0.35;
+  const p2x=p1x+0.9+R()*0.9;
+  g.circ(p1x,cy,r1);g.circ(p1x,cy,r1*0.14);
+  g.circ(p2x,cy,r2);g.circ(p2x,cy,r2*0.16);
+  g.seg(p1x,cy-r1,p2x,cy-r2);
+  g.seg(p1x,cy+r1,p2x,cy+r2);
+  k.L(o.x,cy,o.x+BW,cy,CENTER);
+  k.DR(p1x,cy,r1,R()*6.28,"R"+r1.toFixed(1));
+  k.DL(p1x,p2x,cy+r1,s.dimOff(R),(p2x-p1x).toFixed(1));return;},
+/* ── 公式板 ── */
+(R,o,k,geo)=>{
+  const s=geo.sctx;
+  const f=pickFormula(R,s);
+  const num=s.nextEq();
+  const toks=pCache(f.c);
+  const m=measureMath(toks,0.34);
+  const bw=Math.max(1.8,m.w+1.2),bh=1.35+(f.note?0.42:0);
+  const bx=geo.snapX!==null?geo.snapX-bw/2:o.x+(BW-bw)/2;
+  const by=geo.snapY!==null?geo.snapY-bh/2:o.y+(BW-bh)/2;
+  k.Rc(bx,by,bw,bh);
+  k.L(bx,by+0.4,bx+bw,by+0.4);
+  k.T(bx+0.28,by+0.21,"EQ",0.12);
+  k.T(bx+bw-0.35,by+0.21,"("+num+")",0.12);
+  const fBase=by+0.4+(bh-0.4-(f.note?0.42:0))/2+(m.asc-m.desc)/2-0.04;
+  k.M(bx+(bw-m.w)/2,fBase,0.34,toks);
+  if(f.note)k.T(bx+bw/2,by+bh-0.2,f.note,0.11);
+  s.pub("lastEq",num);
+  return;}
+];
+
+/* ============================================================ ANNO */
+function genAnno(R,o,k,segs,circles,axisX,axisY,s){
+  const cx=o.x+BW/2,cy=o.y+BW/2;
+  let done=0;
+  const span=s.use("shaftSpan"),segsArr=s.use("shaftSegs"),sy=s.use("shaftY");
+  if(span&&segsArr&&segsArr.length>1&&sy!==null&&Math.abs(cy-sy)<BW*1.5&&R()<0.55){
+    let base=(R()<0.5?-1:1)*s.dimOff(R);
+    const dir=Math.sign(base)||1;
+    let x=span.x0;
+    for(const sg of segsArr){
+      k.DL(x,x+sg.w,sy,base,sg.w.toFixed(1));
+      x+=sg.w;base+=dir*0.14;}
+    k.DL(span.x0,span.x1,sy,base+dir*0.05,(span.x1-span.x0).toFixed(1));
+    done++;
+  }
+  if(done<2){
+    let bs=null,bd=1e9;
+    for(const sg of segs){
+      const mx=(sg.x1+sg.x2)/2,my=(sg.y1+sg.y2)/2;
+      const d=Math.hypot(mx-cx,my-cy);
+      if(d<bd){bd=d;bs=sg;}}
+    if(bs&&bd<9.5){
+      const dx=bs.x2-bs.x1,dy=bs.y2-bs.y1,adx=Math.abs(dx),ady=Math.abs(dy);
+      const off=(R()<0.5?-1:1)*s.dimOff(R);
+      if(adx>0.2&&ady<0.08){k.DL(bs.x1,bs.y1,bs.x2,bs.y2,off,adx.toFixed(1));done++;}
+      else if(ady>0.2&&adx<0.08){k.DL(bs.x1,bs.y1,bs.x2,bs.y2,off,ady.toFixed(1));done++;}
+      else if(adx>0.35&&ady>0.35){k.DL(bs.x1,bs.y1,bs.x2,bs.y2,off,Math.hypot(dx,dy).toFixed(1));done++;}}}
+  let bc=null,bcd=1e9;
+  for(const c of circles){
+    const d=Math.hypot(c.x-cx,c.y-cy)-c.r;
+    if(d<bcd){bcd=d;bc=c;}}
+  if(bc&&bcd<9.5&&done<2){
+    if(R()<0.5)k.DR(bc.x,bc.y,bc.r,R()*6.28,"R"+bc.r.toFixed(1));
+    else k.DD(bc.x,bc.y,bc.r,R()*6.28,"Ø"+(bc.r*2).toFixed(1));
+    done++;}
+  if(done===0){
+    k.CM(cx,cy,0.22);k.C(cx,cy,0.05);
+    const a=R()*6.28,len=0.8+R()*0.6;
+    const ex=cx+Math.cos(a)*len,ey=cy+Math.sin(a)*len;
+    k.L(cx,cy,ex,ey,CENTER);
+    k.T(ex+Math.cos(a)*0.18,ey+Math.sin(a)*0.18,
+      pick(R,["SEE NOTE 3","REF","TYP","4× Ø6 EQ SP"]),0.11,a);}
+  const eq=s.use("lastEq");
+  if(eq&&done<2&&R()<0.34){
+    const f=pickFormula(R,s);
+    const toks=pCache(f.c);
+    const m=measureMath(toks,0.2);
+    const a=R()*6.28;
+    const ex=cx+Math.cos(a)*0.6,ey=cy+Math.sin(a)*0.6;
+    k.L(cx,cy,ex,ey,CENTER);
+    k.M(ex+0.12,ey,0.2,toks);
+    k.T(ex+0.12+m.w/2,ey+0.26,"("+eq+")",0.1);
+  }
+  if(R()<0.6){
+    const wx=cx+(R()-0.5)*1.4,wy=cy+(R()-0.5)*1.4;
+    k.T(wx,wy+0.16,"X="+(3300+wx*7.5).toFixed(1),0.1);
+    k.T(wx,wy-0.02,"Y="+(530+wy*7.5).toFixed(1),0.1);
+    k.C(wx,wy,0.04);}
+  if(axisX!==null&&axisY!==null&&R()<0.5){
+    const px=cx+(R()-0.5),py=cy+(R()-0.5);
+    if(R()<0.5)k.DL(axisX,py,px,py,s.dimOff(R)*0.8,Math.abs(px-axisX).toFixed(1));
+    else k.DL(px,axisY,px,py,s.dimOff(R)*0.8,Math.abs(py-axisY).toFixed(1));}
+  const mn=s.use("megaName");
+  if(mn&&R()<0.4){
+    k.T(cx,cy+1.0,mn+"-"+(1+(R()*9|0)).toString().padStart(2,"0"),0.13);
+    k.L(cx,cy+0.85,cx,cy+0.55,CENTER);}
+}
+
+const GEN_BY_MOD={AXIS_H:AXIS_H_GENS,AXIS_V:AXIS_V_GENS,DETAIL:DETAIL_GENS};
+
+/* ============ Doodle / Micro ============ */
+function genDoodle(R,x,y){
+  const P=[];
+  const L=(x1,y1,x2,y2,s=SOLID)=>P.push({t:"L",x1,y1,x2,y2,s});
+  const C=(x2,y2,r,s=SOLID)=>P.push({t:"C",x:x2,y:y2,r,s});
+  const A=(x2,y2,r,a0,a1,s=SOLID)=>P.push({t:"A",x:x2,y:y2,r,a0,a1,s});
+  const T=(x2,y2,str,h,r=0)=>P.push({t:"T",x:x2,y:y2,str,h,r});
+  const DL=(x1,y1,x2,y2,off,txt)=>P.push({t:"DL",x1,y1,x2,y2,off,txt});
+  const CM=(x2,y2,e)=>P.push({t:"CM",x:x2,y:y2,e});
+  const AR=(x1,y1,x2,y2)=>P.push({t:"AR",x1,y1,x2,y2});
+  switch((R()*16)|0){
+    case 0:CM(x,y,0.1+R()*0.14);break;
+    case 1:C(x,y,0.07+R()*0.15,R()<0.4?DASHED:SOLID);break;
+    case 2:L(x-0.12,y,x+0.12,y);L(x,y-0.12,x,y+0.12);break;
+    case 3:DL(x-0.45,y,x+0.45,y,0.16,(0.9).toFixed(1));break;
+    case 4:{const a=R()*6.28;A(x,y,0.12+R()*0.18,a,a+1+R()*2);break;}
+    case 5:{const a=R()*6.28,dx=Math.cos(a)*0.3,dy=Math.sin(a)*0.3;
+      L(x-dx,y-dy,x+dx,y+dy,R()<0.5?HIDDEN:DASHED);break;}
+    case 6:T(x,y,"X="+(3300+x*7.5).toFixed(1),0.1);T(x,y-0.14,"Y="+(530+y*7.5).toFixed(1),0.1);break;
+    case 7:L(x-0.3,y,x+0.3,y,CENTER);break;
+    case 8:{const a=R()*6.28;AR(x,y,x+Math.cos(a)*0.3,y+Math.sin(a)*0.3);break;}
+    case 9:{C(x,y,0.2,DASHED);for(let i=0;i<4;i++){const a=i*1.5708+0.4;
+      C(x+Math.cos(a)*0.2,y+Math.sin(a)*0.2,0.028);}break;}
+    case 10:{const n=3+(R()*3|0);for(let i=0;i<n;i++){
+      const a=i/n*6.2832+R()*0.3,r=0.14+R()*0.12;
+      C(x+Math.cos(a)*r,y+Math.sin(a)*r,0.035);}break;}
+    case 11:{const s=0.1+R()*0.1;
+      L(x-s,y-s,x+s,y-s);L(x+s,y-s,x+s,y+s);L(x+s,y+s,x-s,y+s);L(x-s,y+s,x-s,y-s);break;}
+    case 12:{const a=R()*6.28;
+      L(x,y,x+Math.cos(a)*0.25,y+Math.sin(a)*0.25);
+      T(x+Math.cos(a)*0.35,y+Math.sin(a)*0.35,pick(R,["A","B","C","1","2","3"]),0.12);break;}
+    case 13:{const r=0.1+R()*0.12;C(x,y,r);
+      L(x-r-0.1,y,x-r,y);L(x+r,y,x+r+0.1,y);break;}
+    case 14:{
+      const toks=pCache(SHORTF[(R()*SHORTF.length)|0]);
+      const m=measureMath(toks,0.16);
+      P.push({t:"M",x:x-m.w/2,y:y+0.04,h:0.16,toks});
+      L(x-m.w/2-0.12,y,x-m.w/2-0.04,y,CENTER);
+      L(x+m.w/2+0.04,y,x+m.w/2+0.12,y,CENTER);
+      break;}
+    case 15:{
+      const g=["∇·B = 0","∂ψ/∂t","∮E·ds","∇×E","E = ħω","λ = h/p","ζ(s)",
+        "Δx·Δp ≥ ħ/2","∂²u/∂x²","μ0·ε0","σ = F/A","Σf = ma"][(R()*12)|0];
+      T(x,y,g,0.13);
+      break;}
+  }
+  return P;
+}
+function genMicro(R,x,y){
+  const P=[];
+  const L=(x1,y1,x2,y2,s=SOLID)=>P.push({t:"L",x1,y1,x2,y2,s});
+  const C=(x2,y2,r,s=SOLID)=>P.push({t:"C",x:x2,y:y2,r,s});
+  switch((R()*5)|0){
+    case 0:L(x-0.05,y,x+0.05,y);L(x,y-0.05,x,y+0.05);break;
+    case 1:C(x,y,0.035);break;
+    case 2:L(x-0.08,y,x+0.08,y,HIDDEN);break;
+    case 3:{const a=R()*6.28;L(x,y,x+Math.cos(a)*0.1,y+Math.sin(a)*0.1);break;}
+    case 4:C(x,y,0.05,DASHED);break;
+  }
+  return P;
+}
+
+/* ============================================================ Site 生成 */
+const siteCache=new Map();
+function genSite(sbx,sby){
+  const key=sbx+","+sby;
+  let v=siteCache.get(key);if(v)return v;
+
+  const seed=hash2(sbx*7919+13,sby*104729+7,0xCAD5);
+  const rng=mulberry32(seed);
+  const mods=runWFC(seed);
+  const sctx=makeCtx(rng);
+
+  const ox=sbx*SITE,oy=sby*SITE;
+  const axisX=ox+SITE/2+(rng()-0.5)*1.2;
+  const axisY=oy+SITE/2+(rng()-0.5)*1.2;
+
+  let m0c=99,m1c=-1,m0r=99,m1r=-1;
+  for(let i=0;i<mods.length;i++){
+    if(mods[i]!=="MEGA")continue;
+    const col=i%CELLS,row=(i/CELLS)|0;
+    m0c=Math.min(m0c,col);m1c=Math.max(m1c,col);
+    m0r=Math.min(m0r,row);m1r=Math.max(m1r,row);}
+
+  const prims=[],segs=[],circles=[];
+  const favAX=(rng()*5)|0,favDET=(rng()*DETAIL_GENS.length)|0;
+  let lastAX=-1,lastDET=-1;
+
+  if(m1c>=0){
+    const mo={x:ox+m0c*BW,y:oy+m0r*BW};
+    const mw=(m1c-m0c+1)*BW,mh=(m1r-m0r+1)*BW;
+    const R=mulberry32(hash2(ox+11,oy+22,0x9E6A));
+    const k=mk(mo,R);
+    const geo={segs,circles,axisX,axisY,snapX:axisX,snapY:axisY,sctx,mw,mh};
+    MEGA_GENS[(R()*MEGA_GENS.length)|0](R,mo,k,geo);
+    prims.push(...k.P);}
+
+  for(let i=0;i<mods.length;i++){
+    const m=mods[i];
+    if(m!=="AXIS_H"&&m!=="AXIS_V")continue;
+    const co={x:ox+(i%CELLS)*BW,y:oy+((i/CELLS)|0)*BW};
+    const ccx=co.x+BW/2,ccy=co.y+BW/2;
+    const geo={segs,circles,axisX,axisY,
+      snapX:Math.abs(axisX-ccx)<BW*0.55?axisX:null,
+      snapY:Math.abs(axisY-ccy)<BW*0.55?axisY:null,sctx};
+    const R=mulberry32(hash2(co.x*7+1,co.y*7+2,0xB10C));
+    const gens=GEN_BY_MOD[m];
+    const gi=favPick(gens,R,lastAX,favAX);lastAX=gi;
+    const k=mk(co,R);
+    gens[gi](R,co,k,geo);
+    prims.push(...k.P);}
+
+  for(let i=0;i<mods.length;i++){
+    if(mods[i]!=="DETAIL")continue;
+    const co={x:ox+(i%CELLS)*BW,y:oy+((i/CELLS)|0)*BW};
+    const ccx=co.x+BW/2,ccy=co.y+BW/2;
+    const geo={segs,circles,axisX,axisY,
+      snapX:Math.abs(axisX-ccx)<BW*0.55?axisX:null,
+      snapY:Math.abs(axisY-ccy)<BW*0.55?axisY:null,sctx};
+    const R=mulberry32(hash2(co.x*7+5,co.y*7+6,0xD3A0));
+    const gens=GEN_BY_MOD.DETAIL;
+    const gi=favPick(gens,R,lastDET,favDET);lastDET=gi;
+    const k=mk(co,R);
+    gens[gi](R,co,k,geo);
+    prims.push(...k.P);}
+
+  for(let i=0;i<mods.length;i++){
+    if(mods[i]!=="ANNO")continue;
+    const co={x:ox+(i%CELLS)*BW,y:oy+((i/CELLS)|0)*BW};
+    const R=mulberry32(hash2(co.x*7+3,co.y*7+4,0xA000));
+    const k=mk(co,R);
+    genAnno(R,co,k,segs,circles,axisX,axisY,sctx);
+    prims.push(...k.P);}
+
+  for(let i=0;i<mods.length;i++){
+    if(mods[i]!=="EMPTY")continue;
+    const ccx=ox+(i%CELLS)*BW+BW/2,ccy=oy+((i/CELLS)|0)*BW+BW/2;
+    prims.push({t:"CM",x:ccx,y:ccy,e:0.2});
+    if(rng()<0.35){
+      const f=pickFormula(rng,sctx);
+      const toks=pCache(f.c);
+      const m=measureMath(toks,0.22);
+      prims.push({t:"M",x:ccx-m.w/2,y:ccy+0.45,h:0.22,toks});
+    }
+  }
+
+  for(const p of prims)primBBox(p);
+  v={prims};
+  if(siteCache.size>=SITE_CACHE_MAX)siteCache.delete(siteCache.keys().next().value);
+  siteCache.set(key,v);return v;
+}
+
+function primBBox(p){
+  let x0,x1,y0,y1;
+  switch(p.t){
+    case "L":x0=Math.min(p.x1,p.x2);x1=Math.max(p.x1,p.x2);
+      y0=Math.min(p.y1,p.y2);y1=Math.max(p.y1,p.y2);break;
+    case "C":case "A":x0=p.x-p.r;x1=p.x+p.r;y0=p.y-p.r;y1=p.y+p.r;break;
+    case "T":x0=p.x-p.str.length*p.h*0.35;x1=p.x+p.str.length*p.h*0.35;
+      y0=p.y-p.h;y1=p.y+p.h;break;
+    case "M":{const m=measureMath(p.toks,p.h);
+      x0=p.x-0.1;x1=p.x+m.w+0.1;y0=p.y-m.asc-0.1;y1=p.y+m.desc+0.1;break;}
+    case "DL":{const m=0.9;x0=Math.min(p.x1,p.x2)-m;x1=Math.max(p.x1,p.x2)+m;
+      y0=Math.min(p.y1,p.y2)-m;y1=Math.max(p.y1,p.y2)+m;break;}
+    case "DR":case "DD":x0=p.x-p.r-1.0;x1=p.x+p.r+1.0;
+      y0=p.y-p.r-1.0;y1=p.y+p.r+1.0;break;
+    case "CM":x0=p.x-p.e;x1=p.x+p.e;y0=p.y-p.e;y1=p.y+p.e;break;
+    case "H":x0=p.x;x1=p.x+p.w;y0=p.y;y1=p.y+p.h;break;
+    default:x0=-9;x1=9;y0=-9;y1=9;
+  }
+  p.bb=[x0-0.2,y0-0.2,x1+0.2,y1+0.2];
+}
+
+/* ============================================================ 渲染 */
+let cam={x:0,y:0};
+let showLabels=true;
+const sx=wx=>(wx-cam.x)*u+W/2;
+const sy=wy=>H/2-(wy-cam.y)*u;
+
+function strokeStyleFor(s){
+  ctx.strokeStyle=s===SOLID?GEOM:ANNO;
+  ctx.lineWidth=s===SOLID?Math.max(1.2,u*0.007):1;
+  if(s===DASHED)ctx.setLineDash([u*0.12,u*0.08]);
+  else if(s===CENTER)ctx.setLineDash([u*0.26,u*0.06,u*0.05,u*0.06]);
+  else if(s===HIDDEN)ctx.setLineDash([u*0.05,u*0.045]);
+  else ctx.setLineDash([]);
+}
+function arrow(tx,ty,fx,fy,sz){
+  const a=Math.atan2(ty-fy,tx-fx);
+  ctx.beginPath();
+  ctx.moveTo(tx,ty);
+  ctx.lineTo(tx-sz*Math.cos(a-0.32),ty+sz*Math.sin(a+0.32));
+  ctx.moveTo(tx,ty);
+  ctx.lineTo(tx-sz*Math.cos(a+0.32),ty+sz*Math.sin(a-0.32));
+  ctx.stroke();
+}
+function textP(x,y,str,h,rot){
+  ctx.save();
+  ctx.translate(sx(x),sy(y));
+  ctx.rotate(-(rot||0));
+  ctx.font=(h*u)+"px "+FONT;
+  ctx.textAlign="center";ctx.textBaseline="middle";
+  ctx.strokeText(str,0,0);
+  ctx.restore();
+}
+function angText(a){return Math.cos(a)<0?a+Math.PI:a;}
+
+function renderPrim(p){
+  switch(p.t){
+    case "L":strokeStyleFor(p.s);
+      ctx.beginPath();ctx.moveTo(sx(p.x1),sy(p.y1));ctx.lineTo(sx(p.x2),sy(p.y2));ctx.stroke();
+      ctx.setLineDash([]);break;
+    case "C":strokeStyleFor(p.s);
+      ctx.beginPath();ctx.arc(sx(p.x),sy(p.y),p.r*u,0,6.2832);ctx.stroke();
+      ctx.setLineDash([]);break;
+    case "A":{strokeStyleFor(p.s);
+      let a0=p.a0,a1=p.a1;
+      if(a1<a0){const t=a0;a0=a1;a1=t;}
+      ctx.beginPath();
+      ctx.arc(sx(p.x),sy(p.y),p.r*u,-a0,-a1,a1>a0);
+      ctx.stroke();ctx.setLineDash([]);break;}
+    case "T":ctx.strokeStyle=ANNO;ctx.lineWidth=1;textP(p.x,p.y,p.str,p.h,p.r||0);break;
+    case "M":{
+      ctx.fillStyle=ANNO;ctx.strokeStyle=ANNO;
+      mDrT(p.toks,sx(p.x),sy(p.y),p.h*u);
+      break;}
+    case "DL":{
+      ctx.strokeStyle=ANNO;ctx.lineWidth=1;ctx.setLineDash([]);
+      const dx=p.x2-p.x1,dy=p.y2-p.y1,len=Math.hypot(dx,dy);if(len<1e-4)break;
+      const ux=dx/len,uy=dy/len,nx=-uy,ny=ux;
+      const s=Math.sign(p.off)||1,d=Math.abs(p.off);
+      const q1x=p.x1+nx*s*d,q1y=p.y1+ny*s*d,q2x=p.x2+nx*s*d,q2y=p.y2+ny*s*d;
+      const ext=Math.min(0.14,d*0.35+0.05);
+      ctx.beginPath();
+      ctx.moveTo(sx(p.x1+nx*s*0.04),sy(p.y1+ny*s*0.04));
+      ctx.lineTo(sx(q1x+nx*s*ext),sy(q1y+ny*s*ext));
+      ctx.moveTo(sx(p.x2+nx*s*0.04),sy(p.y2+ny*s*0.04));
+      ctx.lineTo(sx(q2x+nx*s*ext),sy(q2y+ny*s*ext));
+      ctx.moveTo(sx(q1x),sy(q1y));ctx.lineTo(sx(q2x),sy(q2y));
+      ctx.stroke();
+      const as=Math.min(u*0.09,len*u*0.06+3);
+      arrow(sx(q1x),sy(q1y),sx(q2x),sy(q2y),as);
+      arrow(sx(q2x),sy(q2y),sx(q1x),sy(q1y),as);
+      const tgap=d+0.09+Math.min(0.2,d*0.3);
+      const mx=(q1x+q2x)/2+nx*s*tgap,my=(q1y+q2y)/2+ny*s*tgap;
+      textP(mx,my,p.txt||len.toFixed(1),Math.max(0.1,u>120?0.12:0.16),angText(Math.atan2(dy,dx)));
+      break;}
+    case "DR":{
+      ctx.strokeStyle=ANNO;ctx.lineWidth=1;ctx.setLineDash([]);
+      const ex=p.x+Math.cos(p.a)*p.r,ey=p.y+Math.sin(p.a)*p.r;
+      const ext=Math.min(0.4,p.r*0.25+0.15);
+      const tx2=p.x+Math.cos(p.a)*(p.r+ext),ty2=p.y+Math.sin(p.a)*(p.r+ext);
+      ctx.beginPath();ctx.moveTo(sx(p.x),sy(p.y));ctx.lineTo(sx(tx2),sy(ty2));ctx.stroke();
+      arrow(sx(ex),sy(ey),sx(tx2),sy(ty2),u*0.09);
+      textP(tx2+Math.cos(p.a)*0.22,ty2+Math.sin(p.a)*0.22,
+        p.txt||("R"+p.r.toFixed(1)),0.12,angText(p.a));
+      break;}
+    case "DD":{
+      ctx.strokeStyle=ANNO;ctx.lineWidth=1;ctx.setLineDash([]);
+      const x1=p.x-Math.cos(p.a)*p.r,y1=p.y-Math.sin(p.a)*p.r;
+      const x2=p.x+Math.cos(p.a)*p.r,y2=p.y+Math.sin(p.a)*p.r;
+      ctx.beginPath();ctx.moveTo(sx(x1),sy(y1));ctx.lineTo(sx(x2),sy(y2));ctx.stroke();
+      arrow(sx(x1),sy(y1),sx(p.x),sy(p.y),u*0.09);
+      arrow(sx(x2),sy(y2),sx(p.x),sy(p.y),u*0.09);
+      textP(p.x+Math.cos(p.a)*(p.r+0.32),p.y+Math.sin(p.a)*(p.r+0.32),
+        p.txt||("Ø"+(p.r*2).toFixed(1)),0.12,angText(p.a));
+      break;}
+    case "CM":{
+      ctx.strokeStyle=ANNO;ctx.lineWidth=1;ctx.setLineDash([]);
+      ctx.beginPath();
+      ctx.moveTo(sx(p.x-p.e),sy(p.y));ctx.lineTo(sx(p.x+p.e),sy(p.y));
+      ctx.moveTo(sx(p.x),sy(p.y-p.e));ctx.lineTo(sx(p.x),sy(p.y+p.e));
+      ctx.stroke();break;}
+    case "H":{
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(sx(p.x),sy(p.y+p.h),p.w*u,p.h*u);
+      ctx.clip();
+      ctx.strokeStyle=FAINT;ctx.lineWidth=1;ctx.setLineDash([]);
+      const cs=Math.cos(p.a),sn=Math.sin(p.a);
+      const corners=[[p.x,p.y],[p.x+p.w,p.y],[p.x+p.w,p.y+p.h],[p.x,p.y+p.h]];
+      let dmin=1e9,dmax=-1e9,nmin=1e9,nmax=-1e9;
+      for(const[cx2,cy2]of corners){const dv=cx2*cs+cy2*sn,nv=-cx2*sn+cy2*cs;
+        dmin=Math.min(dmin,dv);dmax=Math.max(dmax,dv);
+        nmin=Math.min(nmin,nv);nmax=Math.max(nmax,nv);}
+      ctx.beginPath();
+      for(let kv=nmin;kv<=nmax;kv+=p.step){
+        const px1=dmin*cs-kv*sn,py1=dmin*sn+kv*cs;
+        const px2=dmax*cs-kv*sn,py2=dmax*sn+kv*cs;
+        ctx.moveTo(sx(px1),sy(py1));ctx.lineTo(sx(px2),sy(py2));}
+      ctx.stroke();ctx.restore();break;}
+    case "SEC":{
+      const dx=p.x2-p.x1,dy=p.y2-p.y1,len=Math.hypot(dx,dy);
+      const ux=dx/len,uy=dy/len;
+      ctx.strokeStyle=ANNO;ctx.lineWidth=Math.max(1.4,u*0.006);
+      ctx.setLineDash([u*0.3,u*0.08,u*0.06,u*0.08]);
+      ctx.beginPath();ctx.moveTo(sx(p.x1),sy(p.y1));ctx.lineTo(sx(p.x2),sy(p.y2));ctx.stroke();
+      ctx.setLineDash([]);ctx.lineWidth=2;
+      ctx.beginPath();
+      [[p.x1,p.y1],[p.x2,p.y2]].forEach(([px,py])=>{
+        ctx.moveTo(sx(px-uy*0.12),sy(py+ux*0.12));ctx.lineTo(sx(px+uy*0.12),sy(py-ux*0.12));});
+      ctx.stroke();
+      ctx.lineWidth=1;
+      arrow(sx(p.x1),sy(p.y1),sx(p.x1+ux*0.3),sy(p.y1+uy*0.3),u*0.09);
+      arrow(sx(p.x2),sy(p.y2),sx(p.x2-ux*0.3),sy(p.y2-ux*0.3),u*0.09);
+      textP(p.x1-ux*0.25,p.y1-uy*0.25,p.ch,0.15,0);
+      textP(p.x2+ux*0.25,p.y2+uy*0.25,p.ch,0.15,0);
+      break;}
+    case "AR":{
+      ctx.strokeStyle=ANNO;ctx.lineWidth=1;ctx.setLineDash([]);
+      ctx.beginPath();ctx.moveTo(sx(p.x1),sy(p.y1));ctx.lineTo(sx(p.x2),sy(p.y2));ctx.stroke();
+      arrow(sx(p.x2),sy(p.y2),sx(p.x1),sy(p.y1),u*0.09);break;}
+  }
+}
+
+/* ============ 网格 ============ */
+function drawGrid(l,r2,b,t2){
+  const xs=Math.floor(l),xe=Math.ceil(r2),ys=Math.floor(b),ye=Math.ceil(t2);
+  const sub=0.5;
+  ctx.lineWidth=0.5;ctx.strokeStyle=SUB_GRID;ctx.beginPath();
+  for(let x=Math.ceil(l/sub)*sub;x<=r2+sub;x+=sub){if(Math.abs(x-Math.round(x))<0.005)continue;
+    const px=Math.round(sx(x))+0.5;ctx.moveTo(px,0);ctx.lineTo(px,H);}
+  for(let y=Math.ceil(b/sub)*sub;y<=t2+sub;y+=sub){if(Math.abs(y-Math.round(y))<0.005)continue;
+    const py=Math.round(sy(y))+0.5;ctx.moveTo(0,py);ctx.lineTo(W,py);}
+  ctx.stroke();
+  ctx.lineWidth=1;ctx.strokeStyle=GRID;ctx.beginPath();
+  for(let x=xs;x<=xe;x++){const px=Math.round(sx(x))+0.5;ctx.moveTo(px,0);ctx.lineTo(px,H);}
+  for(let y=ys;y<=ye;y++){const py=Math.round(sy(y))+0.5;ctx.moveTo(0,py);ctx.lineTo(W,py);}
+  ctx.stroke();
+  if(showLabels){
+    const fs=Math.max(16,Math.min(30,u*0.14)),pad=Math.max(7,u*0.035);
+    ctx.font=fs+"px "+FONT;ctx.textAlign="right";ctx.textBaseline="top";
+    ctx.lineWidth=1;ctx.strokeStyle=LABEL;
+    for(let x=xs;x<=xe;x++)for(let y=ys;y<=ye;y++)
+      ctx.strokeText(x+","+y,sx(x)-pad,sy(y)+pad);}
+}
+
+/* ============ Doodle / Micro 层 ============ */
+function drawDoodles(l,r2,b,t2){
+  ctx.setLineDash([]);
+  const s=DOODLE_STEP;
+  const x0=Math.floor((l-M_DOODLE)/s),x1=Math.floor((r2+M_DOODLE)/s);
+  const y0=Math.floor((b-M_DOODLE)/s),y1=Math.floor((t2+M_DOODLE)/s);
+  for(let gy=y0;gy<=y1;gy++)for(let gx=x0;gx<=x1;gx++){
+    const R=mulberry32(hash2(gx,gy,0xD00D));
+    if(R()>DOODLE_P)continue;
+    const x=gx*s+R()*s*0.6,y=gy*s+R()*s*0.6;
+    const ps=genDoodle(R,x,y);
+    for(const p of ps){
+      primBBox(p);
+      const bb=p.bb;
+      if(bb[2]<l||bb[0]>r2||bb[3]<b||bb[1]>t2)continue;
+      renderPrim(p);}}
+}
+function drawMicro(l,r2,b,t2){
+  ctx.setLineDash([]);
+  const s=MICRO_STEP;
+  const x0=Math.floor((l-M_MICRO)/s),x1=Math.floor((r2+M_MICRO)/s);
+  const y0=Math.floor((b-M_MICRO)/s),y1=Math.floor((t2+M_MICRO)/s);
+  for(let gy=y0;gy<=y1;gy++)for(let gx=x0;gx<=x1;gx++){
+    const R=mulberry32(hash2(gx,gy,0x01C0));
+    if(R()>MICRO_P)continue;
+    const x=gx*s+R()*s*0.5,y=gy*s+R()*s*0.5;
+    const ps=genMicro(R,x,y);
+    for(const p of ps){
+      primBBox(p);
+      const bb=p.bb;
+      if(bb[2]<l||bb[0]>r2||bb[3]<b||bb[1]>t2)continue;
+      renderPrim(p);}}
+}
+
+/* ============ Site 图层 ============ */
+function drawFigures(l,r2,b,t2){
+  ctx.setLineDash([]);
+  const s0x=Math.floor((l-M_FIG)/SITE),s1x=Math.floor((r2+M_FIG)/SITE);
+  const s0y=Math.floor((b-M_FIG)/SITE),s1y=Math.floor((t2+M_FIG)/SITE);
+  for(let sby=s0y;sby<=s1y;sby++)for(let sbx=s0x;sbx<=s1x;sbx++){
+    const{prims}=genSite(sbx,sby);
+    for(const p of prims){
+      const bb=p.bb;
+      if(bb[2]<l||bb[0]>r2||bb[3]<b||bb[1]>t2)continue;
+      renderPrim(p);}}
+}
+
+let rafId=null;
+function draw(){
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.fillStyle=BG;ctx.fillRect(0,0,W,H);
+  const hw=W/(2*u),hh=H/(2*u);
+  const l=cam.x-hw,r2=cam.x+hw,b=cam.y-hh,t2=cam.y+hh;
+  drawGrid(l,r2,b,t2);
+  drawMicro(l,r2,b,t2);
+  drawDoodles(l,r2,b,t2);
+  drawFigures(l,r2,b,t2);
+}
+/* 修复③：渲染异常不炸主循环，仅控制台记录 */
+function scheduleDraw(){if(rafId!==null)return;
+  rafId=requestAnimationFrame(()=>{rafId=null;
+    try{draw();}catch(err){console.error("draw:",err);}});}
+
+/* ============ 交互 ============ */
+function zoomAt(px,py,f){
+  const nu=Math.min(U_MAX,Math.max(U_MIN,u*f));
+  f=nu/u;if(f===1)return;
+  const wx=cam.x+(px-W/2)/u;
+  const wy=cam.y-(py-H/2)/u;
+  u=nu;
+  cam.x=wx-(px-W/2)/u;
+  cam.y=wy+(py-H/2)/u;
+}
+canvas.addEventListener("wheel",e=>{
+  e.preventDefault();
+  let dy=e.deltaY;
+  if(e.deltaMode===1)dy*=33;else if(e.deltaMode===2)dy*=400;
+  dy=Math.max(-160,Math.min(160,dy));
+  zoomAt(e.clientX,e.clientY,Math.exp(-dy*0.0022));
+  scheduleDraw();
+},{passive:false});
+
+const pointers=new Map();
+let drag=false,lx=0,ly=0,pinch=null;
+canvas.addEventListener("pointerdown",e=>{
+  canvas.setPointerCapture(e.pointerId);
+  pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  if(pointers.size===1){drag=true;lx=e.clientX;ly=e.clientY;canvas.classList.add("dragging");}
+  else{drag=false;canvas.classList.remove("dragging");pinchInit();}
+});
+function pinchInit(){
+  const p=[...pointers.values()];
+  pinch={d:Math.hypot(p[0].x-p[1].x,p[0].y-p[1].y),
+         mx:(p[0].x+p[1].x)/2,my:(p[0].y+p[1].y)/2};
+}
+canvas.addEventListener("pointermove",e=>{
+  if(!pointers.has(e.pointerId))return;
+  pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  if(pointers.size>=2){
+    const p=[...pointers.values()];
+    const d=Math.hypot(p[0].x-p[1].x,p[0].y-p[1].y);
+    const mx=(p[0].x+p[1].x)/2,my=(p[0].y+p[1].y)/2;
+    if(pinch&&pinch.d>0){
+      zoomAt(mx,my,d/pinch.d);
+      cam.x-=(mx-pinch.mx)/u;cam.y+=(my-pinch.my)/u;}
+    pinch={d,mx,my};scheduleDraw();
+  }else if(drag){
+    cam.x-=(e.clientX-lx)/u;cam.y+=(e.clientY-ly)/u;
+    lx=e.clientX;ly=e.clientY;scheduleDraw();}
+});
+function releasePointer(e){
+  pointers.delete(e.pointerId);
+  if(pointers.size===0){drag=false;pinch=null;canvas.classList.remove("dragging");}
+  else if(pointers.size===1){pinch=null;
+    const p=[...pointers.values()][0];drag=true;lx=p.x;ly=p.y;}
+}
+canvas.addEventListener("pointerup",releasePointer);
+canvas.addEventListener("pointercancel",releasePointer);
+canvas.addEventListener("lostpointercapture",releasePointer);
+
+/* ============================================================
+   禅境模式（修复②：先续帧再渲染，异常不断链）
+============================================================ */
+const zenBtn=document.getElementById("zen");
+let zenOn=false,zenAng=0,zenSpd=0,zenLast=0,zenRaf=null;
+function zenStart(){
+  zenOn=true;
+  zenAng=Math.random()*Math.PI*2;
+  zenSpd=0.12+Math.random()*0.5;
+  zenLast=performance.now();
+  zenBtn.classList.add("zen-on");zenBtn.classList.remove("off");
+  zenRaf=requestAnimationFrame(zenLoop);
+}
+function zenStop(){
+  zenOn=false;
+  if(zenRaf!==null){cancelAnimationFrame(zenRaf);zenRaf=null;}
+  zenBtn.classList.remove("zen-on");zenBtn.classList.add("off");
+}
+function zenLoop(){
+  if(!zenOn)return;
+  const now=performance.now();
+  const dt=Math.min(0.1,(now-zenLast)/1000);
+  zenLast=now;
+  cam.x+=Math.cos(zenAng)*zenSpd*dt;
+  cam.y+=Math.sin(zenAng)*zenSpd*dt;
+  zenRaf=requestAnimationFrame(zenLoop);   /* 先续帧：本帧渲染抛错也不会中断漂移 */
+  try{draw();}catch(err){console.error("zen frame:",err);}
+}
+zenBtn.addEventListener("click",()=>zenOn?zenStop():zenStart());
+
+/* ============ 键盘 / 开关 ============ */
+window.addEventListener("keydown",e=>{
+  if(e.key==="+"||e.key==="="){zoomAt(W/2,H/2,1.2);scheduleDraw();}
+  if(e.key==="-"||e.key==="_"){zoomAt(W/2,H/2,1/1.2);scheduleDraw();}
+  if(e.key==="r"||e.key==="R"){SEED=(Math.random()*0xFFFFFFFF)>>>0;
+    siteCache.clear();updateBadge();scheduleDraw();}
+  if(e.key==="l"||e.key==="L"){toggleLabels();}
+  if(e.key==="z"||e.key==="Z"){zenOn?zenStop():zenStart();}
+});
+window.addEventListener("resize",()=>{
+  dpr=Math.min(window.devicePixelRatio||1,2);
+  W=window.innerWidth;H=window.innerHeight;
+  canvas.width=W*dpr|0;canvas.height=H*dpr|0;
+  scheduleDraw();
+  if(zenOn)zenLast=performance.now();
+});
+
+const tgl=document.getElementById("toggle");
+function toggleLabels(){
+  showLabels=!showLabels;
+  tgl.classList.toggle("off",!showLabels);
+  scheduleDraw();
+}
+tgl.addEventListener("click",toggleLabels);
+
+function updateBadge(){
+  badge.textContent="SEED "+SEED.toString(16).toUpperCase().padStart(8,"0")+
+    " · 公式 "+FORMULAS.length+" 条 · R=新种子 · L=坐标 · Z=禅境";
+}
+updateBadge();
+window.dispatchEvent(new Event("resize"));
+</script>
+</body>
+</html>

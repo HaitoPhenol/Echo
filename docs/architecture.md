@@ -504,6 +504,15 @@ Stack 分层在 `SmartNavScreen.build`（机能风层见 3.11）：
   一个周期兜底）；顶部十字是屏幕标定物，始终固定在屏幕角上。
   纹理层与十字层各外包 `RepaintBoundary`，平移只改 `Transform`
   偏移，导航动画不引发背景重绘；只画表皮、不接手势。
+- **冷启动示意底图** `BlueprintSheet`（widgets/blueprint_sheet.dart）：
+  参照 `ideas/Map.html` 的有限子集——32dp 格细碎标记（16% 概率）、
+  128dp 格块状速写（50%，十字/圆孔/尺寸线/圆弧/剖面框/坐标注记）、
+  整屏 4~6 条引线标注。种子取 `DateTime.microsecondsSinceEpoch`
+  （进程内固定），同种子/尺寸产出完全一致；整张速写按 dpr
+  **一次性栅格化为 `ui.Image` 并缓存**，背景层每帧只 `drawImageRect`。
+  生成延到首帧后（不与启动帧争 raster 线程），尺寸/像素密度变化才重建；
+  该层**不随翻页平移**（与平移纹理形成两个深度）。线色白 α.03~.055、
+  注记 α.10，6dp 字号，刻意稀疏、不抢正文。
 - **顶部读数条** `MechanicalCoordsBar`：状态栏下沿（coordsTop=0）
   居中，9sp、字距 3.6（.4em），文案 `DEV 型号 · T 电池温度 ·
   P 瞬时功耗`；数据来自原生 MethodChannel `echo/device_stats`

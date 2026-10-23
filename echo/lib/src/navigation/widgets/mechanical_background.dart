@@ -1,12 +1,14 @@
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
 import '../../theme/app_colors.dart';
 import '../../theme/mechanical_style.dart';
+import 'blueprint_sheet.dart';
 
 /// 机能风背景：底色 + 三层工程纹理（细网格 / 粗网格 / 点阵）
-/// + 顶部一对十字定位标记。
+/// + 冷启动生成的示意底图 + 顶部一对十字定位标记。
 ///
 /// 颜色取自 [AppColors] 的机能风视觉层色组，几何取自
 /// [MechanicalStyle]（稿号溯源见两文件注释）。
@@ -22,7 +24,10 @@ import '../../theme/mechanical_style.dart';
 ///   + 每次冷启动随机 0~128dp 的抖动，见 [_jitterX] / [_jitterY]）；
 /// * 不画实体描边框、不画底部十字：仅顶部两个十字标定
 ///   「状态栏下沿、左右各 14dp」的位置；
-/// * 静态绘制：纹理层与十字层各外包 [RepaintBoundary]，平移只改
+/// * 示意底图（[BlueprintSheet]）是**整屏一张静态图**：冷启动按时间种子
+///   生成一次并缓存，翻页时不平移（与纹理层形成两个深度），
+///   尺寸/像素密度变化时重新生成；
+/// * 静态绘制：纹理层、底图层与十字层各外包 [RepaintBoundary]，平移只改
 ///   [Transform] 偏移，导航动画不会引发背景重绘；
 /// * 只画"表皮"，不承载任何交互。
 class MechanicalBackground extends StatefulWidget {
@@ -53,6 +58,37 @@ class _MechanicalBackgroundState extends State<MechanicalBackground> {
       math.Random().nextDouble() * MechanicalStyle.coarseGridSpacing;
   late final double _jitterY =
       math.Random().nextDouble() * MechanicalStyle.coarseGridSpacing;
+
+  /// 冷启动示意底图（整屏一张，栅格化后由绘制器直接贴图）。
+  ui.Image? _sheet;
+
+  /// 正在生成的尺寸（避免依赖变化时对同一尺寸重复排队）。
+  Size? _sheetRequest;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final size = MediaQuery.sizeOf(context);
+    final dpr = MediaQuery.devicePixelRatioOf(context);
+    final cached = BlueprintSheet.peek(size, dpr);
+    if (cached != null) {
+      _sheet = cached;
+      return;
+    }
+    if (_sheetRequest == size) return;
+    _sheetRequest = size;
+    // 延到首帧之后再栅格化：不与启动帧争用 raster 线程。
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => _loadSheet(size, dpr),
+    );
+  }
+
+  Future<void> _loadSheet(Size size, double dpr) async {
+    final image = await BlueprintSheet.ensure(size, dpr);
+    if (!mounted || image == null) return;
+    if (MediaQuery.sizeOf(context) != size) return;
+    setState(() => _sheet = image);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -94,6 +130,17 @@ class _MechanicalBackgroundState extends State<MechanicalBackground> {
             ),
           ),
 
+          // -------- 冷启动生成的示意底图（静态，不随翻页平移） --------
+          if (_sheet != null)
+            Positioned.fill(
+              child: RepaintBoundary(
+                child: CustomPaint(
+                  painter: _BlueprintPainter(_sheet!),
+                  size: Size.infinite,
+                ),
+              ),
+            ),
+
           // -------- 钉在屏幕上的顶部双十字 --------
           Positioned.fill(
             child: RepaintBoundary(
@@ -108,6 +155,31 @@ class _MechanicalBackgroundState extends State<MechanicalBackground> {
     );
   }
 }
+
+/// 示意底图绘制器：把冷启动栅格化的整屏图按逻辑尺寸贴回背景。
+///
+/// 图已按设备像素密度生成，这里只做一次缩放贴图，无任何生成/排版开销；
+/// 只在换图（尺寸或种子变化）时重绘。
+class _BlueprintPainter extends CustomPainter {
+  _BlueprintPainter(this.image);
+
+  final ui.Image image;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.drawImageRect(
+      image,
+      Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble()),
+      Offset.zero & size,
+      Paint()..filterQuality = FilterQuality.medium,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _BlueprintPainter oldDelegate) =>
+      oldDelegate.image != image;
+}
+
 
 /// 纹理绘制器：细网格 → 粗网格 → 点阵。
 ///
