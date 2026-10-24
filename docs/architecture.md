@@ -500,20 +500,34 @@ Stack 分层在 `SmartNavScreen.build`（机能风层见 3.11）：
   负向起点循环保证铺满。顶部一对十字标定：中心在「状态栏下沿 + 8dp 与
   frameInset 取大」高度、左右各 14dp 处，边长 22、1dp、与粗网格
   同色；无实体描边框、无底部十字。纹理与页面轨道**1:1 同步平移**
-  （偏移 = 显示位置 × 屏宽，按 128dp 周期取模，纹理层左右各多铺
+  （偏移 = 显示位置 × 屏宽，按 128dp 周期取模，纹理层四周各多铺
   一个周期兜底）；顶部十字是屏幕标定物，始终固定在屏幕角上。
+  **纵向**联动同样 1:1：页面轨道内任何竖向列表的
+  `ScrollUpdateNotification.scrollDelta` 经 `BackgroundScrollListener`
+  （navigation/background_scroll_motion.dart）累加为背景位移，网格层按
+  128dp 取模平移、底图层用连续值移动相机。该机制与具体列表解耦，
+  不需要给各页挂 `ScrollController`；只认 depth 0 的竖向滚动，
+  嵌套横向滚动不会污染位移。
   纹理层与十字层各外包 `RepaintBoundary`，平移只改 `Transform`
   偏移，导航动画不引发背景重绘；只画表皮、不接手势。
 - **冷启动示意底图** `BlueprintCanvas`（widgets/blueprint_canvas.dart）：
   直接移植 `ideas/Map.html` 的**无限画布**生成方式——坐标系取
-  「1 单位 = 4 个细网格 = 64dp」，细碎标记按 0.5 单位格（35% 概率）、
-  块状速写按 1.0 单位格（60%，十字/圆孔/尺寸线/圆弧/箭头/公式注记），
+  「1 单位 = 4 个细网格 = 64dp」，细碎标记按 0.5 单位格（60% 概率）、
+  块状速写按 1.0 单位格（94%，十字/圆孔/尺寸线/圆弧/箭头/公式注记），
   每格图案由 `hash2(格坐标) + mulberry32` 决定，与视口无关。种子取
   `DateTime.microsecondsSinceEpoch`（进程内固定），同种子/格坐标产出
   完全一致。每帧只枚举视口内可见格并即时绘制，**不预生成图片、不
   平铺、不取模**；翻页位移传入未取模的连续值，因此图案与网格同原点、
   同速平移，翻页/不同屏幕尺寸都不会跳变。线色白 α.03~.055、
   注记 α.10、字号约 6.4~8.3dp。
+- **WFC 巨构层** `BlueprintSite`（widgets/blueprint_site.dart）：
+  完整移植原型 `runWFC` 与 `genSite`——每个 site 为 30 世界单位
+  （5×5 个 6 单位单元），先做最小熵坍缩（中央 3×3 初始为 MEGA，
+  邻接约束见原型 `ADJ`），再按 MEGA / AXIS_H / AXIS_V / DETAIL /
+  ANNO / EMPTY 调用对应生成器产出工程图元。站点图元按
+  `(seed, sbx, sby)` 世界坐标缓存（LRU 40），每帧只做世界→dp 换算；
+  LaTeX 公式改为纯文本、文字旋转与虚线圆/弧忽略，其余渲染语义
+  按原型 `renderPrim` 对齐。绘制顺序同原型：micro → doodle → 巨构。
 - **顶部读数条** `MechanicalCoordsBar`：状态栏下沿（coordsTop=0）
   居中，9sp、字距 3.6（.4em），文案 `DEV 型号 · T 电池温度 ·
   P 瞬时功耗`；数据来自原生 MethodChannel `echo/device_stats`

@@ -13,11 +13,12 @@ import 'blueprint_canvas.dart';
 /// [MechanicalStyle]（稿号溯源见两文件注释）。
 ///
 /// 行为约定：
-/// * 纹理与页面轨道**同步平移**（[panOffsetX] 与翻页 1:1 同速率）：
-///   翻页时网格与点阵跟页面内容一起滑动；顶部十字是屏幕标定物，
+/// * 纹理与页面轨道**同步平移**（[panOffsetX] / [panOffsetY] 与翻页、
+///   列表滚动 1:1 同速率）：翻页时网格与点阵跟页面内容一起滑动；
+///   上下滑动列表时网格与底图一起上下移动；顶部十字是屏幕标定物，
 ///   始终钉在屏幕角上，不参与平移；
 /// * 纹理是周期图案（周期 = 粗网格 [MechanicalStyle.coarseGridSpacing]），
-///   平移量取模后视觉仍与无限铺满的 1:1 平移一致；纹理绘制区左右各多铺
+///   平移量取模后视觉仍与无限铺满的 1:1 平移一致；纹理绘制区四周各多铺
 ///   一个周期，平移后不会露出空白边；
 /// * 三层纹理相对绘制区左上角有整体平移（[MechanicalStyle.gridOriginShiftX/Y]
 ///   + 每次冷启动随机 0~128dp 的抖动，见 [_jitterX] / [_jitterY]）；
@@ -33,7 +34,9 @@ class MechanicalBackground extends StatefulWidget {
   const MechanicalBackground({
     super.key,
     this.panOffsetX = 0,
+    this.panOffsetY = 0,
     this.canvasOffsetX = 0,
+    this.canvasOffsetY = 0,
   });
 
   /// 纹理层水平平移（dp）。
@@ -42,15 +45,26 @@ class MechanicalBackground extends StatefulWidget {
   /// 传入任意实数都安全——绘制区已左右各多铺一个周期。
   final double panOffsetX;
 
+  /// 纹理层纵向平移（dp）。
+  ///
+  /// 由页面列表的竖向滚动增量累加得到，调用方按纹理周期取模；
+  /// 绘制区已上下各多铺一个周期。
+  final double panOffsetY;
+
   /// 示意底图层水平平移（dp，**未取模**）。
   ///
   /// 底图是无限画布，不是周期图案：必须传连续的翻页位移，
   /// 取模会让世界坐标瞬间跳回，图案随之跳变。
   final double canvasOffsetX;
 
-  /// 纹理层左右额外绘制宽度 = 一个粗网格周期。
+  /// 示意底图层纵向平移（dp，**未取模**）。
   ///
-  /// 必须 ≥ 平移量的取值周期，否则平移后左/右边缘会露出空白底色。
+  /// 与 [canvasOffsetX] 同理，必须传连续的累计滚动位移。
+  final double canvasOffsetY;
+
+  /// 纹理层四周额外绘制宽度 = 一个粗网格周期。
+  ///
+  /// 必须 ≥ 平移量的取值周期，否则平移后边缘会露出空白底色。
   static const double _bleed = MechanicalStyle.coarseGridSpacing;
 
   @override
@@ -94,10 +108,10 @@ class _MechanicalBackgroundState extends State<MechanicalBackground> {
           Positioned(
             left: -MechanicalBackground._bleed,
             right: -MechanicalBackground._bleed,
-            top: 0,
-            bottom: 0,
+            top: -MechanicalBackground._bleed,
+            bottom: -MechanicalBackground._bleed,
             child: Transform.translate(
-              offset: Offset(widget.panOffsetX, 0),
+              offset: Offset(widget.panOffsetX, widget.panOffsetY),
               child: RepaintBoundary(
                 child: CustomPaint(
                   painter: _MechanicalGridPainter(
@@ -115,7 +129,10 @@ class _MechanicalBackgroundState extends State<MechanicalBackground> {
             child: RepaintBoundary(
               child: CustomPaint(
                 painter: _BlueprintCanvasPainter(
-                  camera: Offset(widget.canvasOffsetX + originX, originY),
+                  camera: Offset(
+                    widget.canvasOffsetX + originX,
+                    widget.canvasOffsetY + originY,
+                  ),
                 ),
                 size: Size.infinite,
               ),

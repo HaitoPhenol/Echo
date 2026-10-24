@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart';
 
 import '../../theme/mechanical_style.dart';
+import 'blueprint_site.dart';
 
 /// 无限画布版「示意底图」：直接移植 `ideas/Map.html` 的生成方式。
 ///
@@ -12,8 +13,8 @@ import '../../theme/mechanical_style.dart';
 /// **世界格坐标的哈希**即时生成：同一格坐标永远产出同一图案，画布
 /// 向任何方向平移都只是换一批可见格，因此天然无缝、不会跳变。
 ///
-/// 本类不做 WFC 巨构与公式排版，只保留三层与机能风同源的静态速写：
-/// 细碎标记（micro）、块状速写（doodle）、少量注记文字。
+/// 本类不做 WFC 巨构与公式排版，WFC 巨构见 BlueprintSite，其余只保留三层与
+/// 机能风同源的静态速写：细碎标记（micro）、块状速写（doodle）、少量注记文字。
 ///
 /// 坐标系：**一个单位 = 4 个细网格**（[MechanicalStyle.fineGridSpacing] × 4
 /// = 64dp），原型里的 0.5 / 1.0 等格距直接乘 [unit] 使用。
@@ -62,6 +63,8 @@ class BlueprintCanvas {
 
     _micro(ops, camera, seed, left, right, top, bottom);
     _doodles(ops, camera, seed, left, right, top, bottom);
+    // 与原型 drawFigures 一致：micro → doodle → WFC 巨构。
+    ops.addAll(BlueprintSite.build(size: size, camera: camera, seed: seed));
     return ops;
   }
 
@@ -88,7 +91,7 @@ class BlueprintCanvas {
     final y1 = ((bottom + _microMargin) / step).floor();
     for (var gy = y0; gy <= y1; gy++) {
       for (var gx = x0; gx <= x1; gx++) {
-        final rng = _Rng(_hash(seed, gx, gy, 0x01C0));
+        final rng = BlueprintRng(_hash(seed, gx, gy, 0x01C0));
         if (rng.next() > microChance) continue;
         final c = _at(
           camera,
@@ -103,26 +106,26 @@ class BlueprintCanvas {
                 BlueprintOp.line(
                   from: c - Offset(unit * 0.05, 0),
                   to: c + Offset(unit * 0.05, 0),
-                  color: _geom,
+                  color: geom,
                 ),
               )
               ..add(
                 BlueprintOp.line(
                   from: c - Offset(0, unit * 0.05),
                   to: c + Offset(0, unit * 0.05),
-                  color: _geom,
+                  color: geom,
                 ),
               );
           case 1:
             ops.add(
-              BlueprintOp.circle(center: c, radius: unit * 0.035, color: _geom),
+              BlueprintOp.circle(center: c, radius: unit * 0.035, color: geom),
             );
           case 2:
             ops.add(
               BlueprintOp.line(
                 from: c - Offset(unit * 0.08, 0),
                 to: c + Offset(unit * 0.08, 0),
-                color: _faint,
+                color: faint,
                 dashed: true,
               ),
             );
@@ -132,7 +135,7 @@ class BlueprintCanvas {
               BlueprintOp.line(
                 from: c,
                 to: c + Offset(math.cos(a), math.sin(a)) * (unit * 0.1),
-                color: _faint,
+                color: faint,
               ),
             );
           default:
@@ -140,7 +143,7 @@ class BlueprintCanvas {
               BlueprintOp.circle(
                 center: c,
                 radius: unit * 0.05,
-                color: _faint,
+                color: faint,
                 // 虚线圆用短刻线近似，避免为一枚装饰引入 dash 绘制器。
               ),
             );
@@ -148,7 +151,7 @@ class BlueprintCanvas {
               BlueprintOp.line(
                 from: c - Offset(unit * 0.07, 0),
                 to: c + Offset(unit * 0.07, 0),
-                color: _faint,
+                color: faint,
               ),
             );
         }
@@ -175,7 +178,7 @@ class BlueprintCanvas {
     final y1 = ((bottom + _doodleMargin) / step).floor();
     for (var gy = y0; gy <= y1; gy++) {
       for (var gx = x0; gx <= x1; gx++) {
-        final rng = _Rng(_hash(seed, gx, gy, 0xD00D));
+        final rng = BlueprintRng(_hash(seed, gx, gy, 0xD00D));
         if (rng.next() > doodleChance) continue;
         final c = _at(
           camera,
@@ -187,7 +190,7 @@ class BlueprintCanvas {
     }
   }
 
-  static void _doodle(List<BlueprintOp> ops, _Rng rng, Offset c) {
+  static void _doodle(List<BlueprintOp> ops, BlueprintRng rng, Offset c) {
     switch (rng.nextInt(16)) {
       case 0:
         // 十字标记（±0.1~0.24 单位）。
@@ -197,14 +200,14 @@ class BlueprintCanvas {
             BlueprintOp.line(
               from: c - Offset(e, 0),
               to: c + Offset(e, 0),
-              color: _faint,
+              color: faint,
             ),
           )
           ..add(
             BlueprintOp.line(
               from: c - Offset(0, e),
               to: c + Offset(0, e),
-              color: _faint,
+              color: faint,
             ),
           );
       case 1:
@@ -212,7 +215,7 @@ class BlueprintCanvas {
           BlueprintOp.circle(
             center: c,
             radius: unit * (0.07 + rng.next() * 0.15),
-            color: _geom,
+            color: geom,
           ),
         );
       case 2:
@@ -222,14 +225,14 @@ class BlueprintCanvas {
             BlueprintOp.line(
               from: c - Offset(unit * 0.12, 0),
               to: c + Offset(unit * 0.12, 0),
-              color: _geom,
+              color: geom,
             ),
           )
           ..add(
             BlueprintOp.line(
               from: c - Offset(0, unit * 0.12),
               to: c + Offset(0, unit * 0.12),
-              color: _geom,
+              color: geom,
             ),
           );
       case 3:
@@ -241,7 +244,7 @@ class BlueprintCanvas {
             radius: unit * (0.12 + rng.next() * 0.18),
             startAngle: rng.next() * 2 * math.pi,
             sweepAngle: 1 + rng.next() * 2,
-            color: _geom,
+            color: geom,
           ),
         );
       case 5:
@@ -249,12 +252,7 @@ class BlueprintCanvas {
         final a = rng.next() * 2 * math.pi;
         final d = Offset(math.cos(a), math.sin(a)) * (unit * 0.3);
         ops.add(
-          BlueprintOp.line(
-            from: c - d,
-            to: c + d,
-            color: _faint,
-            dashed: true,
-          ),
+          BlueprintOp.line(from: c - d, to: c + d, color: faint, dashed: true),
         );
       case 6:
         // 两行坐标注记。
@@ -264,7 +262,7 @@ class BlueprintCanvas {
               at: c + Offset(0, -unit * 0.14),
               text: 'X=${(3300 + c.dx * 7.5).toStringAsFixed(1)}',
               fontSize: unit * 0.1,
-              color: _label,
+              color: label,
             ),
           )
           ..add(
@@ -272,7 +270,7 @@ class BlueprintCanvas {
               at: c + Offset(0, -unit * 0.02),
               text: 'Y=${(530 + c.dy * 7.5).toStringAsFixed(1)}',
               fontSize: unit * 0.1,
-              color: _label,
+              color: label,
             ),
           );
       case 7:
@@ -280,7 +278,7 @@ class BlueprintCanvas {
           BlueprintOp.line(
             from: c - Offset(unit * 0.3, 0),
             to: c + Offset(unit * 0.3, 0),
-            color: _geom,
+            color: geom,
             dashed: true,
           ),
         );
@@ -288,21 +286,19 @@ class BlueprintCanvas {
         // 箭头。
         final a = rng.next() * 2 * math.pi;
         final tip = c + Offset(math.cos(a), math.sin(a)) * (unit * 0.3);
-        ops.add(BlueprintOp.line(from: c, to: tip, color: _geom));
+        ops.add(BlueprintOp.line(from: c, to: tip, color: geom));
         _arrowHead(ops, tip, c);
       case 9:
         // 虚线圆 + 圆周四枚小孔。
         final r = unit * 0.2;
-        ops.add(
-          BlueprintOp.circle(center: c, radius: r, color: _geom, ),
-        );
+        ops.add(BlueprintOp.circle(center: c, radius: r, color: geom));
         for (var i = 0; i < 4; i++) {
           final a = i * 1.5708 + 0.4;
           ops.add(
             BlueprintOp.circle(
               center: c + Offset(math.cos(a), math.sin(a)) * r,
               radius: unit * 0.028,
-              color: _faint,
+              color: faint,
             ),
           );
         }
@@ -316,7 +312,7 @@ class BlueprintCanvas {
             BlueprintOp.circle(
               center: c + Offset(math.cos(a), math.sin(a)) * r,
               radius: unit * 0.035,
-              color: _faint,
+              color: faint,
             ),
           );
         }
@@ -331,11 +327,7 @@ class BlueprintCanvas {
         ];
         for (var i = 0; i < 4; i++) {
           ops.add(
-            BlueprintOp.line(
-              from: box[i],
-              to: box[(i + 1) % 4],
-              color: _geom,
-            ),
+            BlueprintOp.line(from: box[i], to: box[(i + 1) % 4], color: geom),
           );
         }
       case 12:
@@ -347,7 +339,7 @@ class BlueprintCanvas {
             BlueprintOp.line(
               from: c,
               to: c + dir * (unit * 0.25),
-              color: _faint,
+              color: faint,
             ),
           )
           ..add(
@@ -355,26 +347,26 @@ class BlueprintCanvas {
               at: c + dir * (unit * 0.35),
               text: _letters[rng.nextInt(_letters.length)],
               fontSize: unit * 0.12,
-              color: _label,
+              color: label,
             ),
           );
       case 13:
         // 圆心 + 左右水平刻线。
         final r = unit * (0.1 + rng.next() * 0.12);
         ops
-          ..add(BlueprintOp.circle(center: c, radius: r, color: _geom))
+          ..add(BlueprintOp.circle(center: c, radius: r, color: geom))
           ..add(
             BlueprintOp.line(
               from: c - Offset(r + unit * 0.1, 0),
               to: c - Offset(r, 0),
-              color: _faint,
+              color: faint,
             ),
           )
           ..add(
             BlueprintOp.line(
               from: c + Offset(r, 0),
               to: c + Offset(r + unit * 0.1, 0),
-              color: _faint,
+              color: faint,
             ),
           );
       case 14:
@@ -385,14 +377,14 @@ class BlueprintCanvas {
             at: c,
             text: _formulas[rng.nextInt(_formulas.length)],
             fontSize: unit * 0.13,
-            color: _label,
+            color: label,
           ),
         );
     }
   }
 
   /// 水平尺寸线：主线 + 两端刻度 + 数值。
-  static void _dimension(List<BlueprintOp> ops, Offset c, _Rng rng) {
+  static void _dimension(List<BlueprintOp> ops, Offset c, BlueprintRng rng) {
     final half = unit * (0.25 + rng.next() * 0.2);
     final tick = unit * 0.1;
     final y = c.dy;
@@ -401,21 +393,21 @@ class BlueprintCanvas {
         BlueprintOp.line(
           from: Offset(c.dx - half, y),
           to: Offset(c.dx + half, y),
-          color: _geom,
+          color: geom,
         ),
       )
       ..add(
         BlueprintOp.line(
           from: Offset(c.dx - half, y - tick),
           to: Offset(c.dx - half, y + tick),
-          color: _geom,
+          color: geom,
         ),
       )
       ..add(
         BlueprintOp.line(
           from: Offset(c.dx + half, y - tick),
           to: Offset(c.dx + half, y + tick),
-          color: _geom,
+          color: geom,
         ),
       )
       ..add(
@@ -423,7 +415,7 @@ class BlueprintCanvas {
           at: Offset(c.dx - half + unit * 0.05, y - unit * 0.26),
           text: (half * 2 / unit).toStringAsFixed(1),
           fontSize: unit * 0.11,
-          color: _label,
+          color: label,
         ),
       );
   }
@@ -437,20 +429,20 @@ class BlueprintCanvas {
         BlueprintOp.line(
           from: tip,
           to: tip - Offset(math.cos(a - d), math.sin(a - d)) * size,
-          color: _geom,
+          color: geom,
         ),
       );
     }
   }
 
   /// 几何线：白 α.055（比粗网格略亮，仍远低于正文）。
-  static const Color _geom = Color(0x0EFFFFFF);
+  static const Color geom = Color(0x0EFFFFFF);
 
   /// 辅助线/暗部：白 α.03，与细网格同档。
-  static const Color _faint = Color(0x07FFFFFF);
+  static const Color faint = Color(0x07FFFFFF);
 
   /// 微型标注文字：白 α.10，只作纹理噪声。
-  static const Color _label = Color(0x1AFFFFFF);
+  static const Color label = Color(0x1AFFFFFF);
 
   /// 引线编号池。
   static const List<String> _letters = ['A', 'B', 'C', '1', '2', '3'];
@@ -638,8 +630,10 @@ class BlueprintOp {
 enum BlueprintOpKind { line, circle, arc, text }
 
 /// 32 位 mulberry32 随机数（与原型 `Map.html` 同算法）。
-class _Rng {
-  _Rng(int seed) : _state = seed & 0xFFFFFFFF;
+///
+/// micro/doodle/site 三层共用同一实现，保证同 seed 下完全可复现。
+class BlueprintRng {
+  BlueprintRng(int seed) : _state = seed & 0xFFFFFFFF;
 
   int _state;
 

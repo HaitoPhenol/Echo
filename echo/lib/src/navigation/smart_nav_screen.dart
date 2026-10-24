@@ -18,6 +18,7 @@ import '../services/search_service.dart';
 import '../services/window_inset_refresher.dart';
 import '../theme/mechanical_style.dart';
 import 'dock_geometry.dart';
+import 'background_scroll_motion.dart';
 import 'dock_layout.dart';
 import 'nav_destination.dart';
 import 'nav_gesture_records.dart';
@@ -116,6 +117,12 @@ class _SmartNavScreenState extends State<SmartNavScreen>
   Timer? _readTimer;
 
   late final NavPhysicsController _nav;
+
+  /// 竖向滚动 → 背景纵向位移（与具体列表解耦，见 [BackgroundScrollMotion]）。
+  late final BackgroundScrollMotion _bgMotion = BackgroundScrollMotion();
+
+  /// 背景层需要同时跟随横向翻页与竖向滚动。
+  late final Listenable _backdropMotion = Listenable.merge([_nav, _bgMotion]);
 
   // 搜索输入相关
   final FocusNode _searchFocusNode = FocusNode();
@@ -340,6 +347,7 @@ class _SmartNavScreenState extends State<SmartNavScreen>
     // 先摘事件适配器（它监听下面两个服务），再销毁服务本身。
     _eventBridge?.dispose();
     _nav.dispose();
+    _bgMotion.dispose();
     _chatSession.dispose();
     _chatStore.dispose();
     _badges.dispose();
@@ -1099,7 +1107,10 @@ class _SmartNavScreenState extends State<SmartNavScreen>
             child: Stack(
               children: [
                 ..._buildStaticBackdrop(context),
-                _buildPageTrack(context, screenSize, keyboardInset),
+                BackgroundScrollListener(
+                  motion: _bgMotion,
+                  child: _buildPageTrack(context, screenSize, keyboardInset),
+                ),
                 ..._buildOverlays(
                   context,
                   screenSize,
@@ -1146,12 +1157,14 @@ class _SmartNavScreenState extends State<SmartNavScreen>
     Positioned.fill(
       key: const ValueKey<String>('mech-bg'),
       child: AnimatedBuilder(
-        animation: _nav,
+        animation: _backdropMotion,
         builder: (context, _) {
           final shift = -_nav.displayPosition * MediaQuery.sizeOf(context).width;
           return MechanicalBackground(
             panOffsetX: shift % MechanicalStyle.coarseGridSpacing,
             canvasOffsetX: shift,
+            panOffsetY: _bgMotion.offsetY % MechanicalStyle.coarseGridSpacing,
+            canvasOffsetY: _bgMotion.offsetY,
           );
         },
       ),
