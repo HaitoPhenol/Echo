@@ -64,7 +64,7 @@
 
 ### R3 收紧跨域依赖（P1）
 
-状态（2026-10-25）：已实现，待审查/提交。
+状态（2026-10-25）：已实现、独立审查通过，合入 main。
 
 **问题**
 - `navigation/smart_nav_screen.dart` L7-L11 直接 import diary 仓储/页面与 control 内部。
@@ -92,6 +92,8 @@
 
 ### R4 MCP Server 适配（P2，接口层补齐）
 
+状态（2026-10-25）：已实现、独立审查通过，合入 main。
+
 **做法**
 - 新增 `control/mcp/`：一个 JSON-RPC 2.0 适配器，Tools 由 `ControlBus.visibleSpecs`
   自动派生 JSON Schema（`CommandSpec` 已含参数、读写、权限级别）。
@@ -99,8 +101,22 @@
 - 通道身份使用已预留的 `ControlChannel.mcp`：起始 guest、上限 owner 只读，写命令物理不可达。
 - 传输：先做 stdin/stdout（桌面/调试宿主），移动端外接方式后续再定。
 
+**已落地口径（用户 2026-10-25 裁定）**
+- 只读暴露范围**包含日记与聊天正文**（owner 级只读）；除唯一写例外
+  `auth.unlock` 外，写命令在适配器层即拒，不进入 ControlBus；
+  默认不挂载，release 不变（仅 `kDebugMode && --mcp` 挂载）。
+- **MCP 允许解锁**（2026-10-25 追加裁定）：工具表暴露 `auth.unlock`
+  作为唯一写工具，否则 owner 只读正文不可达；PIN 错误沿用
+  `AuthManager` 的 5 次冷却，解锁后仍是 owner 只读上限，
+  `diary.state.set`/`chat.send` 等写命令永远不可达。
+- `resources/read` 与 `tools/call` 共用 `ControlBus.execute(channel: mcp)`，
+  权限/参数/审计不分叉；owner 会话由 `AuthManager` 按通道上限（≤1）颁发。
+- 传输为 `mcp/mcp_stdio.dart`（stdin 行读 → server → stdout 行写），
+  协议实现零第三方依赖。
+
 **验收**
-- 新增 MCP 一致性测试：工具数 == 可见命令数（只读子集）、Schema 与手册双向一致。
+- 新增 MCP 一致性测试：工具集合 == 只读可见子集 + `auth.unlock`、
+  Schema 与手册双向一致、其余写命令物理不可达。
 - 复用现有假通道边界测试，替换为真实适配器测试。
 - release 构建默认不挂载。
 

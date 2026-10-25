@@ -281,10 +281,10 @@
   动词表、`ControlBus`（注册重名检查、参数解析、级别/确认裁决、
   ≥2 级审计、slow 60s 预算标记）。
 - **鉴权**：PIN 只存 PBKDF2 加盐哈希（`echo_control/pin.json`）；
-  通道起始级别 mcp=0/adb=2、slash=2，adb/slash 解锁升 3 级，
-  mcp 永不解锁（上限 1 只读）；连续 5 次错误冷却
-  （30/60/120/240s/5min 退避）；App paused（息屏/切后台）立即
-  销毁全部会话；审计不记 PIN 与正文（正文命令标 auditRedact，
+  通道起始级别 mcp=0/adb=2、slash=2；解锁只在通道上限内颁发会话——
+  adb/slash 升 3 级，mcp 升到 owner(1) 只读，写级别永不颁发；连续
+  5 次错误冷却（30/60/120/240s/5min 退避）；App paused（息屏/切后台）
+  立即销毁全部会话；审计不记 PIN 与正文（正文命令标 auditRedact，
   记 `<redacted:N>`）。
 - **命令域（40 条；release 物理裁掉 5 条 debugOnly 后 35 条）**：
   sys 9（ping/help/info/status/audit/events/job.get +
@@ -306,6 +306,18 @@
   动词→参数）、结果卡片、PIN/确认卡、命令历史；核心
   `control/slash/ControlConsoleCore` 与入口 Widget 解耦，终端页
   是未来第二个消费者（接缝未建页）。
+- **MCP 只读适配器（R4，2026-10-25）**：`control/mcp/` 处理
+  JSON-RPC 2.0 单行请求（initialize/notifications/initialized/ping/
+  tools.list/tools.call/resources.list/resources.read），tools 从
+  可见清单的只读子集自动派生 JSON Schema（不写第二份命令表）；
+  resources 以 `echo://diary/{date}`、`echo://chat/{id}/messages`、
+  `echo://sys/status` 等 URI 映射只读命令，与 tools/call 共用
+  `ControlBus.execute`（权限/审计不分叉）。通道固定 mcp：起始
+  guest、上限 owner 只读，写命令在适配器层即拒且不进入总线；
+  **只读范围包含日记与聊天正文**（用户已确认）。工具表另含唯一
+  写例外 `auth.unlock`（PIN 错误沿用冷却；解锁后仍只读上限）。
+  传输 `mcp/mcp_stdio.dart`；仅 `kDebugMode && --mcp` 挂载，默认关闭、
+  release 物理不创建。
 - **事件流（P4）**：`events/` 内存环（256、seq 单调）+
   `sys.events` 游标/长轮询（wait≤8s，事件即唤醒）；五种冻结
   事件 audit.entry/command.finished（owner 级）、
@@ -327,7 +339,8 @@
   running）。脚本级回归 `scripts/tests/echo_cmd_test.sh`
   （fake-adb，15 断言，无需设备）。
 - **门禁**：`test/control/` 协议/鉴权/四域/slash/事件/作业/播种/
-  MCP 假通道边界 + manifest↔手册双向一致性；MIX 2S 每期真机
+  MCP 只读适配器（工具/资源/权限/默认不挂载）+ manifest↔手册
+  双向一致性；MIX 2S 每期真机
   验收（P4：delay 12s 首包 11ms、导出落盘、事件提前唤醒、
   seed→prune/seed→send 端到端、slash 回归），release dex 六串
   全 0、补全计数 sys7/diary5/chat5。
@@ -365,7 +378,7 @@
 
 ## 测试现状
 
-- **499 个 Dart 测试，47 个文件** + echo-cmd 脚本级回归 15 断言：
+- **614 个 Dart 测试，55 个文件** + echo-cmd 脚本级回归 15 断言：
   - `test/widget_test.dart`（导航/浮层集成）、
     `navigation/`（几何纯函数）、`pages/`（聊天交互）、
     `services/`（触感通道异常降级等）；
@@ -376,8 +389,8 @@
     失败/超时入审计（E3）**、鉴权矩阵
     （通道×级别/退避/前后台即焚/PinStore 规则）、七域命令、
     slash 解析/补全/控制台核心、事件环/长轮询/五事件集成、
-    作业轮询/跨通道隔离、播种端到端、MCP 假通道只读边界、
-    manifest↔命令手册双向一致性；
+    作业轮询/跨通道隔离、播种端到端、MCP 只读适配器
+    （工具/资源/权限/默认不挂载）、manifest↔命令手册双向一致性；
   - 另有 testDebug JVM 单测 3 条（接收器 0/2000 uid 白名单，E1）。
 - 动画用例逐帧 pump、不用 pumpAndSettle（常驻循环动画）；
   持久仓储测试用 FFI 工厂 + 临时目录。

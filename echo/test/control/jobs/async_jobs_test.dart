@@ -290,8 +290,9 @@ void main() {
       );
       expect(crossSlash.error!.code, ControlErrorCode.notFound);
 
-      // mcp 起始 guest(0) 且只读铁律下永不解锁：owner 级查询在鉴权
-      // 门即被拒（AUTH_REQUIRED），隔离之下连门都进不去。
+      // mcp 未解锁有效级别＝guest(0)：owner 级查询在鉴权门即被拒
+      //（AUTH_REQUIRED），隔离之下连门都进不去（解锁后上限 owner，
+      // 仅能查本通道作业，见 mcp_server_test）。
       final crossMcp = await h.bus.execute(
         channel: ControlChannel.mcp,
         cmd: 'sys.job.get',

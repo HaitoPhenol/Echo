@@ -50,7 +50,11 @@ List<CommandSpec> buildAuthCommands() => [
         ctx.arg<String>('pin'),
       );
       if (error != null) throw error;
-      return {'unlocked': true, 'level': ControlLevel.admin.value};
+      // 只读通道（MCP）解锁后到 owner，本地通道到 admin。
+      return {
+        'unlocked': true,
+        'level': manager.effectiveLevel(ctx.channel).value,
+      };
     },
   ),
   CommandSpec(

@@ -70,6 +70,7 @@ echo/
 │       │   ├── commands/                  # sys/auth/nav/diary/chat/console/badge 七域 35 条 + JSON 工具
 │       │   ├── events/                    # 内存环形事件流（256）+ 长轮询 + 冻结事件登记
 │       │   ├── jobs/                      # slow 命令后台作业表（环 32，跨通道隔离）
+│       │   ├── mcp/                       # MCP 只读适配器：JSON-RPC 2.0 + stdio 传输（默认关闭）
 │       │   ├── slash/                     # slash 指令台：解析/补全/与入口解耦的 ControlConsoleCore
 │       │   ├── control_event_bridge.dart  # 装配层适配器：services/navigation 事件 → EventBus（单向）
 │       │   ├── control_registry.dart      # 业务实例注册表（同路原则：命令与 UI 用同一实例）
@@ -108,7 +109,7 @@ echo/
 │   ├── pages/
 │   │   └── chat_page_test.dart            # 会话列表交互测试
 │   ├── diary/                             # 日记：sy 金标准/时钟/仓储/成稿/编辑器/导出/浏览 widget（15 个文件）
-│   └── control/                           # ECP：协议/鉴权/七域/slash/事件/作业/播种/MCP 边界/手册一致性（441 总测试中的 control 部分）
+│   └── control/                           # ECP：协议/鉴权/七域/slash/事件/作业/播种/MCP 适配器/手册一致性（614 总测试中的 control 部分）
 ├── assets/
 │   └── diary/templates/                   # 每日模板 JSON（daily-default.json 概述段 + 空正文段骨架）
 └── README.md                              # Flutter 默认工程说明
@@ -714,14 +715,15 @@ ui/（年/月/日浏览、编辑页）
   （整体替换）/`diary.custom.set`（文档根 custom-* 合并）仅对 draft 生效，
   参数标 `auditRedact`。
 
-### 3.13 ECP 控制面（P1–P4 已交付 v0.13.0；P5 笔记页控制分支开发中）
+### 3.13 ECP 控制面（P1–P4 已交付 v0.13.0；P5 笔记页控制分支开发中；R4 MCP 只读适配器已实现）
 
 - **分层**：`protocol/`（信封、错误码→退出码、`CommandSpec` 受控动词表、
   `ControlBus` 注册/解析/裁决/审计）→ `auth/`（PinStore PBKDF2、
   AuthManager 三通道级别矩阵、5 次失败退避、paused 即焚会话、AuditLog）
   → `commands/`（sys/auth/nav/diary/chat/console/badge 七域 40 条，
   其中 5 条 debugOnly 在 release 物理不注册）；另有 `events/`
-  （内存环+长轮询）、`jobs/`（后台作业表）、`slash/`（指令台核心）。
+  （内存环+长轮询）、`jobs/`（后台作业表）、`slash/`（指令台核心）、
+  `mcp/`（MCP 只读适配器：JSON-RPC 2.0 + stdio 传输）。
 - **同路原则**：命令不持有业务逻辑，全部经 `ControlRegistry` 调 UI
   同源公开 API；业务实例只在各自装配处注册（装配根 `AppServices`
   注册 `ChatStore`/`ChatRepository`/`ChatSessionController`，导航屏注册
@@ -729,20 +731,34 @@ ui/（年/月/日浏览、编辑页）
   导出服务，日记页另注册 `DiaryNavigatorController`），
   未就绪统一回 `CONFLICT`。事件方向同样单向：services/navigation
   不反向依赖 control，由装配层 `ControlEventBridge` 订阅转发。
-- **两个进程内通道**：adb（仅 debug 源集，`DebugControlReceiver` +
+- **三个通道**：adb（仅 debug 源集，`DebugControlReceiver` +
   `DebugEchoApp` 反射借引擎 + `echo/control` MethodChannel；slow
   命令 P4 起作业化：立即回 running，`sys.job.get` 轮询，绕开
-  接收器 9s 预算，Kotlin 零改动）与 slash 指令台（全构建可用，
-  进程内调用直等终态、不作业化）。release APK 清单经逐期真机验证
-  无任何调试通道组件。工作站包装 `scripts/echo-cmd` 负责冷启动
-  等待、kebab→camel、stdin 收 PIN、slow 命令自动轮询，脚本级
-  回归在 `scripts/tests/`。
+  接收器 9s 预算，Kotlin 零改动）、slash 指令台（全构建可用，
+  进程内调用直等终态、不作业化）与 MCP stdio（仅 debug 且显式
+  `--mcp` 挂载，默认关闭、release 物理不创建）。release APK 清单
+  经逐期真机验证无任何调试通道组件。工作站包装 `scripts/echo-cmd`
+  负责冷启动等待、kebab→camel、stdin 收 PIN、slow 命令自动轮询，
+  脚本级回归在 `scripts/tests/`。
+- **MCP 适配器（R4，2026-10-25）**：`mcp/mcp_server.dart` 处理
+  JSON-RPC 2.0 单行请求（initialize/notifications/initialized/ping/
+  tools.list/tools.call/resources.list/resources.read），工具从
+  `ControlBus.visibleSpecs` 的 `kind == read` 子集自动派生 JSON Schema
+  （一条命令 = 一个 tool），不写第二份命令表；resources 是
+  `echo://diary/{date}`、`echo://chat/{id}/messages`、`echo://sys/status`
+  等 URI 到只读命令的映射。通道固定 `ControlChannel.mcp`：起始
+  guest、解锁后上限 owner（只读），写命令在适配器层即拒、不进入总线。
+  工具表额外包含**唯一写例外** `auth.unlock`（否则 owner 只读正文
+  对 MCP 不可达；PIN 错误沿用 AuthManager 冷却，解锁后仍只读上限）。
+  只读暴露范围包含日记与聊天正文（owner 级，用户已确认）。传输
+  `mcp/mcp_stdio.dart` 只做 stdin 行读 → server → stdout 行写。
 - **契约冻结**：`test/control/manifest_consistency_test.dart` 双向
   校验 manifest 与 `docs/ecp/ecp-commands.md` 小节（含 debugOnly/
   destructive/confirm 结构约束），改协议先改手册。
-- **未建的未来部分**：MCP 真实传输（现仅 guest 假通道+边界测试）、
-  内置 agent 通道、终端页完整 UI（核心接缝已备）、审计 sqflite
-  落盘——见 ecp-design.md §5.2/§6/§7 与问题清单 §C。
+- **未建的未来部分**：MCP 提权/远端传输（当前仅 stdio、默认关闭；
+  宿主经 `tools/call auth.unlock` 解锁 mcp 通道）、内置 agent 通道、
+  终端页完整 UI（核心接缝已备）、审计 sqflite 落盘——见
+  ecp-design.md §5.2/§6/§7 与问题清单 §C。
 
 ---
 

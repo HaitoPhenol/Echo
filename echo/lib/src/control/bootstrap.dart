@@ -22,6 +22,8 @@ import 'control_registry.dart';
 import 'events/event_bus.dart';
 import 'events/event_types.dart';
 import 'jobs/job_store.dart';
+import 'mcp/mcp_server.dart';
+import 'mcp/mcp_stdio.dart';
 import 'protocol/command_spec.dart';
 import '../services/console_stats_service.dart';
 
@@ -33,8 +35,11 @@ import '../services/console_stats_service.dart';
 /// [registry]。
 /// release 构建不挂载任何外部通道（[AdbControlChannel] 仅 debug
 /// 挂载，debug-only 命令在 [ControlBus] 注册期物理跳过）。
+/// MCP stdio 适配器同样只在 debug 构建且显式带 `--mcp` 时挂载；
+/// release 不创建 server/transport（见 [createMcpTransport]）。
 class ControlBootstrap with WidgetsBindingObserver {
-  // 构造仅本文件 [init] 使用，故字段可直接用私有初始化形式参数。
+  // 构造仅本文件 [init] 使用，故字段可直接用私有初始化形式参数
+  // （私有命名参数对调用方仍暴露为 adb/mcp）。
   ControlBootstrap._({
     required this.registry,
     required this.bus,
@@ -44,10 +49,9 @@ class ControlBootstrap with WidgetsBindingObserver {
     required this.audit,
     required this.consoleStats,
     required this.events,
-    // 字段私有而命名参数不允许下划线开头，这里保留显式赋值。
-    AdbControlChannel? adb,
-    // ignore: prefer_initializing_formals
-  }) : _adb = adb;
+    this._adb,
+    this._mcp,
+  });
 
   /// 单例：树外的业务页（DiaryPage 等）通过它注册同源服务。
   static ControlBootstrap? instance;
@@ -66,9 +70,35 @@ class ControlBootstrap with WidgetsBindingObserver {
 
   final AdbControlChannel? _adb;
 
+  /// MCP stdio 适配器：默认 null；仅 debug + `--mcp` 显式挂载。
+  final McpStdioTransport? _mcp;
+
+  /// 当前进程是否挂载了 MCP（默认 false；release 恒 false）。
+  bool get mcpMounted => _mcp != null;
+
+  /// 挂载的 MCP server（未挂载为 null），测试/诊断用。
+  McpServer? get mcpServer => _mcp?.server;
+
+  /// MCP 挂载闸门：仅 debug 构建且显式请求时创建传输。
+  ///
+  /// 开关是 `main` 传入的 `--mcp` 启动参数；release 构建
+  /// [kDebugMode] 恒 false，故 server/transport 物理不创建。
+  /// 桌面/调试宿主有 stdin/stdout；移动端不适用，保持默认关闭。
+  static McpStdioTransport? createMcpTransport({
+    required ControlBus bus,
+    required bool requested,
+    bool debugMode = kDebugMode,
+  }) {
+    if (!debugMode || !requested) return null;
+    return McpStdioTransport(server: McpServer(bus: bus));
+  }
+
   /// 装配总线并挂载通道；必须在 [runApp] 前 await（确保首条
   /// 冷启动广播到达时 PIN 存储已可读）。
-  static Future<ControlBootstrap> init() async {
+  ///
+  /// [enableMcp] 由 `main` 按 `kDebugMode && args.contains('--mcp')`
+  /// 传入；默认 false，不创建 MCP server/transport。
+  static Future<ControlBootstrap> init({bool enableMcp = false}) async {
     final docs = await getApplicationDocumentsDirectory();
     final paths = ControlPaths(
       controlRoot: Directory('${docs.path}/echo_control'),
@@ -142,6 +172,11 @@ class ControlBootstrap with WidgetsBindingObserver {
       adb = AdbControlChannel(bus: bus)..attach();
     }
 
+    // MCP stdio：默认不创建（enableMcp 由 main 的 --mcp 决定）；
+    // release 构建 kDebugMode 恒 false，物理不挂载。
+    final mcp = createMcpTransport(bus: bus, requested: enableMcp);
+    mcp?.attach();
+
     final bootstrap = ControlBootstrap._(
       registry: registry,
       bus: bus,
@@ -152,6 +187,7 @@ class ControlBootstrap with WidgetsBindingObserver {
       consoleStats: consoleStats,
       events: events,
       adb: adb,
+      mcp: mcp,
     );
     WidgetsBinding.instance.addObserver(bootstrap);
     instance = bootstrap;
@@ -206,6 +242,7 @@ class ControlBootstrap with WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this);
     auth.detach();
     _adb?.detach();
+    await _mcp?.detach();
     consoleStats.dispose();
     // 关事件中心：在飞 sys.events 长轮询以空集结束。UI 事件适配器
     // 由 SmartNavScreen 随其服务自行拆除（生命周期归屏幕）。

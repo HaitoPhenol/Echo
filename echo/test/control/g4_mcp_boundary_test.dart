@@ -7,16 +7,19 @@ import 'control_test_harness.dart';
 
 /// G4｜MCP 只读边界负向测试（假通道，不写任何传输）。
 ///
-/// 冻结矩阵（设计 §5，2026-10-14 裁定）：mcp 通道起始且恒为 guest(0)，
-/// 只读铁律下永不解锁；任何 ≥2 级命令在**鉴权门**即 `AUTH_REQUIRED`，
-/// 连 handler 都到不了。事件 ceiling 物理过滤（bus.poll 直测）与
-/// 跨通道作业隔离（slash 取 adb 作业 → NOT_FOUND）的机制断言已分别在
+/// 冻结矩阵（设计 §5，2026-10-14 裁定；2026-10-25 R4 修订）：mcp 通道
+/// 起始 guest(0)，解锁后上限 owner(1) 只读（写级别永不颁发）；未解锁时
+/// 任何 ≥1 级命令在**鉴权门**即 `AUTH_REQUIRED`，连 handler 都到不了。
+/// 事件 ceiling 物理过滤（bus.poll 直测）与跨通道作业隔离（slash 取 adb
+/// 作业 → NOT_FOUND）的机制断言已分别在
 /// `events/event_integration_test.dart` 与 `jobs/async_jobs_test.dart`
-/// 钉死，本组只做 §G4 清单点名项的**汇总复验与补漏**（mcp→AUTH_REQUIRED、
-/// debug-only 命令 release 物理不存在的双重保险），不重复机制测试。
+/// 钉死，本组只做 §G4 清单点名项的**汇总复验与补漏**（mcp 未解锁
+/// →AUTH_REQUIRED、debug-only 命令 release 物理不存在的双重保险），
+/// 不重复机制测试；owner 解锁后的只读/写入边界由
+/// `test/control/mcp/mcp_server_test.dart` 的适配器测试覆盖。
 void main() {
   group('G4｜MCP 只读边界负向（假通道）', () {
-    test('mcp 发 ≥2 级命令一律在鉴权门 AUTH_REQUIRED；0 级读命令放行', () async {
+    test('mcp 未解锁发 ≥1 级命令一律在鉴权门 AUTH_REQUIRED；0 级读放行', () async {
       final h = await ControlHarness.create();
       addTearDown(h.dispose);
 

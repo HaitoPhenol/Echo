@@ -88,9 +88,20 @@ void main() {
       );
     });
 
-    test('mcp 永不颁发写会话：unlock 直接拒绝', () async {
-      final error = await h.auth.requestUnlock(ControlChannel.mcp, '1234');
-      expect(error?.code, ControlErrorCode.authDenied);
+    test('mcp 只颁发 owner 只读会话：可读 owner，写命令仍拒', () async {
+      expect(await h.auth.requestUnlock(ControlChannel.mcp, '1234'), isNull);
+      expect(h.auth.effectiveLevel(ControlChannel.mcp), ControlLevel.owner);
+      // 解锁后 owner 级读放行、user 级写仍在裁决门拒绝。
+      final read = await busWith().execute(
+        channel: ControlChannel.mcp,
+        cmd: 'x.get',
+      );
+      expect(read.ok, isTrue);
+      final write = await busWith().execute(
+        channel: ControlChannel.mcp,
+        cmd: 'x.goto',
+      );
+      expect(write.error?.code, ControlErrorCode.authRequired);
     });
 
     test('adb 解锁：成功升至 3 级，失败保持原级，lock 降回', () async {

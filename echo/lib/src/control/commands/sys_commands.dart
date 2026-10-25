@@ -301,8 +301,8 @@ final CommandSpec sysEvents = CommandSpec(
 
 /// `sys.job.get`（P4，全构建）：异步作业轮询，E4 根治通道。
 ///
-/// owner(1) 读命令：adb/slash 起始即 user(2) 直放；mcp 起始 guest(0)
-/// 且只读铁律下永不解锁，故在鉴权门即被拒（连隔离层都到不了）。
+/// owner(1) 读命令：adb/slash 起始即 user(2) 直放；mcp 起始 guest(0)，
+/// 解锁后会话上限 owner(1)，故只能查本通道自己的作业（跨通道仍隔离）。
 final CommandSpec jobGet = CommandSpec(
   namespace: 'sys',
   verb: 'job.get',

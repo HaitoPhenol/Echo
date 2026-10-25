@@ -104,11 +104,11 @@ class AuthManager extends ControlAuthorizer
     ControlChannel channel,
     String pin,
   ) async {
-    if (channel.maxLevel.value < ControlLevel.admin.value) {
-      // MCP 只读铁律：写级别永不向网络通道颁发。
+    if (channel.maxLevel.value < ControlLevel.owner.value) {
+      // 上限连 owner 都不到的通道不颁发任何会话（当前无此类通道）。
       return _deny(
         channel,
-        ControlException(ControlErrorCode.authDenied, '该通道只读，不能解锁到写级别'),
+        const ControlException(ControlErrorCode.authDenied, '该通道不提供读会话'),
       );
     }
 
@@ -141,7 +141,9 @@ class AuthManager extends ControlAuthorizer
     if (await pins.verifyPin(pin)) {
       _failures.remove(channel);
       _cooldownUntil.remove(channel);
-      _sessions[channel] = ControlLevel.admin;
+      // 会话只在通道上限内颁发：本地通道到 admin，MCP 到 owner
+      //（只读上限，写命令仍在裁决门被拒，永不随 debug 放开）。
+      _sessions[channel] = channel.maxLevel;
       auditLog.record(_event(channel, 'auth.unlock', true));
       notifyListeners(); // 锁态即时刷新（面板/未来读数条消费）。
       return null;

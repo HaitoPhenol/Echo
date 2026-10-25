@@ -488,11 +488,8 @@ void main() {
       // mcp 未解锁有效级别＝guest(0)，而 sys.events 本身是 owner(1)：
       // 与一切 owner 级读命令同纪律，在鉴权门即 AUTH_REQUIRED。
       //
-      // 注意（挂账待 G4 前裁定）：交接单 §H G4「mcp 调 sys.events：
-      // ceiling=owner，收得到 audit.entry/…」与现行冻结鉴权矩阵
-      //（auth_matrix_test：mcp 无会话=guest，owner 读→AUTH_REQUIRED，
-      // 且只读铁律永不解锁）相冲突——G2 按 owner(1) 规格与既有纪律
-      // 实现，mcp 负向行为在此钉死，G4 以维护者裁定为准。
+      // 此处钉死**未解锁**的鉴权门行为；R4 起 mcp 可解锁到 owner(1)
+      // 只读，解锁后的 owner 级读取由 test/control/mcp 覆盖。
       final viaMcp = await h.exec(
         'sys.events',
         channel: ControlChannel.mcp,
