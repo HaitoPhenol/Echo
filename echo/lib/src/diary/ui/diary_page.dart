@@ -1,20 +1,16 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
-import 'package:path_provider/path_provider.dart';
 
 import '../data/diary_clock.dart';
 import '../data/diary_data_provider.dart';
 import '../data/diary_repository.dart';
-import '../data/persistent_diary_repository.dart';
-import '../export/diary_export_service.dart';
-import '../template/daily_default_template.dart';
-import '../template/diary_composer.dart';
-import '../../control/bootstrap.dart';
-import '../../services/nav_badge_service.dart';
+import '../diary_module.dart';
 import '../diary_navigator.dart';
+import '../export/diary_export_service.dart';
+import '../template/diary_composer.dart';
+import '../../services/nav_badge_service.dart';
 import 'browser/day_editor_page.dart';
 import 'browser/day_list_page.dart';
 import 'browser/month_list_page.dart';
@@ -27,7 +23,7 @@ import 'diary_route.dart';
 /// 系统返回键由 [PopScope] 收口到内层栈；栈底时不拦截，交给系统
 /// （与外层横向翻页互不干扰——内层路由无边缘手势，见 DiarySlideRoute）。
 ///
-/// 仓储/时钟/数据源/composer 均在本页 State 创建并随页面常驻：
+/// 仓储/时钟/数据源/composer 由 [DiaryModule.open] 装配，本页只消费：
 /// M5 起生产仓储异步开库（sqflite meta + 应用目录 .sy），随后加载
 /// 默认模板，装配完成后 fire-and-forget 执行「今天自动成稿 +
 /// 早于今天的空草稿清理」（§5.2 硬裁定 2/4）。
@@ -152,71 +148,43 @@ class DiaryPageState extends State<DiaryPage> implements DiaryNavigatorControlle
 
   Future<void> _bootstrap() async {
     try {
-      // 测试注入直接用；生产打开应用文档目录下的持久仓储
-      //（debug 首装种子，release 空仓）。
-      final repository =
-          widget.repository ??
-          await PersistentDiaryRepository.open(
-            root: await _storageRoot(),
-            clock: _clock,
-            seedDebugData: kDebugMode,
-          );
-      final template = await DailyDefaultTemplate.loadAsset();
-      final composer = DiaryComposer(
-        template: template,
-        provider: _dataProvider,
-        idGenerator: repository.idGenerator,
-        // 显式走日记日时钟：ECP sys.clock.set 拨钟后，成稿时间戳与
-        // 「今天」判定随之同步（同一实例，同路原则）。
-        now: _clock.now,
+      // 装配全部下沉到 DiaryModule：应用文档目录、持久仓储、模板、
+      // 成稿器与导出服务都不再由 UI 层构造。
+      final module = await DiaryModule.open(
+        clock: _clock,
+        dataProvider: _dataProvider,
+        repository: widget.repository,
+        exportService: widget.exportService,
+        // debug 首装种子，release 空仓。
+        seedDebugData: kDebugMode,
       );
-      final exportService =
-          widget.exportService ?? DiaryExportService(repository: repository);
-
-      // ECP 接线：把与 UI 完全同源的实例注册给控制面（widget 测试
-      // 未走 ControlBootstrap.init 时 instance 为 null，静默跳过）。
-      // 同路原则：命令调的就是本页正在用的同一个时钟/仓储/composer。
-      final control = ControlBootstrap.instance;
-      if (control != null) {
-        control.paths.diaryRoot = widget.repository == null
-            ? await _storageRoot()
-            : null;
-        control.registry
-          ..set(_clock)
-          ..set(repository)
-          ..set(composer)
-          ..set(exportService)
-          // ECP diary.goto 同路入口：命令经注册表拿本 State，驱动内层栈。
-          ..set<DiaryNavigatorController>(this);
-      }
+      // ECP diary.goto 同路入口：命令经注册表拿本 State，驱动内层栈。
+      module.registerNavigator(this);
 
       if (!mounted) return;
       setState(() {
-        _repository = repository;
-        _composer = composer;
-        _exportService = exportService;
+        _repository = module.repository;
+        _composer = module.composer;
+        _exportService = module.exportService;
       });
       // 数据驱动红锚点：仓储任何变更（成稿 / 导出迁移）都重算一次。
-      repository.addListener(_syncExportReminder);
+      module.repository.addListener(_syncExportReminder);
       unawaited(_syncExportReminder());
       // 导航屏在 bootstrap 完成前请求过提醒（如冷启动即切到笔记页）：
       // 此时仓储才就绪，补弹一次。
       if (_reminderRequested) unawaited(maybeShowExportReminder());
       // 进模块即自动成稿今天；并发点进由 ensureDay 的 in-flight 去重兜底。
-      unawaited(composer.ensureDay(_clock.today(), repository));
+      unawaited(module.composer.ensureDay(_clock.today(), module.repository));
       // 顺手清掉此前所有「什么都没写」的跨天空稿；今天的空稿保留。
       unawaited(
-        repository.pruneEmptyBefore(_clock.today(), composer.isUserEmpty),
+        module.repository.pruneEmptyBefore(
+          _clock.today(),
+          module.composer.isUserEmpty,
+        ),
       );
     } catch (error) {
       if (mounted) setState(() => _loadError = error);
     }
-  }
-
-  /// 仓储根目录：`<应用文档目录>/echo_diary`（open 内负责创建）。
-  Future<Directory> _storageRoot() async {
-    final docs = await getApplicationDocumentsDirectory();
-    return Directory('${docs.path}/echo_diary');
   }
 
   /// [DiaryPage.preEnterToday] 的初始路由栈：年列表在下、今日编辑页在上。

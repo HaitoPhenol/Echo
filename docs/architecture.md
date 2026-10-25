@@ -43,6 +43,7 @@ echo/
 │       │   ├── template_page.dart         # 模板页（大标题 + SEC kicker，可挂 footer）
 │       │   └── debug_badge_controls.dart  # 锚点通知/异常的测试按钮（脚手架）
 │       ├── diary/                         # 日记模块（笔记页；模块文档 docs/diary/）
+│       │   ├── diary_module.dart          # 模块装配：存储根/仓储/模板/成稿器/导出服务 + ECP 注册（UI 只消费）
 │       │   ├── sy/                        # 思源格式层：模型/确定性 ID/序列化器/.sy.zip
 │       │   ├── data/                      # Repository 抽象 + 内存/sqflite 实现、04:00 时钟、数据 Provider
 │       │   ├── template/                  # 每日模板：JSON 解析、成稿器（幂等/并发去重）
@@ -688,7 +689,7 @@ ui/（年/月/日浏览、编辑页）
   （打开仓储、自动成稿、prune）与编辑器防抖 flush 都挂在它上面；
   未来若做页面窗口化懒加载（问题清单 Q3），必须先迁移这些假设。
 - **ECP 接缝**：[ecp/ecp-design.md](ecp/ecp-design.md) 控制面
-  经 `ControlRegistry` 直接拿到本页 bootstrap 创建的同一组实例
+  经 `ControlRegistry` 直接拿到 [DiaryModule](diary_module.dart) 装配的同一组实例
   （clock/repository/composer/exportService），diary.list/get/ensure/
   prune/seed/reset/export 与 UI 完全同路，不存在第二套测试实现；
   `sys.clock.set` 只覆盖 `DiaryClock` 注入值（不碰系统时间）。
@@ -711,8 +712,9 @@ ui/（年/月/日浏览、编辑页）
   其中 5 条 debugOnly 在 release 物理不注册）；另有 `events/`
   （内存环+长轮询）、`jobs/`（后台作业表）、`slash/`（指令台核心）。
 - **同路原则**：命令不持有业务逻辑，全部经 `ControlRegistry` 调 UI
-  同源公开 API；业务实例只在各自 bootstrap 注册（导航屏注册
-  `NavPhysicsController`，日记页注册时钟/仓储/composer/导出服务），
+  同源公开 API；业务实例只在各自装配处注册（导航屏注册
+  `NavPhysicsController`，日记模块 `DiaryModule` 注册时钟/仓储/composer/
+  导出服务，日记页另注册 `DiaryNavigatorController`），
   未就绪统一回 `CONFLICT`。事件方向同样单向：services/navigation
   不反向依赖 control，由装配层 `ControlEventBridge` 订阅转发。
 - **两个进程内通道**：adb（仅 debug 源集，`DebugControlReceiver` +

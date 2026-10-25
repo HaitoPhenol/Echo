@@ -1,0 +1,116 @@
+import 'dart:io';
+
+import 'package:path_provider/path_provider.dart';
+
+import '../control/bootstrap.dart';
+import 'data/diary_clock.dart';
+import 'data/diary_data_provider.dart';
+import 'data/diary_repository.dart';
+import 'data/persistent_diary_repository.dart';
+import 'diary_navigator.dart';
+import 'export/diary_export_service.dart';
+import 'template/daily_default_template.dart';
+import 'template/diary_composer.dart';
+
+/// 日记模块装配体：把「存储根目录 → 仓储 → 模板 → 成稿器 → 导出服务」
+/// 的构造与 ECP 注册从 UI 层移出。
+///
+/// 界面只消费本模块产出的实例（经 [DiaryRepositoryScope] 等注入），
+/// 不再直接获取应用文档目录，也不直接打开 sqflite——「UI 不碰存储」
+/// 的底线由本类兜住。
+///
+/// 测试注入缝保持不变：时钟/数据源/仓储/导出服务均可由调用方替换，
+/// 未注入的部件在这里按生产口径装配。
+class DiaryModule {
+  DiaryModule._({
+    required this.clock,
+    required this.dataProvider,
+    required this.repository,
+    required this.composer,
+    required this.exportService,
+    this.storageRoot,
+  });
+
+  final DiaryClock clock;
+  final DiaryDataProvider dataProvider;
+  final DiaryRepository repository;
+  final DiaryComposer composer;
+  final DiaryExportService exportService;
+
+  /// 生产仓储的根目录 `<应用文档目录>/echo_diary`；
+  /// 注入仓储（测试/预览）时为 null，ECP 的 `sys.info` 不上报路径。
+  final Directory? storageRoot;
+
+  /// 装配并打开日记模块。
+  ///
+  /// [seedDebugData] 仅在 debug 首装时灌入演示数据（release 空仓）。
+  static Future<DiaryModule> open({
+    DiaryClock? clock,
+    DiaryDataProvider? dataProvider,
+    DiaryRepository? repository,
+    DiaryExportService? exportService,
+    bool seedDebugData = false,
+  }) async {
+    final resolvedClock = clock ?? DiaryClock();
+    final resolvedProvider = dataProvider ?? FakeDiaryDataProvider();
+    final root = repository == null ? await _resolveStorageRoot() : null;
+    final resolvedRepository =
+        repository ??
+        await PersistentDiaryRepository.open(
+          root: root!,
+          clock: resolvedClock,
+          seedDebugData: seedDebugData,
+        );
+    final template = await DailyDefaultTemplate.loadAsset();
+    final composer = DiaryComposer(
+      template: template,
+      provider: resolvedProvider,
+      idGenerator: resolvedRepository.idGenerator,
+      // 显式走日记日时钟：ECP sys.clock.set 拨钟后，成稿时间戳与
+      // 「今天」判定随之同步（同一实例，同路原则）。
+      now: resolvedClock.now,
+    );
+    final module = DiaryModule._(
+      clock: resolvedClock,
+      dataProvider: resolvedProvider,
+      repository: resolvedRepository,
+      composer: composer,
+      exportService:
+          exportService ?? DiaryExportService(repository: resolvedRepository),
+      storageRoot: root,
+    );
+    module._registerWithControl();
+    return module;
+  }
+
+  /// ECP 接线：把与 UI 完全同源的实例注册给控制面
+  /// （widget 测试未走 ControlBootstrap.init 时 instance 为 null，静默跳过）。
+  ///
+  /// 同路原则：命令调的就是界面正在用的同一个时钟/仓储/成稿器/导出服务。
+  void _registerWithControl() {
+    final control = ControlBootstrap.instance;
+    if (control == null) return;
+    control.paths.diaryRoot = storageRoot;
+    control.registry
+      ..set(clock)
+      ..set(repository)
+      ..set(composer)
+      ..set(exportService);
+  }
+
+  /// 注册内层路由控制器（`diary.goto` 入口）。
+  ///
+  /// 由日记页在拿到导航状态后调用——控制器就是页面 State 本身，
+  /// 不属于模块可自建的部分。
+  void registerNavigator(DiaryNavigatorController controller) {
+    ControlBootstrap.instance?.registry.set<DiaryNavigatorController>(
+      controller,
+    );
+  }
+
+  /// 仓储根目录：`<应用文档目录>/echo_diary`（open 内负责创建）。
+  static Future<Directory> _resolveStorageRoot() async {
+    final docs = await getApplicationDocumentsDirectory();
+    return Directory('${docs.path}/echo_diary');
+  }
+}

@@ -335,8 +335,8 @@
   已替换原页序 int 索引，为持久化铺路；未知 id 读返 normal、写忽略）。
 - `SearchService`：多 Provider 聚合搜索；当前仅"页面搜索"一个源，
   同步接口；历史为内存实现。
-- 日记仓储单例在 `DiaryPage` bootstrap 打开（debug 自动成稿+种子），
-  测试/装配可注入。
+- 日记仓储由 `DiaryModule.open` 装配并打开（debug 自动成稿+种子），
+  页面只消费；测试/装配可注入。
 
 ## 平台与适配
 
