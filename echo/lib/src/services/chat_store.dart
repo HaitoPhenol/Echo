@@ -1,331 +1,93 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 
-/// 一条 incoming 消息到达的广播载荷（P4 事件源）。
+import 'chat_repository.dart';
+
+export 'chat_repository.dart';
+
+/// 聊天会话列表的视图服务。
 ///
-/// 这是 services 层自己的信号类型：ChatStore **不认识 control 事件
-/// 总线**（分层接缝：services 禁止反向 import control），由 control
-/// 装配层适配器订阅 [ChatStore.incoming] 并翻译成 `chat.incoming`
-/// 事件。字段均为可直接线传的 JSON 兼容标量。
-@immutable
-class ChatIncomingPayload {
-  const ChatIncomingPayload({
-    required this.id,
-    required this.nickname,
-    required this.preview,
-    required this.text,
-  });
-
-  /// 新会话稳定 id（`incoming-<n>`）。
-  final String id;
-
-  /// 会话昵称（`新消息 <n>`）。
-  final String nickname;
-
-  /// 会话列表上的预览文案。
-  final String preview;
-
-  /// 首条 incoming 消息正文（与 chat.get 同源，owner 可读）。
-  final String text;
-}
-
-/// 一条会话（脚手架阶段的不可变值对象）。
+/// 页面只依赖本类读写会话（新增 / 删除 / 已读 / 未读 / 消息），
+/// 不关心数据落地方式——实际数据由 [ChatRepository] 承担，
+/// 本类只负责「变更后通知依赖组件重建」与向子树提供实例。
 ///
-/// 当前只有昵称、消息预览与未读标记；接入真实数据源后在此扩展
-/// （头像、时间、会话 id 等）。状态变更走 [copyWith]，保证
-/// 列表元素可做身份/相等性比较。
-@immutable
-class ChatConversation {
-  const ChatConversation({
-    required this.id,
-    required this.nickname,
-    required this.preview,
-    required this.updatedAt,
-    this.unread = false,
-  });
+/// 继承 [ChangeNotifier]，通过 [ChatStoreScope] 向子树提供实例；
+/// 默认装配 [InMemoryChatRepository]（重启清空），接入持久化仓储时
+/// 从构造参数注入即可，UI 零改动。
+class ChatStore extends ChangeNotifier implements ChatRepository {
+  ChatStore({DateTime Function()? now, ChatRepository? repository})
+    : _owned = repository == null,
+      _repository = repository ?? InMemoryChatRepository(now: now);
 
-  /// 会话稳定标识（列表 key、定向更新均以此为准，不用下标）。
-  final String id;
+  final ChatRepository _repository;
 
-  /// 会话昵称。
-  final String nickname;
+  /// 仓储是否由本 Store 创建（注入的外部实例不由本类释放）。
+  final bool _owned;
 
-  /// 最新一条消息的预览文案。
-  final String preview;
+  ChatRepository get _repo => _repository;
 
-  /// 最近一次消息时间（命令层 chat.list 的 updatedAt，倒序判定备用）。
-  final DateTime updatedAt;
+  @override
+  List<ChatConversation> get conversations => _repo.conversations;
 
-  /// 是否有未读消息（驱动行内呼吸绿点与导航锚点通知态）。
-  final bool unread;
+  @override
+  bool get hasUnread => _repo.hasUnread;
 
-  ChatConversation copyWith({
-    bool? unread,
-    String? preview,
-    DateTime? updatedAt,
-  }) => ChatConversation(
-    id: id,
-    nickname: nickname,
-    preview: preview ?? this.preview,
-    updatedAt: updatedAt ?? this.updatedAt,
-    unread: unread ?? this.unread,
-  );
-}
+  @override
+  Stream<ChatIncomingPayload> get incoming => _repo.incoming;
 
-/// 消息方向：`in` = 对方发来，`out` = 本机经 chat.send / UI 发出。
-///
-/// [wire] 是协议线格式（手册 §6），名称冻结后只追加不改。
-enum ChatDirection {
-  incoming('in'),
-  outgoing('out');
+  @override
+  ChatConversation? conversationOf(String id) => _repo.conversationOf(id);
 
-  const ChatDirection(this.wire);
-  final String wire;
-}
-
-/// 一条聊天消息（不可变值对象）。
-@immutable
-class ChatMessage {
-  const ChatMessage({
-    required this.id,
-    required this.conversationId,
-    required this.text,
-    required this.direction,
-    required this.createdAt,
-  });
-
-  /// 消息稳定标识（store 内全局序列器生成，同会话内按存储位置分页，
-  /// 不假设 id 字典序可比）。
-  final String id;
-
-  /// 所属会话 id。
-  final String conversationId;
-
-  /// 消息正文（send 时已 trim；永不为空串）。
-  final String text;
-
-  /// 方向（in/out）。
-  final ChatDirection direction;
-
-  /// 创建时间（墙钟；由 store 统一注入的时钟产生）。
-  final DateTime createdAt;
-}
-
-/// 一次消息分页读取的结果（新 → 旧）。
-class ChatMessagePage {
-  const ChatMessagePage({required this.items, this.nextCursor});
-
-  /// 本页消息（最新在前）。
-  final List<ChatMessage> items;
-
-  /// 下一页游标（本页最末一条消息 id）；无更多时为 null。
-  final String? nextCursor;
-
-  /// 是否还有更早的消息。
-  bool get hasMore => nextCursor != null;
-}
-
-/// 聊天会话列表的数据服务。
-///
-/// 页面层只依赖本类读写会话（新增 / 删除 / 已读 / 未读 / 消息），
-/// 不关心导航锚点如何响应——锚点联动由装配层监听本服务完成。
-/// 继承 [ChangeNotifier]，通过 [ChatStoreScope] 向子树提供实例，
-/// 数据变化时依赖组件自动重建。
-///
-/// 当前为内存实现：初始列表为空（页面展示「暂无消息」空态），
-/// 重启清空；接入消息模块后替换为真实实现即可。
-class ChatStore extends ChangeNotifier {
-  ChatStore({DateTime Function()? now}) : _now = now ?? DateTime.now;
-
-  /// 墙钟来源（生产 [DateTime.now]；命令/单测注入固定时钟）。
-  /// 注意：聊天时间戳与日记日界无关，不经 DiaryClock。
-  final DateTime Function() _now;
-
-  final List<ChatConversation> _items = <ChatConversation>[];
-
-  /// 每会话消息正文，按时间**正序**保存（读取时倒序分页）。
-  final Map<String, List<ChatMessage>> _messages = {};
-
-  /// 自增序号，用于给新进来的会话生成稳定 id。
-  int _incomingSeq = 0;
-
-  /// incoming 消息广播（P4 装配适配器的事件源）。broadcast 不缓存：
-  /// 订阅由 UI/装配层在创建 store 后立即建立，错过订阅的历史消息
-  /// 仍可用 chat.list/messagesOf 回看。
-  final StreamController<ChatIncomingPayload> _incoming =
-      StreamController<ChatIncomingPayload>.broadcast();
-
-  /// 新 incoming 消息到达流（载荷见 [ChatIncomingPayload]）。
-  Stream<ChatIncomingPayload> get incoming => _incoming.stream;
-
-  /// 消息全局自增序号（会话消息与外发消息共用同一序列器，
-  /// 杜绝两个命名空间撞 id）。
-  int _messageSeq = 0;
-
-  /// 当前会话列表（新消息在最前），返回不可变视图防外部绕过服务修改。
-  List<ChatConversation> get conversations =>
-      List<ChatConversation>.unmodifiable(_items);
-
-  /// 是否存在任意未读会话。
-  bool get hasUnread => _items.any((c) => c.unread);
-
-  /// 按 id 取会话；不存在返回 null（命令层据此抛 NOT_FOUND）。
-  ChatConversation? conversationOf(String id) {
-    for (final c in _items) {
-      if (c.id == id) return c;
-    }
-    return null;
-  }
-
-  /// 收到一条新消息：在列表最前插入一条未读会话，同时落地首条
-  /// incoming 消息（chat.get 有正文可读，不只是会话壳），并向
-  /// [incoming] 广播载荷（P4 事件源；无监听者时无副作用）。
-  ///
-  /// [text] 为可选首条正文（P4 chat.seed 同源入口）：null 或空白
-  /// 时用默认文案，UI 按钮零参调用行为不变；给文本时会话预览
-  /// 同步为该文本（与 [send] 更新预览的行为一致）。
+  @override
   void addIncoming({String? text}) {
-    final seq = ++_incomingSeq;
-    final time = _now();
-    final id = 'incoming-$seq';
-    final nickname = '新消息 $seq';
-    final body = (text == null || text.trim().isEmpty)
-        ? '你有一条新消息'
-        : text.trim();
-    _items.insert(
-      0,
-      ChatConversation(
-        id: id,
-        nickname: nickname,
-        preview: body,
-        updatedAt: time,
-        unread: true,
-      ),
-    );
-    _messages[id] = [
-      ChatMessage(
-        id: 'msg-${++_messageSeq}',
-        conversationId: id,
-        text: body,
-        direction: ChatDirection.incoming,
-        createdAt: time,
-      ),
-    ];
-    _incoming.add(
-      ChatIncomingPayload(
-        id: id,
-        nickname: nickname,
-        preview: body,
-        text: body,
-      ),
-    );
-    notifyListeners();
-  }
-
-  /// 删除指定会话（消息正文一并清除）。
-  void remove(String id) {
-    final before = _items.length;
-    _items.removeWhere((c) => c.id == id);
-    _messages.remove(id);
-    if (_items.length != before) notifyListeners();
-  }
-
-  /// 标记指定会话已读（清除行内绿点）。
-  void markRead(String id) => _setUnread(id, false);
-
-  /// 标记指定会话为未读（左滑操作，恢复行内绿点）。
-  void markUnread(String id) => _setUnread(id, true);
-
-  /// 向指定会话外发一条消息（chat.send 与未来输入框同源）。
-  ///
-  /// - 空白文本抛 [ArgumentError]（总线映射 USAGE）；
-  /// - 未知会话抛 [StateError]（命令层先经 [conversationOf] 判空
-  ///   并返回 NOT_FOUND，防御性兜底）；
-  /// - 成功后消息入列、会话 preview/updatedAt 随消息更新。
-  ChatMessage send(String conversationId, String rawText) {
-    final text = rawText.trim();
-    if (text.isEmpty) {
-      throw ArgumentError.value(rawText, 'text', '消息文本不能为空');
-    }
-    final index = _items.indexWhere((c) => c.id == conversationId);
-    if (index < 0) {
-      throw StateError('会话不存在：$conversationId');
-    }
-    final message = ChatMessage(
-      id: 'msg-${++_messageSeq}',
-      conversationId: conversationId,
-      text: text,
-      direction: ChatDirection.outgoing,
-      createdAt: _now(),
-    );
-    _messages.putIfAbsent(conversationId, () => <ChatMessage>[]).add(message);
-    _items[index] = _items[index].copyWith(
-      preview: text,
-      updatedAt: message.createdAt,
-    );
-    notifyListeners();
-    return message;
-  }
-
-  /// 读取会话消息页（新 → 旧，不透明 id 游标）。
-  ///
-  /// [cursor] 为上一页 [ChatMessagePage.nextCursor]（即该页最末一条
-  /// 消息 id）；游标在本会话找不到时抛 [ArgumentError]（USAGE）。
-  /// 分页按消息在正序列表中的位置比较，不依赖 id 可排序性。
-  ChatMessagePage messagesOf(
-    String conversationId, {
-    int limit = 20,
-    String? cursor,
-  }) {
-    if (limit < 1 || limit > 100) {
-      throw ArgumentError.value(limit, 'limit', '必须在 1..100 之间');
-    }
-    final stored = _messages[conversationId];
-    if (stored == null) {
-      throw StateError('会话不存在：$conversationId');
-    }
-    // 倒序视图（最新在前），不拷贝实体。
-    final rows = stored.reversed.toList(growable: false);
-
-    var start = 0;
-    if (cursor != null) {
-      final anchor = rows.indexWhere((m) => m.id == cursor);
-      if (anchor < 0) {
-        throw ArgumentError.value(cursor, 'cursor', '游标已失效或不属于该会话');
-      }
-      start = anchor + 1;
-    }
-    final remaining = rows.length - start;
-    if (remaining <= 0) {
-      return const ChatMessagePage(items: []);
-    }
-    final end = start + limit;
-    final page = rows.sublist(start, end > rows.length ? rows.length : end);
-    final hasMore = end < rows.length;
-    return ChatMessagePage(
-      items: page,
-      nextCursor: hasMore ? page.last.id : null,
-    );
-  }
-
-  void _setUnread(String id, bool unread) {
-    final index = _items.indexWhere((c) => c.id == id);
-    if (index < 0 || _items[index].unread == unread) return;
-    _items[index] = _items[index].copyWith(unread: unread);
+    _repo.addIncoming(text: text);
     notifyListeners();
   }
 
   @override
+  bool remove(String id) {
+    final changed = _repo.remove(id);
+    if (changed) notifyListeners();
+    return changed;
+  }
+
+  @override
+  bool markRead(String id) {
+    final changed = _repo.markRead(id);
+    if (changed) notifyListeners();
+    return changed;
+  }
+
+  @override
+  bool markUnread(String id) {
+    final changed = _repo.markUnread(id);
+    if (changed) notifyListeners();
+    return changed;
+  }
+
+  @override
+  ChatMessage send(String conversationId, String rawText) {
+    final message = _repo.send(conversationId, rawText);
+    notifyListeners();
+    return message;
+  }
+
+  @override
+  ChatMessagePage messagesOf(
+    String conversationId, {
+    int limit = 20,
+    String? cursor,
+  }) => _repo.messagesOf(conversationId, limit: limit, cursor: cursor);
+
+  @override
   void dispose() {
-    _incoming.close();
+    if (_owned) _repo.dispose();
     super.dispose();
   }
 }
 
 /// 向子树提供 [ChatStore]。
 ///
-/// 与 NavBadgeScope 同样基于 [InheritedNotifier]：服务 notify 时
+/// 与 NavBadgeScope 同样基于 [InheritedNotifier]：服务 notify 时，
 /// 依赖过本 scope 的组件自动重建。
 class ChatStoreScope extends InheritedNotifier<ChatStore> {
   const ChatStoreScope({

@@ -327,8 +327,10 @@
 
 ## 状态与服务
 
-- `ChatStore`（services/，ChangeNotifier + Scope）：内存会话列表，
-  新消息/删除/已读/未读，`hasUnread` 聚合；重启清空。聊天锚点数据
+- `ChatRepository`（services/chat_repository.dart）：聊天数据抽象，当前内存实现
+  `InMemoryChatRepository`（重启清空）；命令层按抽象解析，换持久化时零改动。
+- `ChatStore`（services/，ChangeNotifier + Scope）：委托仓储并负责变更通知，
+  新消息/删除/已读/未读、`hasUnread` 聚合；重启清空。聊天锚点数据
   驱动（全部会话已读才恢复），其余页停留 700ms 已读。
 - `InMemoryNavBadgeService`：锚点三态（正常/通知/异常），**按目的地
   稳定 id（`NavDestination.id`）索引**（2026-10-16 结构债务 A 项 G5

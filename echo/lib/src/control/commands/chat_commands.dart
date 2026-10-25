@@ -1,5 +1,5 @@
+import '../../services/chat_repository.dart';
 import '../../services/chat_session_controller.dart';
-import '../../services/chat_store.dart';
 import '../protocol/command_spec.dart';
 import '../protocol/control_error.dart';
 import 'control_json.dart';
@@ -9,8 +9,12 @@ import 'control_json.dart';
 ///
 /// 同路原则：`chat.open` 与 UI 点按行都只调
 /// [ChatSessionController.open]；`chat.mark-read` 直接调
-/// [ChatStore.markRead]；`chat.send` 与未来输入框共用 [ChatStore.send]；
-/// `chat.seed` 与 UI「模拟：聊天新消息」共用 [ChatStore.addIncoming]。
+/// [ChatRepository.markRead]；`chat.send` 与未来输入框共用
+/// [ChatRepository.send]；`chat.seed` 与 UI「模拟：聊天新消息」共用
+/// [ChatRepository.addIncoming]。
+///
+/// 命令层只依赖 [ChatRepository] 抽象：生产注册的是 ChatStore
+/// （其内部委托内存仓储），替换为持久化仓储时命令零改动。
 List<CommandSpec> buildChatCommands() => [
   chatList,
   chatGet,
@@ -28,7 +32,7 @@ final CommandSpec chatList = CommandSpec(
   kind: CommandKind.read,
   level: ControlLevel.owner,
   handler: (ctx) async {
-    final store = ctx.requireService<ChatStore>('聊天服务');
+    final store = ctx.requireService<ChatRepository>('聊天服务');
     return {
       // 信封 result 必须是对象（设计 §8），故与 diary.list 同构
       // 用 items 包裹；顺序即 store 的新→旧。
@@ -55,7 +59,7 @@ final CommandSpec chatGet = CommandSpec(
     ParamSpec('cursor', type: ArgType.string, summary: '上一页返回的消息 id 游标'),
   ],
   handler: (ctx) async {
-    final store = ctx.requireService<ChatStore>('聊天服务');
+    final store = ctx.requireService<ChatRepository>('聊天服务');
     final id = ctx.arg<String>('id');
     final conversation = store.conversationOf(id);
     if (conversation == null) {
@@ -87,7 +91,7 @@ final CommandSpec chatOpen = CommandSpec(
     ParamSpec('id', type: ArgType.string, required: true, summary: '会话 id'),
   ],
   handler: (ctx) async {
-    final store = ctx.requireService<ChatStore>('聊天服务');
+    final store = ctx.requireService<ChatRepository>('聊天服务');
     final controller = ctx.requireService<ChatSessionController>('会话控制器');
     final id = ctx.arg<String>('id');
     if (store.conversationOf(id) == null) {
@@ -128,7 +132,7 @@ final CommandSpec chatSend = CommandSpec(
     ),
   ],
   handler: (ctx) async {
-    final store = ctx.requireService<ChatStore>('聊天服务');
+    final store = ctx.requireService<ChatRepository>('聊天服务');
     final id = ctx.arg<String>('id');
     if (store.conversationOf(id) == null) {
       throw ControlException(ControlErrorCode.notFound, '没有这个会话：$id');
@@ -150,7 +154,7 @@ final CommandSpec chatMarkRead = CommandSpec(
     ParamSpec('id', type: ArgType.string, required: true, summary: '会话 id'),
   ],
   handler: (ctx) async {
-    final store = ctx.requireService<ChatStore>('聊天服务');
+    final store = ctx.requireService<ChatRepository>('聊天服务');
     final id = ctx.arg<String>('id');
     if (store.conversationOf(id) == null) {
       throw ControlException(ControlErrorCode.notFound, '没有这个会话：$id');
@@ -192,7 +196,7 @@ final CommandSpec chatSeed = CommandSpec(
     ),
   ],
   handler: (ctx) async {
-    final store = ctx.requireService<ChatStore>('聊天服务');
+    final store = ctx.requireService<ChatRepository>('聊天服务');
     final count = ctx.arg<int>('count');
     if (count < 1 || count > 20) {
       throw const ControlException(

@@ -316,6 +316,8 @@ class _SmartNavScreenState extends State<SmartNavScreen>
       control.registry
         ..set(_nav)
         ..set(_chatStore)
+        // 命令层按抽象 ChatRepository 解析，与 UI 同源同一个 store。
+        ..set<ChatRepository>(_chatStore)
         ..set(_chatSession)
         ..set<NavBadgeService>(_badges);
       // slash 指令态与命令执行同源总线/鉴权；写回输入框与收起面板
