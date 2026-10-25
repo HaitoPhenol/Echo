@@ -126,12 +126,23 @@
 
 ### R5 跨域事件化（P2）
 
+状态（2026-10-25）：已实现、独立审查通过，合入 main。
+
 **问题**：事件总线目前只做「UI → 事件」单向翻译，域间仍是直接调用，未达成文档的 EDA 解耦。
 
 **做法**
 - 定义领域事件契约（`diary.committed`、`chat.incoming`、`nav.changed` 已有先例）。
 - 至少落地一条真实跨域订阅（例如日记提交后由订阅者刷新统计/徽标），证明「发布者不认识订阅者」。
 - 保留现有 `UiEventBridge` 方向约束：services/navigation 不得反向 import control。
+
+**已落地口径（2026-10-25）**
+- 新增中立层 `common/domain_event_bus.dart`（不依赖任何业务层），
+  事件仅 `DiaryChangedEvent`。
+- 发布者：`DiaryModule` 监听仓储变更后广播事件，不持有订阅者引用。
+- 订阅者：`diary/ui/diary_reminder_badge_subscriber.dart` 订阅事件、
+  回查仓储并刷新导航锚点红点（导出提醒）；页面销毁时断开，
+  断开后发布方行为不变。原日记页内联的仓储监听已移除。
+- `common/` 中立性新增架构接缝测试（递归源码断言）。
 
 **验收**
 - 新增订阅链路单测；断开订阅者时发布者行为不变；无循环依赖。

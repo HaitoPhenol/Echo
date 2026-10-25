@@ -18,6 +18,7 @@ import 'browser/month_list_page.dart';
 import 'browser/year_list_page.dart';
 import 'diary_composer_scope.dart';
 import 'diary_export_scope.dart';
+import 'diary_reminder_badge_subscriber.dart';
 import 'diary_route.dart';
 
 /// 日记模块根页：内嵌一个 Navigator 承载 年→月→日→编辑器 四级栈，
@@ -110,6 +111,9 @@ class DiaryPageState extends State<DiaryPage>
   /// 导航锚点服务（页面在 `NavBadgeScope` 子树内；脱离时为 null）。
   NavBadgeService? _badges;
 
+  /// R5：日记领域事件的跨域订阅者（导出提醒红锚点）。
+  DiaryReminderBadgeSubscriber? _reminderSubscriber;
+
   /// 本进程是否已被导航屏请求过弹导出提醒（每次冷启动仅一次）。
   bool _reminderRequested = false;
 
@@ -154,13 +158,18 @@ class DiaryPageState extends State<DiaryPage>
     if (!identical(badges, _badges)) {
       _badges = badges;
       // 捕获（或更换）锚点服务后立即按当前数据同步一次红锚点。
-      _syncExportReminder();
+      final subscriber = _reminderSubscriber;
+      if (subscriber != null) {
+        subscriber.badges = badges;
+        unawaited(subscriber.sync());
+      }
     }
   }
 
   @override
   void dispose() {
-    _repository?.removeListener(_syncExportReminder);
+    _reminderSubscriber?.dispose();
+    _reminderSubscriber = null;
     // 自装配的模块归本页所有；装配根注入的模块由 AppServices 释放。
     final module = _module;
     if (_ownsModule && module != null) {
@@ -203,9 +212,14 @@ class DiaryPageState extends State<DiaryPage>
         _composer = module.composer;
         _exportService = module.exportService;
       });
-      // 数据驱动红锚点：仓储任何变更（成稿 / 导出迁移）都重算一次。
-      module.repository.addListener(_syncExportReminder);
-      unawaited(_syncExportReminder());
+      // 数据驱动红锚点：订阅日记领域事件（成稿 / 导出迁移），
+      // 发布者是模块，本页只是装配处，双方互不认识。
+      _reminderSubscriber = DiaryReminderBadgeSubscriber(
+        events: module.domainEvents,
+        repository: module.repository,
+        destinationId: widget.badgeDestinationId,
+        badges: _badges,
+      )..attach();
       // 导航屏在 bootstrap 完成前请求过提醒（如冷启动即切到笔记页）：
       // 此时仓储才就绪，补弹一次。
       if (_reminderRequested) unawaited(maybeShowExportReminder());
@@ -312,10 +326,8 @@ class DiaryPageState extends State<DiaryPage>
   @override
   Future<void> showMonthList(int year) async {
     _withNavigator(
-      (navigator) => navigator.pushAndRemoveUntil(
-        _monthListRoute(year),
-        (r) => r.isFirst,
-      ),
+      (navigator) =>
+          navigator.pushAndRemoveUntil(_monthListRoute(year), (r) => r.isFirst),
     );
   }
 
@@ -323,10 +335,7 @@ class DiaryPageState extends State<DiaryPage>
   @override
   Future<void> showDayList(int year, int month) async {
     _withNavigator((navigator) {
-      navigator.pushAndRemoveUntil(
-        _monthListRoute(year),
-        (r) => r.isFirst,
-      );
+      navigator.pushAndRemoveUntil(_monthListRoute(year), (r) => r.isFirst);
       navigator.push(_dayListRoute(year, month));
     });
   }
@@ -337,10 +346,7 @@ class DiaryPageState extends State<DiaryPage>
   Future<void> showEditor(DateTime date) async {
     final day = DateTime(date.year, date.month, date.day);
     _withNavigator((navigator) {
-      navigator.pushAndRemoveUntil(
-        _monthListRoute(day.year),
-        (r) => r.isFirst,
-      );
+      navigator.pushAndRemoveUntil(_monthListRoute(day.year), (r) => r.isFirst);
       navigator.push(_dayListRoute(day.year, day.month));
       navigator.push(_editorRouteFor(day));
     });
@@ -373,34 +379,8 @@ class DiaryPageState extends State<DiaryPage>
       day: day.day,
       autoFocus: autoFocus,
     ),
-    settings: RouteSettings(
-      name: '/day/${day.year}/${day.month}/${day.day}',
-    ),
+    settings: RouteSettings(name: '/day/${day.year}/${day.month}/${day.day}'),
   );
-
-  /// 导出提醒 · 锚点：按「是否仍有已结束月份存在未导出草稿」上报红锚点。
-  ///
-  /// 判定口径统一为 [DiaryRepository.oldestDraftBefore]（cutoff = 本月
-  /// 1 日）：非空 → `reportException`（红闪烁），为空 → `resolveException`
-  /// 自动解除。exception 级不受 `markViewed` 影响，天然满足「到真正完成
-  /// 有效导出才消」，且消除时机完全由数据驱动、接口干净。
-  ///
-  /// 由仓储变更通知（成稿 / 导出迁移）与锚点服务捕获时触发。
-  Future<void> _syncExportReminder() async {
-    final repository = _repository;
-    final badges = _badges;
-    if (repository == null || badges == null) return;
-    final today = repository.today();
-    final oldest = await repository.oldestDraftBefore(
-      DateTime(today.year, today.month, 1),
-    );
-    if (!mounted) return;
-    if (oldest == null) {
-      badges.resolveException(widget.badgeDestinationId);
-    } else {
-      badges.reportException(widget.badgeDestinationId);
-    }
-  }
 
   /// 导出提醒 · 对话框：每次冷启动**首次进入笔记页**时调用一次。
   ///

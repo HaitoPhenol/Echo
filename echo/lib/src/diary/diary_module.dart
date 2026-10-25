@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:path_provider/path_provider.dart';
 
+import '../common/domain_event_bus.dart';
 import '../control/bootstrap.dart';
 import 'data/diary_clock.dart';
 import 'data/diary_data_provider.dart';
@@ -19,6 +20,10 @@ import 'template/diary_composer.dart';
 /// 不再直接获取应用文档目录，也不直接打开 sqflite——「UI 不碰存储」
 /// 的底线由本类兜住。
 ///
+/// 同时承担日记领域的**事件发布者**：仓储任何变更都在 [domainEvents]
+/// 上广播 [DiaryChangedEvent]。发布者不持有任何订阅者引用，订阅方
+/// （如导航锚点同步）由装配处自行接入。
+///
 /// 测试注入缝保持不变：时钟/数据源/仓储/导出服务均可由调用方替换，
 /// 未注入的部件在这里按生产口径装配。
 class DiaryModule {
@@ -30,13 +35,16 @@ class DiaryModule {
     required this.exportService,
     required this.ownsRepository,
     this.storageRoot,
-  });
+  }) : domainEvents = DomainEventBus();
 
   final DiaryClock clock;
   final DiaryDataProvider dataProvider;
   final DiaryRepository repository;
   final DiaryComposer composer;
   final DiaryExportService exportService;
+
+  /// 日记领域事件总线（模块终身持有，随 [dispose] 关闭）。
+  final DomainEventBus domainEvents;
 
   /// 仓储是否由本模块打开（生产持久仓储）。外部注入的仓储由调用方
   /// 负责释放，本模块 dispose 不越权关闭。
@@ -88,8 +96,15 @@ class DiaryModule {
       storageRoot: root,
     );
     module._registerWithControl();
+    module._watchRepository();
     return module;
   }
+
+  /// 仓储变更 → 领域事件。发布者只广播事实，不知道谁在听。
+  void _watchRepository() => repository.addListener(_onRepositoryChanged);
+
+  void _onRepositoryChanged() =>
+      domainEvents.publish(const DiaryChangedEvent());
 
   /// ECP 接线：把与 UI 完全同源的实例注册给控制面
   /// （widget 测试未走 ControlBootstrap.init 时 instance 为 null，静默跳过）。
@@ -123,6 +138,9 @@ class DiaryModule {
   Future<void> dispose() async {
     if (_disposed) return;
     _disposed = true;
+
+    this.repository.removeListener(_onRepositoryChanged);
+    await domainEvents.dispose();
 
     final control = ControlBootstrap.instance;
     final registry = control?.registry;

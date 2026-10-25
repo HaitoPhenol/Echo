@@ -184,6 +184,7 @@
 | **slash 指令台** | 全局搜索栏输入 `/` 进入的命令模式：三段补全（命名空间→动词→参数）、结果卡片、PIN/确认卡；核心 `ControlConsoleCore` 与搜索栏 Widget 解耦，终端页是未来第二个消费者 | `control/slash/` |
 | **作业化执行** | adb 通道 slow 命令（diary.export、sys.delay）立即回 `async:true` running 信封（避开接收器 9s 预算），后台继续执行，用 `sys.job.get --id` 轮询终态；echo-cmd 默认自动等待，`--no-wait` 只取 running | `control/jobs/job_store.dart` |
 | **事件流** | 256 条内存环 + 单调 seq；`sys.events` 游标/长轮询（≤8s，事件即唤醒）。五冻结事件：audit.entry、command.finished、diary.export.completed、chat.incoming、nav.changed | `control/events/` |
+| **领域事件总线** | 中立层进程内广播（`DomainEventBus`）：发布者只广播事实、不认识订阅者；当前链路为日记仓储变更 `DiaryChangedEvent` → 导出提醒红锚点订阅者。与 ECP 事件流（对外协议）相互独立 | `common/domain_event_bus.dart`、`diary/ui/diary_reminder_badge_subscriber.dart` |
 | **通道级别** | 命令最小权限 0..3（guest/owner/user/admin）；会话按通道独立：mcp 起始 0、解锁后升至 owner(1) 只读（写级别永不颁发），adb/slash 起始 2、PIN 解锁后升 3；息屏/切后台立即焚会话 | `control/auth/auth_session.dart` |
 | **稳定页 id** | ECP 导航寻址名，与显示文案解耦：console/chat/notes/me；UI 改名不动协议 | `navigation/nav_destination_specs.dart` |
 

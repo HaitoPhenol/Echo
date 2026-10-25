@@ -324,6 +324,11 @@
   diary.export.completed（user 级）、chat.incoming（owner 级）、
   nav.changed（guest 级）；services 层零 control 反向依赖，
   ChatStore 自有 incoming Stream 经 `ControlEventBridge` 适配转发。
+- **领域事件（R5，2026-10-25）**：`common/domain_event_bus.dart`
+  中立广播总线；`DiaryModule` 把仓储变更发布为 `DiaryChangedEvent`，
+  发布者不持有订阅者引用；`diary/ui/diary_reminder_badge_subscriber.dart`
+  订阅后回查仓储并刷新导航锚点红点（导出提醒），页面销毁时断开。
+  `common/` 中立性与各层依赖边界由架构接缝测试递归断言。
 - **作业化执行（P4，根治接收器 9s 预算）**：slow 命令仅 adb 通道
   立即回 async running，后台跑（`jobs/` 环 32、跨通道隔离），
   `sys.job.get` 轮询终态；轮询走普通广播，**Kotlin 零改动**；

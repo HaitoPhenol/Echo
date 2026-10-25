@@ -41,6 +41,7 @@ echo/
 │       │   ├── layout_metrics.dart        # 跨模块共享布局数值（底部三条避让）
 │       │   └── mechanical_style.dart      # 机能风几何/排印/时长常量（颜色在 AppColors）
 │       ├── common/
+│       │   ├── domain_event_bus.dart      # 中立领域事件总线（发布者/订阅者互不认识，R5）
 │       │   └── json_time.dart             # wire 时间格式（毫秒/ISO）共用工具
 │       ├── pages/
 │       │   ├── chat_page.dart             # 聊天页（数据驱动会话列表：左滑操作/未读绿点）
@@ -56,6 +57,7 @@ echo/
 │       │   ├── editor/                    # 分块编辑器：命令、控制器（撤销重做）、块视图/浮层
 │       │   ├── export/                    # 年/月范围导出服务
 │       │   └── ui/                        # 年/月/日浏览页、编辑页、三态 UI（含 widgets/）
+│       │                                  #   diary_reminder_badge_subscriber：日记事件 → 锚点红点（R5）
 │       ├── services/                      # 与界面无关的能力层
 │       │   ├── chat_repository.dart       # 聊天仓储抽象 + 内存实现（命令层只依赖接口）
 │       │   ├── chat_json.dart             # 聊天领域 wire 序列化
@@ -752,6 +754,12 @@ ui/（年/月/日浏览、编辑页）
   对 MCP 不可达；PIN 错误沿用 AuthManager 冷却，解锁后仍只读上限）。
   只读暴露范围包含日记与聊天正文（owner 级，用户已确认）。传输
   `mcp/mcp_stdio.dart` 只做 stdin 行读 → server → stdout 行写。
+- **领域事件总线（R5，2026-10-25）**：`common/domain_event_bus.dart`
+  是中立广播总线（不 import 任何业务层）；`DiaryModule` 监听仓储变更并
+  发布 `DiaryChangedEvent`，发布者不认识订阅者；订阅者
+  `diary/ui/diary_reminder_badge_subscriber.dart` 回查仓储后刷新导航
+  锚点红点（导出提醒），可随时断开且不影响发布方。`common/` 的中立性
+  由 `test/architecture/dependency_rules_test.dart` 递归源码断言钉死。
 - **契约冻结**：`test/control/manifest_consistency_test.dart` 双向
   校验 manifest 与 `docs/ecp/ecp-commands.md` 小节（含 debugOnly/
   destructive/confirm 结构约束），改协议先改手册。

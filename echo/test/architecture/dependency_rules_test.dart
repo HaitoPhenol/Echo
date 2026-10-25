@@ -53,4 +53,22 @@ void main() {
       );
     }
   });
+
+  test('common/ 保持中立：不 import 任何业务层', () {
+    final banned = _banned([
+      'app',
+      'control',
+      'diary',
+      'navigation',
+      'pages',
+      'services',
+    ]);
+    for (final f in _dartFiles('lib/src/common')) {
+      expect(
+        banned.hasMatch(f.readAsStringSync()),
+        isFalse,
+        reason: '${f.path} 是跨层共用件，不得依赖具体业务域（R5 事件总线）',
+      );
+    }
+  });
 }
