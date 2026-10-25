@@ -47,7 +47,7 @@
 
 | 序 | id | 页名 | 实现 |
 |---|---|---|---|
-| 0 | console | **终端** | TemplatePage + debug 面板（3 按钮，仅 debug） |
+| 0 | console | **终端** | 真实 `ConsolePage`（R6 控制台：裸命令/结果流/输入行）+ debug 面板（3 按钮，仅 debug） |
 | 1 | chat | **聊天** | 真实 `ChatPage`：会话列表、左滑操作、未读绿点 |
 | 2 | notes | **笔记** | **真实日记模块**（见下节；2026-10-10 起替换纯模板页） |
 | 3 | me | **主页** | TemplatePage |
@@ -304,8 +304,9 @@
   `block.set/document.set/custom.set/state.set`。
 - **slash 指令台（P3）**：搜索栏 `/` 进入，三段补全（命名空间→
   动词→参数）、结果卡片、PIN/确认卡、命令历史；核心
-  `control/slash/ControlConsoleCore` 与入口 Widget 解耦，终端页
-  是未来第二个消费者（接缝未建页）。
+  `control/slash/ControlConsoleCore` 与入口 Widget 解耦；终端页
+  `pages/console_page.dart`（R6）是第二个消费者，复用同一编排与结果
+  渲染，仅开启裸命令、关闭补全候选。
 - **MCP 只读适配器（R4，2026-10-25）**：`control/mcp/` 处理
   JSON-RPC 2.0 单行请求（initialize/notifications/initialized/ping/
   tools.list/tools.call/resources.list/resources.read），tools 从
@@ -329,6 +330,12 @@
   发布者不持有订阅者引用；`diary/ui/diary_reminder_badge_subscriber.dart`
   订阅后回查仓储并刷新导航锚点红点（导出提醒），页面销毁时断开。
   `common/` 中立性与各层依赖边界由架构接缝测试递归断言。
+- **App 内终端页（R6，2026-10-25）**：终端目的地由占位模板页换为
+  `pages/console_page.dart`，复用 `SlashConsoleController`（开启
+  `acceptBareCommands` 裸命令、`completionEnabled=false` 关补全、
+  `entryLimit=200` 环形裁剪只裁已完成条目），结果流/确认卡/PIN/历史
+  召回与搜索栏同源；
+  PC 宿主 CLI 不做。全量测试基线 627 项。
 - **作业化执行（P4，根治接收器 9s 预算）**：slow 命令仅 adb 通道
   立即回 async running，后台跑（`jobs/` 环 32、跨通道隔离），
   `sys.job.get` 轮询终态；轮询走普通广播，**Kotlin 零改动**；

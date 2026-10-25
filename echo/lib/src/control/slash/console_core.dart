@@ -75,16 +75,23 @@ class ConsoleEntry {
 }
 
 class ControlConsoleCore extends ChangeNotifier {
-  ControlConsoleCore({required this.bus, this.historyLimit = 100});
+  ControlConsoleCore({
+    required this.bus,
+    this.historyLimit = 100,
+    this.entryLimit,
+  });
 
   final ControlBus bus;
   final int historyLimit;
 
-  /// 结果历史（旧→新追加，消费方自行倒序展示），不可变视图。
+  /// 结果条数上限（null = 不裁剪，搜索栏指令态的历史行为）。
   ///
-  /// nit③ 挂账（维护者 2026-10-13）：当前无上限——搜索栏指令态会话
-  /// 期量级有限不致问题；正式终端页立项时再统一制定裁剪/分页策略
-  /// （命令历史 [_history] 限 100、审计环限 200 可参考）。
+  /// nit③（维护者 2026-10-13）：正式终端页是长生命周期宿主，结果流
+  /// 需要上限——传本参数即可环形丢弃最旧条目（对齐命令历史 100 /
+  /// 审计环 200 的裁剪口径）。搜索栏不传，行为完全不变。
+  final int? entryLimit;
+
+  /// 结果历史（旧→新追加，消费方自行倒序展示），不可变视图。
   final List<ConsoleEntry> _entries = [];
 
   late final List<ConsoleEntry> entries = UnmodifiableListView<ConsoleEntry>(
@@ -341,8 +348,24 @@ class ControlConsoleCore extends ChangeNotifier {
       status: ConsoleEntryStatus.running,
     );
     _entries.add(entry);
+    _trimToLimit();
     _notify();
     return entry;
+  }
+
+  /// 只在超过 [entryLimit] 时裁剪，且只裁已完成条目：在飞命令保留到
+  /// [_finish] 回填（总线 timeout 兜底保证其必然完成），避免结果被静默
+  /// 丢弃；并发提交挤满时先完成者优先被裁，长度最终仍收敛到上限。
+  void _trimToLimit() {
+    final limit = entryLimit;
+    if (limit == null || _entries.length <= limit) return;
+    for (var i = 0; i < _entries.length && _entries.length > limit;) {
+      if (_entries[i].status == ConsoleEntryStatus.done) {
+        _entries.removeAt(i);
+      } else {
+        i++;
+      }
+    }
   }
 
   ConsoleEntry _finish(ConsoleEntry entry, ControlEnvelope envelope) {
@@ -352,6 +375,7 @@ class ControlConsoleCore extends ChangeNotifier {
     );
     final i = _entries.indexWhere((e) => e.id == entry.id);
     if (i >= 0) _entries[i] = done;
+    _trimToLimit();
     _notify();
     return done;
   }

@@ -33,9 +33,16 @@ import 'package:echo/src/control/bootstrap.dart';
 import 'package:echo/src/control/slash_ui/slash_ui.dart';
 import 'package:echo/src/diary/data/in_memory_diary_repository.dart';
 import 'package:echo/src/navigation/dock_geometry.dart';
+import 'package:echo/src/navigation/widgets/search_capsule.dart';
 import 'package:echo/src/services/window_inset_refresher.dart';
 
 import '../control/control_test_harness.dart';
+
+/// 搜索胶囊内的输入框（R6 起终端页也有 TextField，不能裸定位）。
+final Finder searchField = find.descendant(
+  of: find.byType(SearchCapsule),
+  matching: find.byType(TextField),
+);
 
 /// 压缩画布逻辑高（≈真机压缩的 1751px÷3）：0.45 上限=262.8，而完整
 /// 带参 prune 的补全条+确认卡固有高约 372——旧结构实测溢出 109px。
@@ -113,7 +120,7 @@ void main() {
     // 避开两端圆点热区（156..186 / 326..356）。
     await tester.longPressAt(Offset(250, height - 21));
     await tester.pump(const Duration(milliseconds: 500));
-    expect(find.byType(TextField), findsOneWidget, reason: '搜索已展开');
+    expect(searchField, findsOneWidget, reason: '搜索已展开');
     // 胶囊中心：adjustResize 下其全局底边 = h - inset - 16（body 被压
     // 缩时 Positioned bottom:16 的全局位置恰好等于屏高减键盘再减 16）。
     await tester.tapAt(
@@ -129,12 +136,9 @@ void main() {
   /// EditableText._finalizeEditing）；retainsOnUnfocus 为 true，
   /// 确认卡必须保住（G4-BUG-1）。补帧器自身的时序在独立用例里钉。
   Future<void> submitPrune(WidgetTester tester) async {
-    await tester.enterText(
-      find.byType(TextField),
-      '/diary.prune --before 2026-10-01',
-    );
+    await tester.enterText(searchField, '/diary.prune --before 2026-10-01');
     await tester.pump();
-    await tester.showKeyboard(find.byType(TextField));
+    await tester.showKeyboard(searchField);
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pump();
 
@@ -191,9 +195,7 @@ void main() {
     // 测试里 done 同步失焦），但 retainsOnUnfocus=true（_confirm 挂账），
     // 确认卡必须完整保留——下方三个按钮的 Layer 内命中断言与真实 tap
     // 即钉死该行为，另两个压缩用例（X / PIN 全链路）同理覆盖。
-    final searchFocus = tester
-        .widget<TextField>(find.byType(TextField))
-        .focusNode;
+    final searchFocus = tester.widget<TextField>(searchField).focusNode;
     expect(searchFocus, isNotNull);
     expect(searchFocus!.hasFocus, isFalse);
     expect(find.text('执行 3 级破坏性命令'), findsOneWidget);
@@ -228,7 +230,7 @@ void main() {
     expect(slash.confirmPending, isNull);
     expect(find.text('执行 3 级破坏性命令'), findsNothing);
     // 取消后指令态仍在、输入框未被关闭。
-    expect(find.byType(TextField), findsOneWidget);
+    expect(searchField, findsOneWidget);
   });
 
   testWidgets('压缩画布：确认卡右上角 X 命中并取消', (tester) async {

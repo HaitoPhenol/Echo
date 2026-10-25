@@ -108,8 +108,11 @@ class SlashConsoleController extends ChangeNotifier {
     required this.auth,
     this.onEditText,
     this.onRequestClose,
+    this.acceptBareCommands = false,
+    this.completionEnabled = true,
+    int? entryLimit,
   }) : _bus = bus,
-       core = ControlConsoleCore(bus: bus),
+       core = ControlConsoleCore(bus: bus, entryLimit: entryLimit),
        _engine = CompletionEngine(bus.visibleSpecs) {
     core.addListener(_onCoreChanged);
     auth.addListener(_onAuthChanged);
@@ -123,6 +126,17 @@ class SlashConsoleController extends ChangeNotifier {
   /// 结果核心（信封流/历史/超时态全部复用，UI 不另存）。
   final ControlConsoleCore core;
   final CompletionEngine _engine;
+
+  /// 是否接受不带前导 `/` 的裸命令（终端页宿主）。
+  ///
+  /// 搜索栏（G2）保持默认 false：只有首字符 `/` 才进入指令态，普通
+  /// 搜索词不受影响。终端页传 true 后，任意非空输入行即视作指令态
+  /// （`sys.ping` 与 `/sys.ping` 等价）。
+  final bool acceptBareCommands;
+
+  /// 是否计算补全候选（终端页无候选条，传 false 避免 Enter 被
+  /// 无可视反馈的补全吞掉）。关闭时 [completion] 恒为空结果。
+  final bool completionEnabled;
 
   /// 申请改写输入框（补全插入/历史召回/Esc 清空）。
   final ValueChanged<TextEditingValue>? onEditText;
@@ -166,7 +180,10 @@ class SlashConsoleController extends ChangeNotifier {
     _editingText = text;
     final wasActive = _active;
     // 单独一个 `/` 也算激活：立刻给命名空间候选，输完再退也自然。
-    _active = text.startsWith('/');
+    // 终端宿主的裸命令模式：任意非空单行输入都算指令态。
+    _active = acceptBareCommands
+        ? text.trim().isNotEmpty && !text.contains('\n')
+        : text.startsWith('/');
     if (_active) {
       // 新一轮指令态：失焦保活闸门重新打开（上轮显式退出后 results
       // 仍保留在核心，再输 `/` 时可见）。
@@ -177,6 +194,13 @@ class SlashConsoleController extends ChangeNotifier {
       _candidateIndex = -1;
       core.resetRecall();
       if (wasActive) notifyListeners();
+      return;
+    }
+    if (!completionEnabled) {
+      // 终端页无候选条：不进补全引擎，Enter 直接提交。
+      _completion = CompletionResult.empty;
+      _candidateIndex = -1;
+      notifyListeners();
       return;
     }
     _completion = _engine.complete(text);
@@ -294,7 +318,8 @@ class SlashConsoleController extends ChangeNotifier {
     // 宿主直接提交（onSubmitted 路径）即使漏了 bind 也按文本激活，
     // 不静默吞命令。
     if (!_active) {
-      if (!trimmed.startsWith('/')) return;
+      // 搜索栏只接受 `/` 开头的行；终端裸命令模式接受任意非空行。
+      if (!acceptBareCommands && !trimmed.startsWith('/')) return;
       bind(text);
     }
 
@@ -349,10 +374,14 @@ class SlashConsoleController extends ChangeNotifier {
   /// 首装第一遍暂存（只在内存；切后台焚会话时清空）。
   String? _firstPin;
 
+  /// 宿主已销毁：异步续体不得再 notify（ChangeNotifier 用后即焚）。
+  bool _disposed = false;
+
   Future<void> _openPin(String replayLine) async {
     _pendingReplay = replayLine;
     _firstPin = null;
     final pinSet = await auth.pins.isPinSet();
+    if (_disposed) return;
     _pin = PinSheetState(
       mode: pinSet ? PinSheetMode.unlock : PinSheetMode.firstInstall,
     );
@@ -404,6 +433,7 @@ class SlashConsoleController extends ChangeNotifier {
           cmd: 'auth.set-pin',
           rawArgs: {'newPin': _firstPin, 'newPinConfirm': pin},
         );
+        if (_disposed) return;
         if (!setEnv.ok) {
           _firstPin = null;
           _pin = PinSheetState(
@@ -418,6 +448,7 @@ class SlashConsoleController extends ChangeNotifier {
           cmd: 'auth.unlock',
           rawArgs: {'pin': pin},
         );
+        if (_disposed) return;
         if (!unlockEnv.ok) {
           // 理论不可达（刚首装即可验）；留错停在面板，不吞异常路径。
           _pin = PinSheetState(
@@ -436,6 +467,7 @@ class SlashConsoleController extends ChangeNotifier {
           cmd: 'auth.unlock',
           rawArgs: {'pin': pin},
         );
+        if (_disposed) return;
         if (!env.ok) {
           _pin = PinSheetState(
             mode: PinSheetMode.unlock,
@@ -478,19 +510,29 @@ class SlashConsoleController extends ChangeNotifier {
 
   // ---- 核心信封流监听 ---------------------------------------------------
 
-  int _lastHandledEntryId = 0;
+  /// 已处理过（完成回调）的条目 id。
+  ///
+  /// 终端页允许不等结果连续提交，完成顺序可能与提交顺序不同（先发的
+  /// 3 级命令要等 PIN，后发的 guest 命令先回），故不能只看末尾条目；
+  /// 每个已完成条目恰好处理一次，避免 PIN/确认卡/收起回调被跳过或重复。
+  final Set<int> _handledEntryIds = <int>{};
 
   void _onCoreChanged() {
     final entries = core.entries;
-    if (entries.isEmpty) return;
-    final e = entries.last;
-    if (e.id <= _lastHandledEntryId) return;
-    if (e.status == ConsoleEntryStatus.running) {
-      notifyListeners();
-      return;
+    for (final e in entries) {
+      if (e.status == ConsoleEntryStatus.running) continue;
+      if (!_handledEntryIds.add(e.id)) continue;
+      _handleCompleted(e);
     }
-    _lastHandledEntryId = e.id;
+    // 环形裁剪后清掉已不在流里的标记，避免集合无界增长。
+    if (_handledEntryIds.length > entries.length + 32) {
+      final live = {for (final e in entries) e.id};
+      _handledEntryIds.removeWhere((id) => !live.contains(id));
+    }
+    notifyListeners();
+  }
 
+  void _handleCompleted(ConsoleEntry e) {
     final view = e.view;
     if (view is ErrorView) {
       switch (view.code) {
@@ -508,7 +550,6 @@ class SlashConsoleController extends ChangeNotifier {
               summary: spec?.summary ?? '',
             );
           }
-          notifyListeners();
           return;
       }
     }
@@ -517,7 +558,6 @@ class SlashConsoleController extends ChangeNotifier {
     if (e.ok && e.cmd == 'nav.goto' && !e.stay && !e.helpIntent) {
       onRequestClose?.call();
     }
-    notifyListeners();
   }
 
   // ---- 多行 -------------------------------------------------------------
@@ -615,6 +655,7 @@ class SlashConsoleController extends ChangeNotifier {
 
   @override
   void dispose() {
+    _disposed = true;
     core.removeListener(_onCoreChanged);
     auth.removeListener(_onAuthChanged);
     core.dispose();

@@ -431,4 +431,50 @@ void main() {
       expect(c.core.history.last, 'chat.send --id incoming-1');
     });
   });
+
+  group('终端裸命令模式（acceptBareCommands）', () {
+    setUp(() async {
+      h = await ControlHarness.create();
+      edits = _EditRecorder();
+      c = SlashConsoleController(
+        bus: h.bus,
+        auth: h.auth,
+        acceptBareCommands: true,
+        completionEnabled: false,
+        entryLimit: 3,
+        onEditText: edits.call,
+      );
+    });
+
+    test('非空单行即指令态；空串/含换行退出；无补全候选', () {
+      c.bind('sys.pi');
+      expect(c.active, isTrue);
+      expect(c.completion.candidates, isEmpty, reason: '终端不启用候选');
+      c.bind('   ');
+      expect(c.active, isFalse);
+      c.bind('第一行\n第二行');
+      expect(c.active, isFalse, reason: '多行不是命令行的形态');
+    });
+
+    test('裸命令提交走同一总线路径；↑ 从空输入召回历史', () async {
+      await c.submit('sys.ping');
+      expect(c.core.entries.single.ok, isTrue);
+      expect(c.core.history.single, 'sys.ping');
+
+      // 提交后宿主清空输入（bind('')）→ ↑ 仍能召回。
+      c.bind('');
+      expect(c.active, isFalse);
+      expect(c.handleUp(), isTrue);
+      expect(edits.writes.last.text, 'sys.ping');
+      expect(c.active, isTrue);
+    });
+
+    test('结果上限：环形裁剪已完成条目，最新保留', () async {
+      for (var i = 0; i < 5; i++) {
+        await c.submit('sys.ping');
+      }
+      expect(c.core.entries, hasLength(3));
+      expect(c.core.entries.last.ok, isTrue);
+    });
+  });
 }

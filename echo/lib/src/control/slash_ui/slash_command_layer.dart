@@ -70,7 +70,7 @@ class SlashCommandLayer extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    _ResultsList(controller: controller),
+                    ConsoleResultList(controller: controller),
                     if (controller.active && controller.canOpenMultiline)
                       Align(
                         alignment: Alignment.centerRight,
@@ -233,8 +233,12 @@ class _CandidateTile extends StatelessWidget {
 
 // ---- 结果流（倒序） -----------------------------------------------------
 
-class _ResultsList extends StatelessWidget {
-  const _ResultsList({required this.controller});
+/// 结果流（正序、最新在底）：搜索栏指令态与终端页共用的同一渲染。
+///
+/// 本身不限高、不自带滚动，由宿主决定外层滚动容器（搜索栏放进
+/// 可压缩的 SingleChildScrollView，终端页放进整页 reverse 滚动）。
+class ConsoleResultList extends StatelessWidget {
+  const ConsoleResultList({super.key, required this.controller});
 
   final SlashConsoleController controller;
 
@@ -359,7 +363,11 @@ class SlashKeyEvents extends StatelessWidget {
 
   KeyEventResult _onKey(FocusNode node, KeyEvent event) {
     if (event is! KeyDownEvent) return KeyEventResult.ignored;
-    if (!controller.active) return KeyEventResult.ignored;
+    // 终端宿主（裸命令模式）在空输入时也要能 ↑↓ 召回历史，故其
+    // 键处理不受指令态激活闸门限制（搜索栏保持原样）。
+    if (!controller.active && !controller.acceptBareCommands) {
+      return KeyEventResult.ignored;
+    }
 
     final key = event.logicalKey;
     if (key == LogicalKeyboardKey.escape) {

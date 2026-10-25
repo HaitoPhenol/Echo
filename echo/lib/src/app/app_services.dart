@@ -9,6 +9,7 @@ import '../diary/ui/diary_page.dart';
 import '../navigation/nav_destination.dart';
 import '../navigation/nav_destination_specs.dart';
 import '../pages/chat_page.dart';
+import '../pages/console_page.dart';
 import '../pages/debug_badge_controls.dart';
 import '../pages/template_page.dart';
 import '../services/chat_session_controller.dart';
@@ -67,6 +68,13 @@ class AppServices {
           label: spec.label,
           icon: null, // TODO: 各页面定型后在此填入图标
           pageBuilder: (_) => switch (spec.id) {
+            'console' => ConsolePage(
+              // 仅 debug 构建挂锚点调试面板；release 传 null，调试组件
+              // 随树摇移除。
+              footer: kDebugMode
+                  ? ConsoleBadgeControls(consolePageId: spec.id)
+                  : null,
+            ),
             'chat' => const ChatPage(),
             // 生产环境（无测试注入仓储）开屏预进今日日记编辑页：
             // 日记页随轨道离屏常驻，先把今日编辑页压进内层栈，
@@ -78,25 +86,10 @@ class AppServices {
               // 导出提醒红锚点按稳定目的地 id 上报。
               badgeDestinationId: spec.id,
             ),
-            // 仅终端页挂锚点调试面板；release 构建 footer 为 null，
-            // 调试组件随树摇移除。
             _ => TemplatePage(
               title: spec.label,
-              secCode: switch (spec.id) {
-                'console' => 'SEC.01',
-                'notes' => 'SEC.03',
-                'me' => 'SEC.04',
-                _ => null,
-              },
-              secName: switch (spec.id) {
-                'console' => 'CONSOLE',
-                'notes' => 'NOTES',
-                'me' => 'ME',
-                _ => null,
-              },
-              footer: kDebugMode && spec.id == 'console'
-                  ? ConsoleBadgeControls(consolePageId: spec.id)
-                  : null,
+              secCode: spec.id == 'me' ? 'SEC.04' : null,
+              secName: spec.id == 'me' ? 'ME' : null,
             ),
           },
         ),

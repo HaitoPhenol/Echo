@@ -146,7 +146,7 @@
 | **固定背景** | 所有页面共用、纹理随翻页同步平移的 `CustomPaint` 底：#0C0C0C 上叠 16dp 细网格、128dp 粗网格、128 交点 r=1 点阵，整体右下偏移 16dp 并叠加每次冷启动随机 0~128dp 抖动；纹理层按 128dp 周期取模平移、左右各多铺一个周期，顶部十字固定不动；纹理/十字各外包 `RepaintBoundary`，平移不重绘、不接手势 | `widgets/mechanical_background.dart` 的 `MechanicalBackground` |
 | **十字标定** | 背景顶部左右各一道的 22×1dp 直角十字线（状态栏下沿 +8dp、左右 inset 14dp，粗网格同色），无实体边框、无底部十字 | `mechanical_background.dart` |
 | **读数条 / 设备读数条** | 状态栏下沿居中的 9sp 大字距读数：`DEV 型号 · T 电池温度 · P 瞬时功耗`，MethodChannel `echo/device_stats` 每 5 秒轮询、异常显「—」，`IgnorePointer` 不挡手势 | `widgets/mechanical_coords_bar.dart` 的 `MechanicalCoordsBar` |
-| **SEC kicker** | 模板页大标题上方的 11sp w700 大字距小标签（终端 SEC.01 // CONSOLE、笔记 SEC.03 // NOTES、主页 SEC.04 // ME；中文页名改为「终端」「笔记」「主页」后，英文 kicker 仍保留 CONSOLE/NOTES/ME），亮段 `mechInk`、暗段 `mechInkDim`；当前 `fontFamily: monospace` 在 Flutter/Android 不解析，并非真等宽 | `pages/template_page.dart` |
+| **SEC kicker** | 模板页大标题上方的 11sp w700 大字距小标签（终端 SEC.01 // CONSOLE、笔记 SEC.03 // NOTES、主页 SEC.04 // ME；中文页名改为「终端」「笔记」「主页」后，英文 kicker 仍保留 CONSOLE/NOTES/ME），亮段 `mechInk`、暗段 `mechInkDim`；当前 `fontFamily: monospace` 在 Flutter/Android 不解析，并非真等宽 | `pages/template_page.dart`、`pages/console_page.dart`（R6 终端页自绘 SEC.01） |
 | **空心大页码** | 每页轨道内随页面一起横滑的 01～04 描边数字：120sp、1dp `mechPageNumberStroke` 描边、无填充，top = 5vh、right = 0.14w − 32dp | `widgets/mechanical_page_number.dart` 的 `MechanicalPageNumber` |
 | **透明页面层** | 页面底色全部透明、让固定背景透出的约定；模板页如此，聊天页行前景也透明，左滑操作区改由 `CustomClipper` 按露出宽度裁剪遮挡 | `pages/template_page.dart`、`pages/chat_page.dart` 的 `_RevealClipper` |
 | **衬线页名牌 / 页名牌** | 横滑唤醒时左下角浮现的当前页名（稿 #pgname）：`mechDrumPanel` α.90 色块、64sp w700 系统 serif（Android 中文回退 NotoSerifCJK 即宋体效果）、字距 .08em、下配 56×3 mechInk 短横线；边框仿转鼓而向右开口：左/上 1px 通线、底边只画左半、右边不画，左上与左下各 16px/2px mechInk 亮角标；左边距与转鼓右边距同源（DockGeometry.sideMargin 14dp，原 5vw 已改）、底边与转鼓底边对齐（52+safeBottom）；与转鼓同一 rollerVisible 同升同收，跨中点按 nearestPage 硬切；叠加赛博故障层（见第一节「赛博故障（glitch）」） | `widgets/mechanical_page_name_plate.dart` 的 `MechanicalPageNamePlate` |
@@ -181,7 +181,7 @@
 | **块标浮层** | 编辑器点块左侧块标弹出的工具浮层：转正文/H1–H3、13 色底色、无色 | `editor/block_widget.dart` 等 |
 | **金标准** | 思源 3.8.6 实采的 .sy/.sy.zip 格式对照基准（字段、ID、CSS 变量、conf/sort），格式层测试锁定 | [diary/sy-format-golden-3.8.6.md](diary/sy-format-golden-3.8.6.md) |
 | **ECP（控制面）** | 应用控制协议（P1–P4 已交付 v0.13.0）：命令经总线裁决（级别/确认/审计）后调 UI 同源 API。七域 35 条（release 30）；三通道——adb（仅 debug，`scripts/echo-cmd` 入口，slow 命令作业化轮询）、slash 指令台（搜索栏 `/`）与 MCP 只读适配器（stdio，仅 debug `--mcp` 显式挂载、默认关闭，tools/resources 从清单派生，工具表含唯一写例外 `auth.unlock`） | [ecp/ecp-design.md](ecp/ecp-design.md)、[ecp/ecp-commands.md](ecp/ecp-commands.md) |
-| **slash 指令台** | 全局搜索栏输入 `/` 进入的命令模式：三段补全（命名空间→动词→参数）、结果卡片、PIN/确认卡；核心 `ControlConsoleCore` 与搜索栏 Widget 解耦，终端页是未来第二个消费者 | `control/slash/` |
+| **slash 指令台** | 全局搜索栏输入 `/` 进入的命令模式：三段补全（命名空间→动词→参数）、结果卡片、PIN/确认卡；核心 `ControlConsoleCore` 与搜索栏 Widget 解耦；R6 起终端页 `pages/console_page.dart` 是第二个消费者（裸命令、无候选条） | `control/slash/`、`pages/console_page.dart` |
 | **作业化执行** | adb 通道 slow 命令（diary.export、sys.delay）立即回 `async:true` running 信封（避开接收器 9s 预算），后台继续执行，用 `sys.job.get --id` 轮询终态；echo-cmd 默认自动等待，`--no-wait` 只取 running | `control/jobs/job_store.dart` |
 | **事件流** | 256 条内存环 + 单调 seq；`sys.events` 游标/长轮询（≤8s，事件即唤醒）。五冻结事件：audit.entry、command.finished、diary.export.completed、chat.incoming、nav.changed | `control/events/` |
 | **领域事件总线** | 中立层进程内广播（`DomainEventBus`）：发布者只广播事实、不认识订阅者；当前链路为日记仓储变更 `DiaryChangedEvent` → 导出提醒红锚点订阅者。与 ECP 事件流（对外协议）相互独立 | `common/domain_event_bus.dart`、`diary/ui/diary_reminder_badge_subscriber.dart` |

@@ -10,11 +10,22 @@ import 'package:echo/src/navigation/widgets/quick_action_arc.dart';
 import 'package:echo/src/navigation/widgets/side_drawer.dart';
 import 'package:echo/src/navigation/widgets/trigger_ripple.dart';
 import 'package:echo/src/pages/chat_page.dart';
+import 'package:echo/src/pages/console_page.dart';
 import 'package:echo/src/pages/template_page.dart';
+import 'package:echo/src/navigation/widgets/search_capsule.dart';
 import 'package:echo/src/services/nav_badge_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+/// 搜索胶囊内的输入框。
+///
+/// 全应用树上终端页也有一个 TextField（R6 终端页输入行），故不能再用
+/// 裸 `find.byType(TextField)` 定位搜索输入框。
+final Finder searchField = find.descendant(
+  of: find.byType(SearchCapsule),
+  matching: find.byType(TextField),
+);
 
 /// 以 16ms 为步长逐帧推进 [ms] 毫秒。
 ///
@@ -45,27 +56,24 @@ void main() {
     addTearDown(diaryRepo.dispose);
   });
 
-  testWidgets('初始展示 4 页：聊天页为会话列表骨架，笔记页为日记年表，终端/主页仍占位', (tester) async {
+  testWidgets('初始展示 4 页：聊天页为会话列表骨架，笔记页为日记年表，终端为控制台，主页仍占位', (tester) async {
     // 构建应用
     await tester.pumpWidget(EchoApp(diaryRepository: diaryRepo));
     await tester.pump();
 
     // 智能导航屏在树上；聊天页为 ChatPage、笔记页 M2 起为 DiaryPage，
-    // 终端/主页两页仍是占位页
+    // 终端页 R6 起为 ConsolePage，仅主页仍是占位页。
     expect(find.byType(SmartNavScreen), findsOneWidget);
     expect(find.byType(ChatPage), findsOneWidget);
     expect(find.byType(DiaryPage), findsOneWidget);
-    expect(find.byType(TemplatePage), findsNWidgets(2));
+    expect(find.byType(ConsolePage), findsOneWidget);
+    expect(find.byType(TemplatePage), findsOneWidget);
 
-    // 首个占位页内的标题文本为「终端」（页内另有测试按钮文字，
-    // 故按标题精确匹配）
-    final firstPageText = tester.widget<Text>(
-      find.descendant(
-        of: find.byType(TemplatePage).first,
-        matching: find.text('终端'),
-      ),
+    // 唯一占位页内的标题文本为「主页」
+    final lastPageText = tester.widget<Text>(
+      find.descendant(of: find.byType(TemplatePage), matching: find.text('主页')),
     );
-    expect(firstPageText.data, '终端');
+    expect(lastPageText.data, '主页');
   });
 
   testWidgets('搜索真实闭环：长按展开 → 输入页面名 → 点结果跳转', (tester) async {
@@ -83,14 +91,14 @@ void main() {
     // 因此这里手动推进时间而不用 pumpAndSettle）
     await tester.longPressAt(const Offset(600, 560));
     await tester.pump(const Duration(milliseconds: 500));
-    expect(find.byType(TextField), findsOneWidget);
+    expect(searchField, findsOneWidget);
     // 无真实历史时显示空状态提示
     expect(find.text('暂无最近搜索'), findsOneWidget);
 
     // 点击搜索框聚焦（倒计时取消），输入「聊天」
     await tester.tapAt(const Offset(500, 560));
     await tester.pump(const Duration(milliseconds: 200));
-    await tester.enterText(find.byType(TextField), '聊天');
+    await tester.enterText(searchField, '聊天');
     await tester.pump();
 
     // 实时出现搜索结果：「聊天」同时存在于输入框与结果标题中，
@@ -134,7 +142,7 @@ void main() {
     expect(find.byTooltip('退格到上一个分隔符'), findsOneWidget);
     expect(find.byTooltip('搜索'), findsOneWidget);
 
-    await tester.enterText(find.byType(TextField), 'notes 日记');
+    await tester.enterText(searchField, 'notes 日记');
     await tester.pump();
 
     // 退格一次：删掉「日记」，保留分隔空格。
@@ -143,7 +151,7 @@ void main() {
     expect(find.text('notes '), findsOneWidget);
 
     // 点号同为分隔符且保留：`sys.ping` → `sys.`。
-    await tester.enterText(find.byType(TextField), 'sys.ping');
+    await tester.enterText(searchField, 'sys.ping');
     await tester.pump();
     await tester.tap(find.byTooltip('退格到上一个分隔符'));
     await tester.pump();
@@ -330,8 +338,9 @@ void main() {
 
     /// 第 i 个目的地页的位置标记：聊天页（i=1）用 ChatPage 的 ListView；
     /// 笔记页（i=2）M2 起为 DiaryPage，用年表标题「日记」；
-    /// 终端（i=0）/主页（i=3）仍是 TemplatePage，序列中下标 0/1。
+    /// 终端（i=0）R6 起为 ConsolePage；主页（i=3）仍是 TemplatePage。
     Finder pageMarker(int i) {
+      if (i == 0) return find.byType(ConsolePage);
       if (i == 1) {
         return find.byKey(const ValueKey<String>('chat-page-list'));
       }
@@ -340,10 +349,9 @@ void main() {
             .descendant(of: find.byType(DiaryPage), matching: find.text('日记'))
             .first;
       }
-      final templateIndex = i == 0 ? 0 : 1;
       return find
           .descendant(
-            of: find.byType(TemplatePage).at(templateIndex),
+            of: find.byType(TemplatePage),
             matching: find.byType(Text),
           )
           .first;
@@ -472,12 +480,12 @@ void main() {
     // ---- ① open 态返回：关闭搜索，不退出 ----
     await tester.longPressAt(const Offset(600, 560));
     await tester.pump(const Duration(milliseconds: 500));
-    expect(find.byType(TextField), findsOneWidget, reason: '搜索已展开');
+    expect(searchField, findsOneWidget, reason: '搜索已展开');
 
     exitRequests.clear();
     await back();
     expect(
-      await pumpUntil(() => find.byType(TextField).evaluate().isEmpty),
+      await pumpUntil(() => searchField.evaluate().isEmpty),
       isTrue,
       reason: '返回键应收起 open 态搜索',
     );
@@ -488,14 +496,14 @@ void main() {
     await tester.pump(const Duration(milliseconds: 500));
     await tester.tapAt(const Offset(500, 560));
     await tester.pump(const Duration(milliseconds: 200));
-    await tester.enterText(find.byType(TextField), '聊天');
+    await tester.enterText(searchField, '聊天');
     await tester.pump();
     expect(find.text('页面'), findsOneWidget, reason: 'input 态已有实时结果');
 
     exitRequests.clear();
     await back();
     expect(
-      await pumpUntil(() => find.byType(TextField).evaluate().isEmpty),
+      await pumpUntil(() => searchField.evaluate().isEmpty),
       isTrue,
       reason: '返回键应收起 input 态搜索',
     );

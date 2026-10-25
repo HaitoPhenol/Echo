@@ -151,17 +151,22 @@
 
 ### R6 真 CLI（P3，可选）
 
-- 形态一（推荐先做）：App 内终端页，复用 `ControlConsoleCore`，零新内核。
-- 形态二（成本高）：PC 宿主进程，通过 adb/本地 socket 连总线；属于新工程，不并入本次改造。
+状态（2026-10-25）：形态一已实现、独立审查通过，合入 main；形态二按用户决策不做。
 
-**待决策**：是否需要形态二。
+- 形态一（已落地）：App 内终端页 `pages/console_page.dart`，复用
+  `ControlConsoleCore` 与 `SlashConsoleController`，零新内核。控制器新增
+  两个可选开关（`acceptBareCommands` 裸命令、`completionEnabled=false`
+  关闭补全），默认值保持搜索栏 G2 行为不变；结果流经 `entryLimit`
+  仅裁剪已完成条目。页内复用 `ConsoleResultList` / `SlashSheetHost`，
+  确认卡、PIN 首装/解锁、↑↓ 历史召回与搜索栏同源。
+- 形态二（成本高）：PC 宿主进程，通过 adb/本地 socket 连总线；属于新工程，不并入本次改造。**用户已决策：暂不做。**
 
 ---
 
 ### R7 IoT 领域（P3，需产品决策）
 
 - 当前无任何依赖，新增 `iot/`（仓储 + 服务）与 `control/commands/iot_commands.dart` 即可挂载。
-- **不自行开工**：设备协议（MQTT/HTTP）、状态模型、隐私边界都需用户先定。
+- **不自行开工**：设备协议（MQTT/HTTP）、状态模型、隐私边界都需用户先定。**用户已决策：暂不进入路线图。**
 
 ---
 
@@ -175,7 +180,7 @@
 
 ## 4. 每项的交付门禁
 
-- `flutter analyze` 零问题；`flutter test` 全绿（当前基线 591 项）。
+- `flutter analyze` 零问题；`flutter test` 全绿（当前基线 627 项）。
 - 涉及 UI 装配的改动必须真机回归：冷启动、切页、日记读写、导出、聊天未读。
 - 一项一分支（`feat/xxx`），不改动其他项；合并前不混提交。
 - 文档同步：`docs/architecture.md`、`docs/current_state.md`。
@@ -184,7 +189,8 @@
 
 ## 5. 待用户决策
 
-1. R4 MCP 是否允许暴露只读日记/聊天数据（owner 级）。
-2. R6 是否需要 PC 侧真 CLI。
-3. R7 IoT 是否进入路线图；若进入，协议先定哪一种。
-4. R1/R3 的装配层落点：`app/` 还是新增 `composition/`。
+已决（2026-10-25）：
+1. R4：允许 MCP 暴露只读日记/聊天数据（owner 级），`auth.unlock` 为唯一写例外。
+2. R6：仅做 App 内终端，不做 PC 侧真 CLI。
+3. R7：IoT 暂不进入路线图。
+4. R1/R3：装配层落在 `app/`。

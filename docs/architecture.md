@@ -173,7 +173,8 @@ AGENT.md                                   # 给开发 agent 的工作提示（�
 终端（console）、聊天（chat）、笔记（notes）、主页（me）。
 其中**聊天页**为真实页面 `ChatPage`（见 3.10），
 **笔记页为真实日记模块** `DiaryPage`（见 3.12），
-终端与主页仍是 `TemplatePage`。
+**终端页为真实控制台** `ConsolePage`（R6，复用 slash 指令
+核心，见 3.9 与 §8），仅主页仍是 `TemplatePage`。
 
 `ChatPage`（`pages/chat_page.dart`，数据来自 `ChatStore`，见 3.10）：
 无标题栏；列表初始为空，空态整屏居中显示 13px 小字「暂无消息」
@@ -763,10 +764,16 @@ ui/（年/月/日浏览、编辑页）
 - **契约冻结**：`test/control/manifest_consistency_test.dart` 双向
   校验 manifest 与 `docs/ecp/ecp-commands.md` 小节（含 debugOnly/
   destructive/confirm 结构约束），改协议先改手册。
+- **App 内终端页（R6，2026-10-25）**：`pages/console_page.dart` 是
+  `ControlConsoleCore` / `SlashConsoleController` 的第二个消费者，零新
+  内核。`acceptBareCommands`（裸命令）、`completionEnabled=false`（无
+  候选条）两个可选开关默认关闭/开启时保持搜索栏 G2 行为不变；结果流
+  复用 `ConsoleResultList`、模态卡复用 `SlashSheetHost`，PIN/确认卡/
+  ↑↓ 历史与搜索栏同源。结果上限由 `entryLimit` 环形裁剪，只裁已完成
+  条目。PC 宿主 CLI 按用户决策不做。
 - **未建的未来部分**：MCP 提权/远端传输（当前仅 stdio、默认关闭；
   宿主经 `tools/call auth.unlock` 解锁 mcp 通道）、内置 agent 通道、
-  终端页完整 UI（核心接缝已备）、审计 sqflite 落盘——见
-  ecp-design.md §5.2/§6/§7 与问题清单 §C。
+  审计 sqflite 落盘——见 ecp-design.md §5.2/§6/§7 与问题清单 §C。
 
 ---
 
