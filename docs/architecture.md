@@ -51,7 +51,8 @@ echo/
 │       │   ├── export/                    # 年/月范围导出服务
 │       │   └── ui/                        # 年/月/日浏览页、编辑页、三态 UI（含 widgets/）
 │       ├── services/                      # 与界面无关的能力层
-│       │   ├── chat_store.dart            # 聊天会话数据：增删/已读未读 + 未读聚合
+│       │   ├── chat_repository.dart       # 聊天仓储抽象 + 内存实现（命令层只依赖接口）
+│       │   ├── chat_store.dart            # 聊天视图服务：委托仓储 + 变更通知 + Scope
 │       │   ├── haptics.dart               # 触感反馈统一入口
 │       │   ├── nav_badge_service.dart     # 导航锚点状态：通知/异常接口
 │       │   └── search_service.dart        # 搜索服务/数据源/历史接口

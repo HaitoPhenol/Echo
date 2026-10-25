@@ -636,8 +636,8 @@ void main() {
 
     test('ChatStore 不认识事件总线：incoming 是 services 自有载荷类型', () {
       // 编译期保证：addIncoming 的广播类型来自 services 自身
-      //（ChatIncomingPayload 与 ChatStore 同文件），适配器只在
-      // control 层做翻译。
+      //（ChatIncomingPayload 定义在 services/chat_repository.dart，
+      // 由 chat_store.dart 导出），适配器只在 control 层做翻译。
       const payload = ChatIncomingPayload(
         id: 'incoming-1',
         nickname: 'n',

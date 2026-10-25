@@ -1,19 +1,20 @@
 import 'package:flutter/material.dart';
 
-import 'chat_store.dart';
+import 'chat_repository.dart';
 
 /// 当前打开的聊天会话控制器（设计 §9.4 同路原则的 UI 收口）。
 ///
 /// UI 点按会话行与 adb `chat.open` 命令都只调 [open]：
-/// 校验会话存在 → 经 [ChatStore.markRead] 同一路径清未读 →
+/// 校验会话存在 → 经 [ChatRepository.markRead] 同一路径清未读 →
 /// 记录当前会话 id。当前 App 尚无会话详情页，[openSessionId]
 /// 是为详情页/命令回读预留的状态；已读行重复进入幂等。
 ///
 /// 继承 [ChangeNotifier]，通过 [ChatSessionScope] 向子树提供实例。
+/// 依赖 [ChatRepository] 抽象：注入 ChatStore 或持久化仓储均可。
 class ChatSessionController extends ChangeNotifier {
   ChatSessionController(this._store);
 
-  final ChatStore _store;
+  final ChatRepository _store;
 
   String? _openSessionId;
 
@@ -25,7 +26,7 @@ class ChatSessionController extends ChangeNotifier {
 
   /// 进入指定会话（与点按行、`chat.open` 命令同一路径）。
   ///
-  /// 未知会话抛 [StateError]（命令层先经 [ChatStore.conversationOf]
+  /// 未知会话抛 [StateError]（命令层先经 [ChatRepository.conversationOf]
   /// 判空返回 NOT_FOUND；UI 只会传入列表中存在的 id）。
   void open(String id) {
     if (_store.conversationOf(id) == null) {

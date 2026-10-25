@@ -174,6 +174,8 @@ class ControlHarness {
       ..set(consoleStats)
       ..set(ControlDeviceInfo(consoleStats.readRaw))
       ..set(chatStore)
+      // 命令按抽象类型 ChatRepository 解析（与 DiaryRepository 同范式）。
+      ..set<ChatRepository>(chatStore)
       ..set(chatSession)
       ..set<NavBadgeService>(badges);
 
