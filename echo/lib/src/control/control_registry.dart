@@ -28,12 +28,13 @@ class ControlPaths {
 /// 为什么不用 InheritedWidget/Scope：命令的调用方（adb 广播接收器、
 /// 未来 MCP）在 widget 树之外，控制面是 App 级对象图；注册表只存放
 /// 引用，不持有任何业务状态。典型装配：
-/// - `SmartNavScreen.initState` 注册 `NavPhysicsController`；
-/// - `DiaryPage` 开库成功后注册 clock/repository/composer/exportService；
+/// - 装配根 `AppServices` 注册聊天服务（store/仓储抽象/会话控制器）；
+/// - `SmartNavScreen.initState` 注册 `NavPhysicsController` 与锚点服务；
+/// - `DiaryModule` 开库成功后注册 clock/repository/composer/exportService；
 /// - `ControlBootstrap` 注册 App 生命周期状态与设备快照。
 ///
-/// 生命周期与各业务模块自身一致（导航屏常驻、日记页常驻），注册表
-/// 不负责 dispose。
+/// 生命周期与各业务模块自身一致；注册表不负责 dispose，模块释放时
+/// 自行 [unset]（见 `AppServices.dispose` / `DiaryModule.dispose`）。
 class ControlRegistry implements ControlServices {
   final Map<Type, Object> _services = {};
 
@@ -42,7 +43,7 @@ class ControlRegistry implements ControlServices {
     _services[T] = service;
   }
 
-  /// 移除注册（模块确实销毁时；当前两个注册方都常驻，预留）。
+  /// 移除注册（模块销毁时；装配根与日记模块的 dispose 路径使用）。
   void unset<T extends Object>() {
     _services.remove(T);
   }

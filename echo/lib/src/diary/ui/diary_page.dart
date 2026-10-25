@@ -8,6 +8,7 @@ import '../data/diary_data_provider.dart';
 import '../data/diary_repository.dart';
 import '../diary_module.dart';
 import '../diary_navigator.dart';
+import '../diary_page_handle.dart';
 import '../export/diary_export_service.dart';
 import '../template/diary_composer.dart';
 import '../../services/nav_badge_service.dart';
@@ -30,6 +31,7 @@ import 'diary_route.dart';
 class DiaryPage extends StatefulWidget {
   const DiaryPage({
     super.key,
+    this.diaryModule,
     this.clock,
     this.dataProvider,
     this.repository,
@@ -37,6 +39,12 @@ class DiaryPage extends StatefulWidget {
     this.preEnterToday = false,
     this.badgeDestinationId = 'notes',
   });
+
+  /// 装配根已打开的模块（生产/App 级装配注入）。
+  ///
+  /// 非 null 时本页不再自装配；为 null 才回退到 [DiaryModule.open]
+  /// （独立 widget 测试的注入缝）。
+  final Future<DiaryModule>? diaryModule;
 
   /// 测试注入缝：固定时钟/数据源/仓储/导出服务；生产环境全部走真实装配。
   final DiaryClock? clock;
@@ -75,12 +83,20 @@ class DiaryPage extends StatefulWidget {
 /// 公开 State：供导航屏用 [GlobalKey] 调 [openTodayEditor] / [startBackfill]
 /// （把手竖单的「今日日记」「补记」两个快捷入口），与本屏
 /// `_handleMenuKey` / `_aiDialogKey` 同一做法。
-class DiaryPageState extends State<DiaryPage> implements DiaryNavigatorController {
+class DiaryPageState extends State<DiaryPage>
+    implements DiaryNavigatorController, DiaryPageHandle {
   final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
 
-  late final DiaryClock _clock = widget.clock ?? DiaryClock();
-  late final DiaryDataProvider _dataProvider =
+  // 模块未注入时作为自装配输入；收到模块后用模块内的同源实例覆盖，
+  // 保证页面与 ECP 命令只有一处数据源。
+  late DiaryClock _clock = widget.clock ?? DiaryClock();
+  late DiaryDataProvider _dataProvider =
       widget.dataProvider ?? FakeDiaryDataProvider();
+
+  DiaryModule? _module;
+
+  /// 模块是否由本页自装配（未注入）；自装配的模块随页面释放。
+  bool _ownsModule = false;
 
   DiaryRepository? _repository;
   DiaryComposer? _composer;
@@ -110,6 +126,7 @@ class DiaryPageState extends State<DiaryPage> implements DiaryNavigatorControlle
   ///
   /// 已导出只读（`locked`）时不显示：插入时间戳会被控制器拒绝，
   /// 留一个无响应的按钮只会误导。
+  @override
   bool get isEditorPage {
     final controller = _editorRegistry.current;
     return (_topRouteName ?? '').startsWith('/day/') &&
@@ -120,6 +137,7 @@ class DiaryPageState extends State<DiaryPage> implements DiaryNavigatorControlle
   /// 竖单「插入时间戳」：在当前编辑页光标所在块的下一行插入一个时间戳段。
   ///
   /// 无编辑页（或未加载完成）时静默返回 false。
+  @override
   bool insertStampBelowCursor() =>
       _editorRegistry.current?.insertStampBelowCursor() ?? false;
 
@@ -143,25 +161,43 @@ class DiaryPageState extends State<DiaryPage> implements DiaryNavigatorControlle
   @override
   void dispose() {
     _repository?.removeListener(_syncExportReminder);
+    // 自装配的模块归本页所有；装配根注入的模块由 AppServices 释放。
+    final module = _module;
+    if (_ownsModule && module != null) {
+      unawaited(module.dispose());
+    }
     super.dispose();
   }
 
   Future<void> _bootstrap() async {
     try {
-      // 装配全部下沉到 DiaryModule：应用文档目录、持久仓储、模板、
-      // 成稿器与导出服务都不再由 UI 层构造。
-      final module = await DiaryModule.open(
-        clock: _clock,
-        dataProvider: _dataProvider,
-        repository: widget.repository,
-        exportService: widget.exportService,
-        // debug 首装种子，release 空仓。
-        seedDebugData: kDebugMode,
-      );
-      // ECP diary.goto 同路入口：命令经注册表拿本 State，驱动内层栈。
-      module.registerNavigator(this);
+      // 优先消费装配根已经打开的模块；只有未注入时才回退自装配
+      // （独立 widget 测试的注入缝）。存储路径逻辑全部在模块内。
+      final injected = widget.diaryModule;
+      final module = injected != null
+          ? await injected
+          : await DiaryModule.open(
+              clock: _clock,
+              dataProvider: _dataProvider,
+              repository: widget.repository,
+              exportService: widget.exportService,
+              // debug 首装种子，release 空仓。
+              seedDebugData: kDebugMode,
+            );
+      _ownsModule = injected == null;
+      _module = module;
+      // 数据源收敛到模块唯一来源：页面 scope 与 ECP 命令同源。
+      _clock = module.clock;
+      _dataProvider = module.dataProvider;
 
-      if (!mounted) return;
+      if (!mounted) {
+        // 装配完成前页面已销毁：自装配模块没有其他所有者，就地释放。
+        if (_ownsModule) unawaited(module.dispose());
+        return;
+      }
+      // ECP diary.goto 同路入口：命令经注册表拿本 State，驱动内层栈。
+      // 放在 mounted 之后，避免页面早毁留下僵尸注册。
+      module.registerNavigator(this);
       setState(() {
         _repository = module.repository;
         _composer = module.composer;
@@ -217,6 +253,7 @@ class DiaryPageState extends State<DiaryPage> implements DiaryNavigatorControlle
   ///
   /// 已在今日编辑页时静默返回（不重建、不打断正在进行的编辑）；否则
   /// 按标准滑入动画压入今日编辑页——返回仍回到跳转前所在的那一层。
+  @override
   void openTodayEditor() {
     final navigator = _navigatorKey.currentState;
     if (navigator == null) return;
@@ -231,6 +268,7 @@ class DiaryPageState extends State<DiaryPage> implements DiaryNavigatorControlle
   /// 范围 = 过去任意日期 + 今天，未来日期禁用。选定后按标准滑入动画压入
   /// 该日编辑页——成稿交给日页 `_load()` 的同一个 ensureDay，返回回到
   /// 跳转前所在的那一层。
+  @override
   Future<void> startBackfill() async {
     final today = _clock.today();
     final picked = await showDatePicker(
@@ -372,6 +410,7 @@ class DiaryPageState extends State<DiaryPage> implements DiaryNavigatorControlle
   ///
   /// 「去导出」只负责跳转到最早待导出月份所在的月列表（用户在其中点
   /// 月行导出按钮触发实际导出），不代替用户执行导出。
+  @override
   Future<void> maybeShowExportReminder() async {
     _reminderRequested = true;
     if (_reminderShown) return;

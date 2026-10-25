@@ -16,9 +16,9 @@ import 'protocol/command_spec.dart';
 /// - **禁止**：services / navigation 反向 import control——两个被监听
 ///   方完全不认识事件总线，只暴露各自层的原生信号。
 ///
-/// 生命周期与 SmartNavScreen 装配的 UI 同源服务一致：在把
-/// ChatStore/NavPhysicsController 注册进 control registry 的同一处
-/// [attach]，dispose 时随页面服务一起 [dispose]（取消订阅）。
+/// 生命周期与创建它的 SmartNavScreen 一致：在注册
+/// NavPhysicsController/锚点服务的同一处 [attach]（ChatStore 本身由
+/// 装配根持有），dispose 时随页面服务一起 [dispose]（取消订阅）。
 class UiEventBridge {
   UiEventBridge({
     required this.events,

@@ -1,14 +1,10 @@
-import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 
-import 'nav_destination_specs.dart';
-
-import '../diary/data/diary_repository.dart';
-import '../diary/ui/diary_page.dart';
-import '../pages/chat_page.dart';
-import '../pages/debug_badge_controls.dart';
-import '../pages/template_page.dart';
 import '../services/search_service.dart';
+
+/// 页面构造器抽象：导航配置只描述「如何构建页面」，具体页面实现
+/// 由装配根（`app/app_services.dart`）绑定。
+typedef NavPageBuilder = Widget Function(BuildContext context);
 
 /// 一个导航目的地（即胶囊导航线上可到达的一页）。
 ///
@@ -36,8 +32,8 @@ class NavDestination {
   /// 页面图标。null 时滚筒显示数字序号（模板阶段）。
   final IconData? icon;
 
-  /// 页面本体构建器。
-  final WidgetBuilder pageBuilder;
+  /// 页面本体构建器（装配根绑定具体页面）。
+  final NavPageBuilder pageBuilder;
 }
 
 /// 在导航目的地中搜索的数据源（当前唯一已接入的数据源）。
@@ -75,72 +71,4 @@ class NavDestinationSearchProvider implements SearchProvider {
           ),
     ];
   }
-}
-
-/// 构建默认导航配置（当前 4 个页面，顺序即导航轨道顺序）。
-///
-/// 聊天页已替换为真实页面 [ChatPage]（无标题栏的会话列表骨架）；
-/// 其余三页暂时仍是只显示标题的 [TemplatePage]，后续逐个替换。
-///
-/// 新增页面的标准做法：在本列表末尾（或合适位置）增加一个
-/// [NavDestination]，导航线、滚筒、搜索会自动纳入，无需改动其他代码。
-List<NavDestination> buildDefaultDestinations({
-  /// 测试注入缝：注入后笔记页跳过生产持久仓储开库（widget 测试的
-  /// fake-async 区无法完成真实文件 I/O）；生产环境传 null。
-  DiaryRepository? diaryRepository,
-
-  /// 导航屏持有的日记页 State key：把手竖单「今日日记」快捷入口据此调用
-  /// [DiaryPageState.openTodayEditor]。
-  GlobalKey<DiaryPageState>? diaryPageKey,
-}) {
-  /// (id, 标题) 列表：唯一来源在 [kNavDestinationSpecs]（控制层共用）。
-  const specs = kNavDestinationSpecs;
-
-  return [
-    for (final spec in specs)
-      NavDestination(
-        id: spec.id,
-        label: spec.label,
-        icon: null, // TODO: 各页面定型后在此填入图标
-        // 聊天页已进入真实页面开发（无标题栏的会话列表骨架）。
-        // 笔记页 M2 起承载日记模块：年→月→日层级 + 块编辑器。
-        pageBuilder: (_) => switch (spec.id) {
-          'chat' => const ChatPage(),
-          // 生产环境（无测试注入仓储）开屏预进今日日记编辑页：app 一启动
-          // 日记页就在轨道上离屏 bootstrap，先把今日编辑页压进内层栈，
-          // 用户横滑到笔记页即见今日日记，无需再点 年→月→日。
-          // 测试注入仓储时关闭，保持从年列表开始的既有断言基线。
-          'notes' => DiaryPage(
-            key: diaryPageKey,
-            repository: diaryRepository,
-            preEnterToday: diaryRepository == null,
-            // 导出提醒红锚点按稳定目的地 id 上报（页序/页名调整不失真）。
-            badgeDestinationId: spec.id,
-          ),
-          // 仅终端页挂锚点调试面板（新消息/异常模拟与处理，验收用，
-          // 正式功能接入后移除）；主页暂不做功能，footer 为 null。
-          // kDebugMode 守卫：debug 构建可见，release/profile 构建 footer 为
-          // null，调试组件随树摇移除，不会进入发布包。
-          _ => TemplatePage(
-            title: spec.label,
-            // 机能风模板页分区小标题（编号与轨道顺序一致）。
-            secCode: switch (spec.id) {
-              'console' => 'SEC.01',
-              'notes' => 'SEC.03',
-              'me' => 'SEC.04',
-              _ => null,
-            },
-            secName: switch (spec.id) {
-              'console' => 'CONSOLE',
-              'notes' => 'NOTES',
-              'me' => 'ME',
-              _ => null,
-            },
-            footer: kDebugMode && spec.id == 'console'
-                ? ConsoleBadgeControls(consolePageId: spec.id)
-                : null,
-          ),
-        },
-      ),
-  ];
 }

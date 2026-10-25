@@ -1,0 +1,150 @@
+import 'package:flutter/foundation.dart' show kDebugMode;
+import 'package:flutter/widgets.dart';
+
+import '../control/bootstrap.dart';
+import '../diary/data/diary_repository.dart';
+import '../diary/diary_module.dart';
+import '../diary/diary_page_handle.dart';
+import '../diary/ui/diary_page.dart';
+import '../navigation/nav_destination.dart';
+import '../navigation/nav_destination_specs.dart';
+import '../pages/chat_page.dart';
+import '../pages/debug_badge_controls.dart';
+import '../pages/template_page.dart';
+import '../services/chat_session_controller.dart';
+import '../services/chat_store.dart';
+
+/// 应用装配根：集中创建并持有跨页共享的领域实例与导航配置。
+///
+/// 导航屏只消费本类产出的实例，不再自己 new 聊天服务，也不 import
+/// 日记数据层/具体页面；具体页面与本处绑定（页面构造器抽象见
+/// [NavDestination.pageBuilder]）。
+class AppServices {
+  AppServices._(
+    this.destinations,
+    this.chatStore,
+    this.chatSession,
+    this._diaryModule,
+    this._diaryPageKey,
+  );
+
+  /// 导航目的地配置（含具体页面绑定）的唯一来源。
+  final List<NavDestination> destinations;
+
+  /// 聊天会话数据服务（会话增删 / 已读未读 / 消息）。
+  final ChatStore chatStore;
+
+  /// 当前打开会话控制器（点按行与 chat.open 命令同源）。
+  final ChatSessionController chatSession;
+
+  final GlobalKey<DiaryPageState> _diaryPageKey;
+  final Future<DiaryModule> _diaryModule;
+
+  bool _disposed = false;
+
+  /// 日记页能力句柄：页面未挂载时为 null。
+  ///
+  /// 导航屏经此驱动日记内层栈（今日日记/补记/插入时间戳）与导出提醒，
+  /// 只依赖 [DiaryPageHandle] 抽象，不认识具体页面实现。
+  DiaryPageHandle? get diaryPage => _diaryPageKey.currentState;
+
+  /// 按生产口径装配：日记模块异步开库（测试注入仓储时跳过文件 I/O），
+  /// 聊天服务同步创建；两者都随 App 生命周期释放。
+  static AppServices create({DiaryRepository? diaryRepository}) {
+    final diaryPageKey = GlobalKey<DiaryPageState>();
+    final diaryModule = DiaryModule.open(
+      repository: diaryRepository,
+      seedDebugData: kDebugMode,
+    );
+    final chatStore = ChatStore();
+    final chatSession = ChatSessionController(chatStore);
+
+    // (id, 标题) 唯一来源在 kNavDestinationSpecs（控制层共用）。
+    final destinations = <NavDestination>[
+      for (final spec in kNavDestinationSpecs)
+        NavDestination(
+          id: spec.id,
+          label: spec.label,
+          icon: null, // TODO: 各页面定型后在此填入图标
+          pageBuilder: (_) => switch (spec.id) {
+            'chat' => const ChatPage(),
+            // 生产环境（无测试注入仓储）开屏预进今日日记编辑页：
+            // 日记页随轨道离屏常驻，先把今日编辑页压进内层栈，
+            // 用户横滑到笔记页即见今日日记。
+            'notes' => DiaryPage(
+              key: diaryPageKey,
+              diaryModule: diaryModule,
+              preEnterToday: diaryRepository == null,
+              // 导出提醒红锚点按稳定目的地 id 上报。
+              badgeDestinationId: spec.id,
+            ),
+            // 仅终端页挂锚点调试面板；release 构建 footer 为 null，
+            // 调试组件随树摇移除。
+            _ => TemplatePage(
+              title: spec.label,
+              secCode: switch (spec.id) {
+                'console' => 'SEC.01',
+                'notes' => 'SEC.03',
+                'me' => 'SEC.04',
+                _ => null,
+              },
+              secName: switch (spec.id) {
+                'console' => 'CONSOLE',
+                'notes' => 'NOTES',
+                'me' => 'ME',
+                _ => null,
+              },
+              footer: kDebugMode && spec.id == 'console'
+                  ? ConsoleBadgeControls(consolePageId: spec.id)
+                  : null,
+            ),
+          },
+        ),
+    ];
+
+    final services = AppServices._(
+      destinations,
+      chatStore,
+      chatSession,
+      diaryModule,
+      diaryPageKey,
+    );
+    services._registerWithControl();
+    return services;
+  }
+
+  /// ECP 接线：把与 UI 同源的聊天实例注册给控制面
+  /// （widget 测试未走 ControlBootstrap.init 时 instance 为 null，静默跳过）。
+  void _registerWithControl() {
+    final registry = ControlBootstrap.instance?.registry;
+    registry
+      ?..set(chatStore)
+      // 命令层按抽象 ChatRepository 解析，与 UI 同源同一个 store。
+      ..set<ChatRepository>(chatStore)
+      ..set(chatSession);
+  }
+
+  /// 释放装配根：解除控制面注册，释放聊天服务与日记模块（幂等）。
+  ///
+  /// 外部注入的日记仓储不归模块所有，模块 dispose 不会关闭它。
+  Future<void> dispose() async {
+    if (_disposed) return;
+    _disposed = true;
+
+    final registry = ControlBootstrap.instance?.registry;
+    registry
+      ?..unset<ChatStore>()
+      ..unset<ChatRepository>()
+      ..unset<ChatSessionController>();
+
+    chatSession.dispose();
+    chatStore.dispose();
+
+    try {
+      final module = await _diaryModule;
+      await module.dispose();
+    } catch (_) {
+      // 模块异步装配失败时无实例可释放。
+    }
+  }
+}

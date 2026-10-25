@@ -34,16 +34,22 @@ echo/
 │   ├── main.dart                          # 入口，挂载 EchoApp
 │   └── src/
 │       ├── app/
-│       │   └── echo_app.dart              # MaterialApp、主题装配
+│       │   ├── echo_app.dart              # MaterialApp、主题装配（持有 AppServices 生命周期）
+│       │   └── app_services.dart          # 装配根：DiaryModule/ChatStore/ChatSessionController + 导航页面绑定
 │       ├── theme/
 │       │   ├── app_colors.dart            # 全局调色板（tone 四阶 + 机能风 mech 色组）
+│       │   ├── layout_metrics.dart        # 跨模块共享布局数值（底部三条避让）
 │       │   └── mechanical_style.dart      # 机能风几何/排印/时长常量（颜色在 AppColors）
+│       ├── common/
+│       │   └── json_time.dart             # wire 时间格式（毫秒/ISO）共用工具
 │       ├── pages/
 │       │   ├── chat_page.dart             # 聊天页（数据驱动会话列表：左滑操作/未读绿点）
 │       │   ├── template_page.dart         # 模板页（大标题 + SEC kicker，可挂 footer）
 │       │   └── debug_badge_controls.dart  # 锚点通知/异常的测试按钮（脚手架）
 │       ├── diary/                         # 日记模块（笔记页；模块文档 docs/diary/）
 │       │   ├── diary_module.dart          # 模块装配：存储根/仓储/模板/成稿器/导出服务 + ECP 注册（UI 只消费）
+│       │   ├── diary_json.dart            # 日记领域 wire 序列化（命令层不再自建）
+│       │   ├── diary_page_handle.dart     # 日记页能力句柄抽象（导航层不认具体页面）
 │       │   ├── sy/                        # 思源格式层：模型/确定性 ID/序列化器/.sy.zip
 │       │   ├── data/                      # Repository 抽象 + 内存/sqflite 实现、04:00 时钟、数据 Provider
 │       │   ├── template/                  # 每日模板：JSON 解析、成稿器（幂等/并发去重）
@@ -52,6 +58,7 @@ echo/
 │       │   └── ui/                        # 年/月/日浏览页、编辑页、三态 UI（含 widgets/）
 │       ├── services/                      # 与界面无关的能力层
 │       │   ├── chat_repository.dart       # 聊天仓储抽象 + 内存实现（命令层只依赖接口）
+│       │   ├── chat_json.dart             # 聊天领域 wire 序列化
 │       │   ├── chat_store.dart            # 聊天视图服务：委托仓储 + 变更通知 + Scope
 │       │   ├── haptics.dart               # 触感反馈统一入口
 │       │   ├── nav_badge_service.dart     # 导航锚点状态：通知/异常接口
@@ -155,9 +162,11 @@ AGENT.md                                   # 给开发 agent 的工作提示（�
 | `id` | `String` | 程序内稳定标识，代码引用页面时用它，不依赖排列顺序 |
 | `label` | `String` | 页面名称（页名标签、搜索结果用） |
 | `icon` | `IconData?` | 页面图标；`null` 时搜索结果等位置显示数字序号 |
-| `pageBuilder` | `WidgetBuilder` | 页面本体构建器，按需构建 |
+| `pageBuilder` | `NavPageBuilder` | 页面本体构建器（`Widget Function(BuildContext)`），按需构建 |
 
-默认配置由 `buildDefaultDestinations()` 构建，当前为 4 页：
+本文件只描述页面构造器抽象，**不 import 任何具体页面实现**；默认配置
+由装配根 `AppServices.create()`（`app/app_services.dart`）按
+`kNavDestinationSpecs` 逐项绑定，当前为 4 页：
 终端（console）、聊天（chat）、笔记（notes）、主页（me）。
 其中**聊天页**为真实页面 `ChatPage`（见 3.10），
 **笔记页为真实日记模块** `DiaryPage`（见 3.12），
@@ -335,7 +344,7 @@ GlobalKey 重挂载曾触发框架断言），而是由 `DockGeometry`（底部�
   终端页：「模拟：聊天新消息」（调 `ChatStore.addIncoming()`，
   不直接操作锚点）、「模拟：异常」（终端页锚点进入红闪）、「处理异常」
   （无异常时禁用并显示「当前无待处理异常」）；笔记页不挂任何调试按钮。
-  终端页稳定 id（`'console'`）由 `buildDefaultDestinations()` 解析后经
+  终端页稳定 id（`'console'`）由装配根 `AppServices.create()` 解析后经
   构造参数 `ConsoleBadgeControls.consolePageId` 传入，脚手架内不写死
   页序/页号。接入真实通知/异常源后此脚手架应移除。
   脚手架由 `kDebugMode` 守卫：仅 debug 构建挂入页面，release/profile
@@ -686,9 +695,10 @@ ui/（年/月/日浏览、编辑页）
   才自动清；`badgeDestinationId` 由装配层注入（不硬编码页名）。
   月行另按 `isMonthFullyExported` 在导出按钮左侧显「已导出」徽标，
   与日行共用 [DiaryStateBadge]（widgets/diary_list_row.dart）。
-- **生命周期注意**：`DiaryPage` State 在主屏 Row 中常驻，bootstrap
-  （打开仓储、自动成稿、prune）与编辑器防抖 flush 都挂在它上面；
-  未来若做页面窗口化懒加载（问题清单 Q3），必须先迁移这些假设。
+- **生命周期注意**：`DiaryPage` State 在主屏 Row 中常驻，装配根
+  （`AppServices` → `DiaryModule`）负责打开仓储、自动成稿与 prune，
+  编辑器防抖 flush 仍挂在页面 State 上；未来若做页面窗口化懒加载
+  （问题清单 Q3），必须先迁移这些假设。
 - **ECP 接缝**：[ecp/ecp-design.md](ecp/ecp-design.md) 控制面
   经 `ControlRegistry` 直接拿到 [DiaryModule](diary_module.dart) 装配的同一组实例
   （clock/repository/composer/exportService），diary.list/get/ensure/
@@ -713,8 +723,9 @@ ui/（年/月/日浏览、编辑页）
   其中 5 条 debugOnly 在 release 物理不注册）；另有 `events/`
   （内存环+长轮询）、`jobs/`（后台作业表）、`slash/`（指令台核心）。
 - **同路原则**：命令不持有业务逻辑，全部经 `ControlRegistry` 调 UI
-  同源公开 API；业务实例只在各自装配处注册（导航屏注册
-  `NavPhysicsController`，日记模块 `DiaryModule` 注册时钟/仓储/composer/
+  同源公开 API；业务实例只在各自装配处注册（装配根 `AppServices`
+  注册 `ChatStore`/`ChatRepository`/`ChatSessionController`，导航屏注册
+  `NavPhysicsController` 与 `NavBadgeService`，日记模块 `DiaryModule` 注册时钟/仓储/composer/
   导出服务，日记页另注册 `DiaryNavigatorController`），
   未就绪统一回 `CONFLICT`。事件方向同样单向：services/navigation
   不反向依赖 control，由装配层 `ControlEventBridge` 订阅转发。
@@ -739,14 +750,16 @@ ui/（年/月/日浏览、编辑页）
 
 ### 新增一个页面
 在 `navigation/nav_destination_specs.dart` 的 `kNavDestinationSpecs`
-（稳定 id + 显示 label；ECP `nav.goto` 按 id 寻址）与
-`buildDefaultDestinations()`（pageBuilder 装配）中同步增加一项。
+（稳定 id + 显示 label；ECP `nav.goto` 按 id 寻址）中同步增加一项，
+并在装配根 `app/app_services.dart` 的 `AppServices.create()` 里为该
+spec 绑定 `pageBuilder`（本文件不 import 具体页面实现）。
 导航线、转鼓、页名牌、页面搜索会自动纳入；新增页面要走 ECP 的话，
 稳定 id 还需登记进 `docs/ecp/ecp-commands.md`。
 
 ### 把某个模板页替换为真实页面
-把该 `NavDestination` 的 `pageBuilder` 从 `TemplatePage` 换成真实页面
-组件（在 `lib/src/pages/` 下新建页面文件）。同时可补上 `icon`。
+在 `AppServices.create()` 中把该 destination 的 `pageBuilder` 从
+`TemplatePage` 换成真实页面组件（在 `lib/src/pages/` 下新建页面文件）。
+同时可补上 `icon`。
 
 ### 接入快捷操作的真实行为
 修改 `buildDefaultQuickActions()` 中对应 `QuickAction` 的 `onSelect`，

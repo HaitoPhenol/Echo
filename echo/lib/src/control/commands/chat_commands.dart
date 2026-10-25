@@ -1,8 +1,8 @@
 import '../../services/chat_repository.dart';
+import '../../services/chat_json.dart';
 import '../../services/chat_session_controller.dart';
 import '../protocol/command_spec.dart';
 import '../protocol/control_error.dart';
-import 'control_json.dart';
 
 /// `chat` 命名空间：会话列表 / 消息分页 / 进入会话 / 外发 / 已读
 /// /（debug）灌数（手册 §6）。

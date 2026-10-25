@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../../navigation/dock_geometry.dart';
 import '../../theme/app_colors.dart';
+import '../../theme/layout_metrics.dart';
 import '../export/diary_export_service.dart';
 
 /// 年/月列表共用的导出交互：范围提示、渠道弹窗、分享确认、结果文案。
@@ -16,15 +16,15 @@ import '../export/diary_export_service.dart';
 ///
 /// 弹窗挂在日记内层 Navigator 的 Overlay 上，层级低于主屏底部停靠件
 /// （把手条 / AI 条 / 导航胶囊），三者不会让位、会直接盖住弹窗底边。
-/// 因此底部按 [DockGeometry] 额外留出「停靠件 + 间隙」的高度，
-/// 让分享 / 另存两个选项整体落在导航栏之上，不被遮挡。
+/// 因此底部按共享的 [LayoutMetrics.dockClearance] 额外留出「停靠件 +
+/// 间隙」的高度，让分享 / 另存两个选项整体落在导航栏之上，不被遮挡。
 Future<DiaryExportChannel?> showDiaryExportChannelSheet(
   BuildContext context, {
   required String scopeLabel,
 }) {
   // 停靠件上沿 = 安全区 + bottomMargin + barHeight；再留 12dp 间隙，
-  // 与 AI 对话框收在导航条上方的口径一致。
-  const dockClearance = DockGeometry.bottomMargin + DockGeometry.barHeight + 12;
+  // 与 AI 对话框收在导航条上方的口径一致（数值单一来源见 LayoutMetrics）。
+  const dockClearance = LayoutMetrics.dockClearance;
   return showModalBottomSheet<DiaryExportChannel>(
     context: context,
     backgroundColor: AppColors.overlaySurface,

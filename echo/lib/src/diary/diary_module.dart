@@ -28,6 +28,7 @@ class DiaryModule {
     required this.repository,
     required this.composer,
     required this.exportService,
+    required this.ownsRepository,
     this.storageRoot,
   });
 
@@ -37,9 +38,15 @@ class DiaryModule {
   final DiaryComposer composer;
   final DiaryExportService exportService;
 
+  /// 仓储是否由本模块打开（生产持久仓储）。外部注入的仓储由调用方
+  /// 负责释放，本模块 dispose 不越权关闭。
+  final bool ownsRepository;
+
   /// 生产仓储的根目录 `<应用文档目录>/echo_diary`；
   /// 注入仓储（测试/预览）时为 null，ECP 的 `sys.info` 不上报路径。
   final Directory? storageRoot;
+
+  bool _disposed = false;
 
   /// 装配并打开日记模块。
   ///
@@ -77,6 +84,7 @@ class DiaryModule {
       composer: composer,
       exportService:
           exportService ?? DiaryExportService(repository: resolvedRepository),
+      ownsRepository: repository == null,
       storageRoot: root,
     );
     module._registerWithControl();
@@ -106,6 +114,32 @@ class DiaryModule {
     ControlBootstrap.instance?.registry.set<DiaryNavigatorController>(
       controller,
     );
+  }
+
+  /// 释放模块：解除 ControlRegistry 上的同源实例、关闭自有仓储。
+  ///
+  /// 幂等；外部注入的仓储不关闭（由注入方负责）。调用时机由装配根
+  /// （[AppServices] / 自装配的日记页）决定。
+  Future<void> dispose() async {
+    if (_disposed) return;
+    _disposed = true;
+
+    final control = ControlBootstrap.instance;
+    final registry = control?.registry;
+    registry
+      ?..unset<DiaryClock>()
+      ..unset<DiaryRepository>()
+      ..unset<DiaryComposer>()
+      ..unset<DiaryExportService>()
+      ..unset<DiaryNavigatorController>();
+    if (storageRoot != null) control?.paths.diaryRoot = null;
+
+    if (!ownsRepository) return;
+    final repository = this.repository;
+    if (repository is PersistentDiaryRepository) {
+      await repository.close();
+    }
+    repository.dispose();
   }
 
   /// 仓储根目录：`<应用文档目录>/echo_diary`（open 内负责创建）。

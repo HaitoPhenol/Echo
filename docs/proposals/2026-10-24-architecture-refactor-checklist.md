@@ -64,6 +64,8 @@
 
 ### R3 收紧跨域依赖（P1）
 
+状态（2026-10-25）：已实现，待审查/提交。
+
 **问题**
 - `navigation/smart_nav_screen.dart` L7-L11 直接 import diary 仓储/页面与 control 内部。
 - `navigation/nav_destination.dart` 同时 import 三个页面模块。

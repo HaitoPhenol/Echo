@@ -41,8 +41,9 @@
 
 ## 页面与导航
 
-横向 4 页固定（`navigation/nav_destination.dart` 的
-`buildDefaultDestinations()`，稳定 id）：
+横向 4 页固定（装配根 `app/app_services.dart` 的 `AppServices.create()`
+按 `kNavDestinationSpecs` 绑定页面；`navigation/nav_destination.dart`
+只描述页面构造器抽象与稳定 id）：
 
 | 序 | id | 页名 | 实现 |
 |---|---|---|---|
@@ -57,6 +58,11 @@
   （Row + Stack），
   **日记页 State 常驻**：进模块自动成稿、防抖 flush 等生命周期挂在该
   常驻 State 上——改懒加载前必须先迁移这些假设。
+- 跨页共享实例由装配根 `AppServices`（`EchoApp` State 创建与释放）持有：
+  `DiaryModule`（异步开库，经 `Future<DiaryModule>` 注入日记页）、
+  `ChatStore`/`ChatSessionController`；导航屏只收实例，不 import
+  日记数据层/具体页面。`DiaryModule.dispose()` 幂等：解除控制面注册，
+  仅对自有仓储执行 `close` 后释放。
 - 导航物理为自研 `NavPhysicsController`（position 线性物理 +
   displayPosition 橡胶带/Hermite 双层）；几何单一事实来源
   `DockGeometry`（静态常量+MediaQuery，不用 GlobalKey）。
@@ -311,9 +317,10 @@
   `sys.job.get` 轮询终态；轮询走普通广播，**Kotlin 零改动**；
   slash 通道行为不变（进程内直等终态）。
 - **同路装配**：`ControlBootstrap.init()` 在 main() 内 await
-  （建 echo_control 目录、注册常驻服务）；导航屏注册
-  NavPhysicsController，日记页 bootstrap 注册与 UI 同源的
-  clock/仓储/composer/导出服务；未注册时命令回 CONFLICT。
+  （建 echo_control 目录、注册常驻服务）；装配根
+  `AppServices` 注册 ChatStore/ChatRepository/ChatSessionController，
+  导航屏注册 NavPhysicsController/NavBadgeService，日记模块注册与 UI
+  同源的 clock/仓储/composer/导出服务；未注册时命令回 CONFLICT。
 - **工作站入口**：`scripts/echo-cmd <命令>`（冷启动轮询 ping、
   kebab→camel 参数、stdin 收 PIN 不进历史、退出码对齐手册；
   P4 起 slow 命令默认自动轮询终态最长 65s，`--no-wait` 只取

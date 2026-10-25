@@ -1,6 +1,5 @@
 import '../../services/console_stats_service.dart';
 import '../protocol/command_spec.dart';
-import 'control_json.dart';
 
 /// `console` 命名空间：机能风读数条快照与立即刷新（手册 §7，P2）。
 ///
@@ -18,7 +17,7 @@ final CommandSpec consoleSnapshot = CommandSpec(
   level: ControlLevel.owner,
   handler: (ctx) async {
     final stats = ctx.requireService<ConsoleStatsService>('读数服务');
-    return consoleSnapshotJson(stats.snapshot);
+    return stats.snapshot.toJson();
   },
 );
 
@@ -32,6 +31,6 @@ final CommandSpec consoleRefresh = CommandSpec(
   handler: (ctx) async {
     final stats = ctx.requireService<ConsoleStatsService>('读数服务');
     final snapshot = await stats.refresh();
-    return consoleSnapshotJson(snapshot);
+    return snapshot.toJson();
   },
 );

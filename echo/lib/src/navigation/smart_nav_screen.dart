@@ -7,8 +7,7 @@ import 'package:flutter/services.dart';
 import '../control/bootstrap.dart';
 import '../control/control_event_bridge.dart';
 import '../control/slash_ui/slash_ui.dart';
-import '../diary/data/diary_repository.dart';
-import '../diary/ui/diary_page.dart';
+import '../diary/diary_page_handle.dart';
 import '../services/chat_session_controller.dart';
 import '../services/chat_store.dart';
 import '../services/console_stats_service.dart';
@@ -64,10 +63,25 @@ import 'widgets/trigger_ripple.dart';
 /// 竖单、抽屉、AI 对话框与搜索态互斥：唤起其一会先收起其他浮层。
 /// 任一浮层打开时系统返回键只关闭浮层、不退出 App（PopScope）。
 class SmartNavScreen extends StatefulWidget {
-  const SmartNavScreen({super.key, this.diaryRepository});
+  const SmartNavScreen({
+    super.key,
+    required this.destinations,
+    required this.diaryPage,
+    required this.chatStore,
+    required this.chatSession,
+  });
 
-  /// 测试注入缝：笔记页日记仓储；生产环境为 null（走持久仓储开库）。
-  final DiaryRepository? diaryRepository;
+  /// 导航目的地配置（装配根提供，页面绑定不在本屏）。
+  final List<NavDestination> destinations;
+
+  /// 日记页能力句柄（装配根经 GlobalKey 取 State；未挂载时为 null）。
+  final DiaryPageHandle? Function() diaryPage;
+
+  /// 跨页共享的聊天数据服务（由装配根持有与释放）。
+  final ChatStore chatStore;
+
+  /// 当前打开会话控制器（由装配根持有与释放）。
+  final ChatSessionController chatSession;
 
   @override
   State<SmartNavScreen> createState() => _SmartNavScreenState();
@@ -86,10 +100,6 @@ class _SmartNavScreenState extends State<SmartNavScreen>
 
   /// 快捷操作配置。
   late final List<QuickAction> _quickActions;
-
-  /// 日记页 State key：把手竖单「今日日记」快捷入口据此调用
-  /// [DiaryPageState.openTodayEditor] 驱动日记内层栈（若该页未挂载则为 null）。
-  final GlobalKey<DiaryPageState> _diaryKey = GlobalKey();
 
   /// 搜索历史存储与搜索服务。
   late final SearchHistoryStore _searchHistory;
@@ -231,10 +241,7 @@ class _SmartNavScreenState extends State<SmartNavScreen>
     WindowInsetRefresher.ensureRegistered();
 
     // ---- 组装配置与服务（依赖关系：providers → searchService）----
-    _destinations = buildDefaultDestinations(
-      diaryRepository: widget.diaryRepository,
-      diaryPageKey: _diaryKey,
-    );
+    _destinations = widget.destinations;
     _quickActions = buildDefaultQuickActions();
     _searchHistory = InMemorySearchHistoryStore();
     _searchService = SearchService(
@@ -251,8 +258,8 @@ class _SmartNavScreenState extends State<SmartNavScreen>
       destinationIds: [for (final d in _destinations) d.id],
     );
 
-    _chatStore = ChatStore();
-    _chatSession = ChatSessionController(_chatStore);
+    _chatStore = widget.chatStore;
+    _chatSession = widget.chatSession;
     _chatPageIndex = _destinations.indexWhere((d) => d.id == 'chat');
     _notesPageIndex = _destinations.indexWhere((d) => d.id == 'notes');
     // 锚点联动：聊天页锚点不再由「停留 700ms」清除，而完全由
@@ -296,7 +303,7 @@ class _SmartNavScreenState extends State<SmartNavScreen>
         // 对话框（弹框/跳转编排在 DiaryPageState 内，数据驱动判定）。
         if (page == _notesPageIndex && !_diaryReminderRequested) {
           _diaryReminderRequested = true;
-          _diaryKey.currentState?.maybeShowExportReminder();
+          widget.diaryPage()?.maybeShowExportReminder();
         }
       }
     });
@@ -313,12 +320,10 @@ class _SmartNavScreenState extends State<SmartNavScreen>
     //（widget 测试未走 ControlBootstrap.init 时为 null，跳过）。
     final control = ControlBootstrap.instance;
     if (control != null) {
+      // 聊天服务由装配根（AppServices）创建并注册，本屏只补 UI 同源的
+      // 导航控制器与锚点服务。
       control.registry
         ..set(_nav)
-        ..set(_chatStore)
-        // 命令层按抽象 ChatRepository 解析，与 UI 同源同一个 store。
-        ..set<ChatRepository>(_chatStore)
-        ..set(_chatSession)
         ..set<NavBadgeService>(_badges);
       // slash 指令态与命令执行同源总线/鉴权；写回输入框与收起面板
       // 复用搜索栏既有控制器与退出路径，不另开输入入口。
@@ -350,8 +355,8 @@ class _SmartNavScreenState extends State<SmartNavScreen>
     _eventBridge?.dispose();
     _nav.dispose();
     _bgMotion.dispose();
-    _chatSession.dispose();
-    _chatStore.dispose();
+    // 聊天服务归装配根所有：只摘监听，不在本屏释放。
+    _chatStore.removeListener(_syncChatBadge);
     _badges.dispose();
     _slash?.dispose();
     _searchFocusNode.dispose();
@@ -781,25 +786,25 @@ class _SmartNavScreenState extends State<SmartNavScreen>
     onBackfill: _openBackfill,
     // 仅日编辑页多一个「插入时间戳」入口（详见 [buildPageActions]），
     // 其余页面清单不变。
-    notesEditorActive: _diaryKey.currentState?.isEditorPage ?? false,
+    notesEditorActive: widget.diaryPage()?.isEditorPage ?? false,
     onInsertStamp: _insertStamp,
   );
 
   /// 竖单「插入时间戳」：在编辑页光标所在块的下一行插入一个时间戳段。
   bool _insertStamp() =>
-      _diaryKey.currentState?.insertStampBelowCursor() ?? false;
+      widget.diaryPage()?.insertStampBelowCursor() ?? false;
 
   /// 「今日日记」快捷：直接进今日日记编辑页。
   ///
   /// 用户此刻就在笔记页上（竖单按当前页取用），无需切换轨道页；
-  /// 由日记页自己把内层栈带到今日编辑页（见 [DiaryPageState.openTodayEditor]）。
-  void _openTodayDiary() => _diaryKey.currentState?.openTodayEditor();
+  /// 由日记页自己把内层栈带到今日编辑页（见 `DiaryPageHandle.openTodayEditor`）。
+  void _openTodayDiary() => widget.diaryPage()?.openTodayEditor();
 
   /// 「补记」快捷：弹日期选择器补录过去某天（入口自月列表页顶栏「+」迁来）。
   ///
   /// 同为笔记页常驻入口：用户此刻就在笔记页上，由日记页自己弹日期选择器并
-  /// 把内层栈带到所选日期的编辑页（见 [DiaryPageState.startBackfill]）。
-  void _openBackfill() => _diaryKey.currentState?.startBackfill();
+  /// 把内层栈带到所选日期的编辑页（见 `DiaryPageHandle.startBackfill`）。
+  void _openBackfill() => widget.diaryPage()?.startBackfill();
 
   /// 打开 AI 对话框（按压外观到松手时自然复位）。
   void _openAiDialog() {

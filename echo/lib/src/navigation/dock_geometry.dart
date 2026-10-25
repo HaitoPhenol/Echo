@@ -2,6 +2,8 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../theme/layout_metrics.dart';
+
 /// 底部「三条一行」停靠区的几何事实来源。
 ///
 /// 屏幕底部同一水平线上等高地住着三兄弟（原型
@@ -16,14 +18,14 @@ import 'package:flutter/material.dart';
 /// 所有视觉矩形与隐形热区都由本类静态常量/函数配合 MediaQuery 推算，
 /// 不在运行时用 GlobalKey 测量（原因见工程规范事故 4）。
 abstract final class DockGeometry {
-  /// 屏幕两侧留白 & 三条之间的统一间距。
-  static const double sideMargin = 14;
+  /// 屏幕两侧留白 & 三条之间的统一间距（共享度量，见 [LayoutMetrics]）。
+  static const double sideMargin = LayoutMetrics.dockSideMargin;
 
   /// 三条距屏幕底部（安全区之上）的距离。
-  static const double bottomMargin = 16;
+  static const double bottomMargin = LayoutMetrics.dockBottomMargin;
 
   /// 三条的共同高度（也是翻页圆点的直径）。
-  static const double barHeight = 10;
+  static const double barHeight = LayoutMetrics.dockBarHeight;
 
   /// 翻页圆点直径。
   static const double dotDiameter = 10;

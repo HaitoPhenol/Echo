@@ -28,8 +28,9 @@ import '../services/console_stats_service.dart';
 /// ECP 控制面装配根（设计 §3.3）。
 ///
 /// 生命周期独立于 widget 树（adb 广播在树外到达）：App 启动时
-/// [init] 一次，业务页（DiaryPage / SmartNavScreen）在自身
-/// bootstrap 完成后把**与 UI 同源的实例**注册进 [registry]。
+/// [init] 一次，装配根（`AppServices`/`DiaryModule`）与业务页
+/// （`SmartNavScreen`）在各自装配完成后把**与 UI 同源的实例**注册进
+/// [registry]。
 /// release 构建不挂载任何外部通道（[AdbControlChannel] 仅 debug
 /// 挂载，debug-only 命令在 [ControlBus] 注册期物理跳过）。
 class ControlBootstrap with WidgetsBindingObserver {
@@ -125,9 +126,10 @@ class ControlBootstrap with WidgetsBindingObserver {
       ...buildAuthCommands(),
       ...buildNavCommands(),
       ...buildDiaryCommands(),
-      // P2：chat/console/badge 三域。其 UI 同源服务（ChatStore/
-      // ChatSessionController/NavBadgeService）由 SmartNavScreen
-      // 装配后注册；ConsoleStatsService 已在上方 runApp 前注册。
+      // P2：chat/console/badge 三域。其 UI 同源服务中，
+      // ChatStore/ChatSessionController 由装配根 AppServices 创建并注册，
+      // NavBadgeService 由 SmartNavScreen 注册；ConsoleStatsService 已在
+      // 上方 runApp 前注册。
       ...buildChatCommands(),
       ...buildConsoleCommands(),
       ...buildBadgeCommands(),
@@ -157,8 +159,8 @@ class ControlBootstrap with WidgetsBindingObserver {
   }
 
   /// 测试缝：用测试夹具已装配的总线/服务构造实例并置为 [instance]，
-  /// 供读取 `ControlBootstrap.instance` 的宿主（SmartNavScreen）在
-  /// widget 测试中整树挂载。生产路径只走 [init]。
+  /// 供读取 `ControlBootstrap.instance` 的宿主（AppServices/
+  /// SmartNavScreen）在 widget 测试中整树挂载。生产路径只走 [init]。
   @visibleForTesting
   static ControlBootstrap attachTestInstance({
     required ControlRegistry registry,
