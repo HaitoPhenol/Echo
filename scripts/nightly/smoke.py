@@ -186,7 +186,7 @@ def run(label, apk, report, shots, stamp, branch, sha):
         step("04", "右拖回 → 操作区复位", lambda: (
             swipe(0.82 * w - 170, row_y, 0.82 * w, row_y, 220),
             time.sleep(0.4)))
-        step("05", "点左圆点 → 回控制台", lambda: (tap("", dot_l, bar_cy),
+        step("05", "点左圆点 → 回主页", lambda: (tap("", dot_l, bar_cy),
                                                    time.sleep(1.2)))
         step("06", "长按导航条 550ms → 搜索胶囊", lambda: (
             tap("", bar_cx, bar_cy, 550), time.sleep(1.3)))
@@ -223,14 +223,14 @@ def run(label, apk, report, shots, stamp, branch, sha):
             tap("", bar_l + (bar_r - bar_l) * 0.55, bar_cy)
             time.sleep(0.12)
             tap("", bar_l + (bar_r - bar_l) * 0.9, bar_cy)
-        step("16", "300ms 内双击导航条右侧 → 直达末页", lambda: (
+        step("16", "300ms 内双击导航条右侧 → 直达末页（终端）", lambda: (
             double_tap(), time.sleep(1.2)))
 
         def back_home():
             for _ in range(3):
                 tap("", dot_l, bar_cy)
                 time.sleep(0.55)
-        step("17", "连点左圆点 3 次 → 回到控制台", lambda: (
+        step("17", "连点左圆点 3 次 → 回到首页", lambda: (
             back_home(), time.sleep(0.8)))
     finally:
         time.sleep(0.8)

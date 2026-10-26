@@ -170,7 +170,8 @@ AGENT.md                                   # 给开发 agent 的工作提示（�
 本文件只描述页面构造器抽象，**不 import 任何具体页面实现**；默认配置
 由装配根 `AppServices.create()`（`app/app_services.dart`）按
 `kNavDestinationSpecs` 逐项绑定，当前为 4 页：
-终端（console）、聊天（chat）、笔记（notes）、主页（me）。
+主页（me）、聊天（chat）、笔记（notes）、终端（console）。
+（2026-10-26 主页与终端页位置对换，稳定 id 不变。）
 其中**聊天页**为真实页面 `ChatPage`（见 3.10），
 **笔记页为真实日记模块** `DiaryPage`（见 3.12），
 **终端页为真实控制台** `ConsolePage`（R6，复用 slash 指令

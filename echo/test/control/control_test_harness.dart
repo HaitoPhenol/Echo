@@ -24,6 +24,7 @@ import 'package:echo/src/control/protocol/control_envelope.dart';
 import 'package:echo/src/services/chat_session_controller.dart';
 import 'package:echo/src/services/chat_store.dart';
 import 'package:echo/src/services/console_stats_service.dart';
+import 'package:echo/src/navigation/nav_destination_specs.dart';
 import 'package:echo/src/services/nav_badge_service.dart';
 import 'package:echo/src/diary/data/diary_clock.dart';
 import 'package:echo/src/diary/data/diary_data_provider.dart';
@@ -157,7 +158,8 @@ class ControlHarness {
     final chatStore = ChatStore(now: () => h.wallTime);
     final chatSession = ChatSessionController(chatStore);
     final badges = InMemoryNavBadgeService(
-      destinationIds: ['console', 'chat', 'notes', 'me'],
+      // 与生产同源，避免页序再次漂移。
+      destinationIds: [for (final s in kNavDestinationSpecs) s.id],
     );
 
     registry

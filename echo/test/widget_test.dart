@@ -69,11 +69,11 @@ void main() {
     expect(find.byType(ConsolePage), findsOneWidget);
     expect(find.byType(TemplatePage), findsOneWidget);
 
-    // 唯一占位页内的标题文本为「主页」
-    final lastPageText = tester.widget<Text>(
+    // 唯一占位页（主页，现为首页）内的标题文本为「主页」
+    final homePageText = tester.widget<Text>(
       find.descendant(of: find.byType(TemplatePage), matching: find.text('主页')),
     );
-    expect(lastPageText.data, '主页');
+    expect(homePageText.data, '主页');
   });
 
   testWidgets('搜索真实闭环：长按展开 → 输入页面名 → 点结果跳转', (tester) async {
@@ -265,7 +265,7 @@ void main() {
     // 读取第 i 页锚点的当前逻辑状态。锚点始终全部挂载（被滑块
     // 物理遮挡时组件仍在），直接读 widget 即可。
     // 锚点身份键按目的地稳定 id（顺序同 nav_destination_specs.dart）。
-    const anchorIds = <String>['console', 'chat', 'notes', 'me'];
+    const anchorIds = <String>['me', 'chat', 'notes', 'console'];
     NavBadgeLevel anchorLevel(int i) {
       final widget = tester.widget(
         find.byKey(ValueKey<String>('nav-anchor-${anchorIds[i]}')),
@@ -296,7 +296,49 @@ void main() {
       expect(anchorLevel(i), NavBadgeLevel.normal);
     }
 
-    // ---- 终端页（页 0）模拟：聊天新消息 + 终端异常 ----
+    /// 等待页面吸附落位（圆点翻页为弹簧动画，最长约 5 秒）。
+    Future<void> settlePage(Finder pageText) async {
+      var settled = false;
+      for (var i = 0; i < 300 && !settled; i++) {
+        await tester.pump(const Duration(milliseconds: 16));
+        settled = (tester.getCenter(pageText).dx - 400).abs() < 0.5;
+      }
+    }
+
+    /// 第 i 个目的地页的位置标记：主页（i=0）为 TemplatePage、聊天（i=1）
+    /// 用会话列表、笔记（i=2）用年表标题「日记」、终端（i=3）R6 起为
+    /// ConsolePage（2026-10-26 主页与终端页位置对换）。
+    Finder pageMarker(int i) {
+      if (i == 0) {
+        return find
+            .descendant(
+              of: find.byType(TemplatePage),
+              matching: find.byType(Text),
+            )
+            .first;
+      }
+      if (i == 1) {
+        return find.byKey(const ValueKey<String>('chat-page-list'));
+      }
+      if (i == 2) {
+        return find
+            .descendant(of: find.byType(DiaryPage), matching: find.text('日记'))
+            .first;
+      }
+      return find.byType(ConsolePage);
+    }
+
+    /// 双击导航条直达末页（终端页）；构造按钮只挂在终端页页脚。
+    Future<void> jumpToTerminal() async {
+      await tester.tapAt(const Offset(700, 580));
+      await tester.tapAt(const Offset(700, 580));
+      await settlePage(pageMarker(3));
+    }
+
+    await jumpToTerminal();
+    expect(tester.getCenter(pageMarker(3)).dx, closeTo(400, 0.5));
+
+    // ---- 终端页（页 3）模拟：聊天新消息 + 终端异常 ----
     await tester.tap(find.text('模拟：聊天新消息'));
     await tester.pump();
     expect(anchorLevel(1), NavBadgeLevel.notification);
@@ -314,16 +356,7 @@ void main() {
     // 异常模拟作用于终端页自身（页序由接线处按 id 解析，不写死）。
     await tester.tap(find.text('模拟：异常'));
     await tester.pump();
-    expect(anchorLevel(0), NavBadgeLevel.exception);
-
-    /// 等待页面吸附落位（圆点翻页为弹簧动画，最长约 5 秒）。
-    Future<void> settlePage(Finder pageText) async {
-      var settled = false;
-      for (var i = 0; i < 300 && !settled; i++) {
-        await tester.pump(const Duration(milliseconds: 16));
-        settled = (tester.getCenter(pageText).dx - 400).abs() < 0.5;
-      }
-    }
+    expect(anchorLevel(3), NavBadgeLevel.exception);
 
     // 先收起模拟按钮弹出的 SnackBar——它覆盖在底部会挡住导航条热区。
     ScaffoldMessenger.of(tester.element(find.byType(Scaffold).first))
@@ -335,39 +368,6 @@ void main() {
     ) {
       await tester.pump(const Duration(milliseconds: 16));
     }
-
-    /// 第 i 个目的地页的位置标记：聊天页（i=1）用 ChatPage 的 ListView；
-    /// 笔记页（i=2）M2 起为 DiaryPage，用年表标题「日记」；
-    /// 终端（i=0）R6 起为 ConsolePage；主页（i=3）仍是 TemplatePage。
-    Finder pageMarker(int i) {
-      if (i == 0) return find.byType(ConsolePage);
-      if (i == 1) {
-        return find.byKey(const ValueKey<String>('chat-page-list'));
-      }
-      if (i == 2) {
-        return find
-            .descendant(of: find.byType(DiaryPage), matching: find.text('日记'))
-            .first;
-      }
-      return find
-          .descendant(
-            of: find.byType(TemplatePage),
-            matching: find.byType(Text),
-          )
-          .first;
-    }
-
-    // ---- 双击导航条从终端页直达末页：途中经过的页面不算已读 ----
-    await tester.tapAt(const Offset(700, 580));
-    await tester.tapAt(const Offset(700, 580));
-    await settlePage(pageMarker(3));
-    expect(tester.getCenter(pageMarker(3)).dx, closeTo(400, 0.5));
-    expect(
-      anchorLevel(1),
-      NavBadgeLevel.notification,
-      reason: '双击直达途中经过聊天页，不应判定已读',
-    );
-    expect(anchorLevel(0), NavBadgeLevel.exception, reason: '双击离开终端页，异常不应被解除');
 
     /// 点左圆点，并只推进到激活页切换（越过 destination 中点，
     /// 该页标题中心越过屏幕左缘 0）——模拟快速连点：每"页"停留
@@ -383,22 +383,33 @@ void main() {
       }
     }
 
-    // ---- 连点左圆点快速扫回终端页：经过聊天页不算已读；
-    //      回到异常页连续停留超过 700ms 也不解除异常 ----
+    // ---- 连点左圆点快速扫回首页：经过聊天页不算已读；
+    //      离开终端页后异常不应被解除 ----
     await fastStepLeft(2);
     await fastStepLeft(1);
     await fastStepLeft(0);
     await settlePage(pageMarker(0));
     await tester.pump(const Duration(milliseconds: 750));
     expect(anchorLevel(1), NavBadgeLevel.notification, reason: '快速扫过不应判定已读');
+    expect(anchorLevel(3), NavBadgeLevel.exception, reason: '离开终端页不应解除异常');
+
+    // ---- 双击直达末页回到终端页：停留再久也不解除异常 ----
+    await jumpToTerminal();
+    await tester.pump(const Duration(milliseconds: 750));
     expect(
-      anchorLevel(0),
+      anchorLevel(3),
       NavBadgeLevel.exception,
       reason: '查看异常页不会解除异常（停留计时只清通知态）',
     );
+    expect(
+      anchorLevel(1),
+      NavBadgeLevel.notification,
+      reason: '双击直达途中经过聊天页，不应判定已读',
+    );
 
     // ---- 翻到聊天页：锚点由未读数据驱动，停留再久也不自动恢复 ----
-    await tester.tapAt(const Offset(781, 560));
+    await fastStepLeft(2);
+    await fastStepLeft(1);
     await settlePage(pageMarker(1));
     expect(anchorLevel(1), NavBadgeLevel.notification, reason: '刚落位仍未读');
     // 当前页锚点仍挂载，只是被不透明滑块物理遮挡（无显隐逻辑）
@@ -412,7 +423,7 @@ void main() {
       NavBadgeLevel.notification,
       reason: '聊天锚点改为全部已读才恢复，停留计时不清除',
     );
-    expect(anchorLevel(0), NavBadgeLevel.exception, reason: '在聊天页期间终端异常应保持');
+    expect(anchorLevel(3), NavBadgeLevel.exception, reason: '在聊天页期间终端异常应保持');
 
     // 新消息行在列表最前（800×600 测试表面无安全区：首行中心 y=36），
     // 行内呼吸绿点在树；点按该行 → 全部已读 → 锚点恢复、绿点消失。
@@ -425,11 +436,16 @@ void main() {
     await tester.pump();
     expect(anchorLevel(1), NavBadgeLevel.normal, reason: '点按未读行后全部已读，锚点恢复默认');
     expect(find.byType(UnreadDot), findsNothing);
-    expect(anchorLevel(0), NavBadgeLevel.exception, reason: '通知清除不影响终端异常');
+    expect(anchorLevel(3), NavBadgeLevel.exception, reason: '通知清除不影响终端异常');
 
-    // ---- 翻回终端页：仅查看不解除异常，调试面板上「处理异常」可点 ----
-    await tester.tapAt(const Offset(391, 560));
+    // ---- 双击导航条左侧回主页：双击离开终端页不解除异常 ----
+    await tester.tapAt(const Offset(450, 580));
+    await tester.tapAt(const Offset(450, 580));
     await settlePage(pageMarker(0));
+    expect(anchorLevel(3), NavBadgeLevel.exception, reason: '双击离开终端页，异常不应被解除');
+
+    // ---- 双击直达末页翻回终端页：仅查看不解除异常，调试面板可点 ----
+    await jumpToTerminal();
     // 离开聊天页：锚点始终在树上（覆盖/揭示都靠物理遮挡）
     expect(
       find.byKey(const ValueKey<String>('nav-anchor-chat')),
@@ -437,7 +453,7 @@ void main() {
     );
     await tester.pump(const Duration(milliseconds: 750));
     expect(
-      anchorLevel(0),
+      anchorLevel(3),
       NavBadgeLevel.exception,
       reason: '异常未处理完成，回到该页查看不应改变状态',
     );
@@ -446,7 +462,7 @@ void main() {
     // 显式处理完成 → 锚点恢复，按钮变为禁用文案
     await tester.tap(find.text('处理异常'));
     await tester.pump();
-    expect(anchorLevel(0), NavBadgeLevel.normal);
+    expect(anchorLevel(3), NavBadgeLevel.normal);
     expect(find.text('当前无待处理异常'), findsOneWidget);
   });
 

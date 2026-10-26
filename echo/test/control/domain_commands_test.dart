@@ -139,17 +139,18 @@ void main() {
     });
 
     test('page / goto（稳定 id 与下标）', () async {
+      // 首页为「主页」（2026-10-26 主页与终端页位置对换）。
       final page = await h.execResult('nav.page');
-      expect(page, {'index': 0, 'name': 'console'});
+      expect(page, {'index': 0, 'name': 'me'});
 
       final toNotes = await h.execResult('nav.goto', args: {'page': 'notes'});
       expect((toNotes['to'] as Map)['name'], 'notes');
-      expect((toNotes['from'] as Map)['name'], 'console');
+      expect((toNotes['from'] as Map)['name'], 'me');
       expect(toNotes['warnings'], isEmpty);
 
       await h.execResult('nav.goto', args: {'page': '0'});
       final back = await h.execResult('nav.page');
-      expect(back['name'], 'console');
+      expect(back['name'], 'me');
 
       expect(
         (await h.exec('nav.goto', args: {'page': 'nope'})).error!.code,

@@ -5,10 +5,10 @@
 /// 顺序在此声明为唯一来源；[nav_destination.dart] 的 UI 配置从此读取，
 /// `nav.page` / `nav.goto` 命令也从此解析，杜绝两处各写一份页名。
 const List<({String id, String label})> kNavDestinationSpecs = [
-  (id: 'console', label: '终端'),
+  (id: 'me', label: '主页'),
   (id: 'chat', label: '聊天'),
   (id: 'notes', label: '笔记'),
-  (id: 'me', label: '主页'),
+  (id: 'console', label: '终端'),
 ];
 
 /// 解析 `--page` 入参为页下标：先匹配稳定 id，再尝试 0..pageCount-1

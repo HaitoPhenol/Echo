@@ -24,7 +24,7 @@ void main() {
   test('status：四页下标/稳定名/初始级别一览', () async {
     final r = await h.execResult('badge.status');
     final items = (r['items'] as List).cast<Map>();
-    expect(items.map((i) => i['name']), ['console', 'chat', 'notes', 'me']);
+    expect(items.map((i) => i['name']), ['me', 'chat', 'notes', 'console']);
     expect(items.map((i) => i['index']), [0, 1, 2, 3]);
     expect(items.every((i) => i['level'] == 'normal'), isTrue);
   });

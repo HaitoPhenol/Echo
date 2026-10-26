@@ -47,10 +47,12 @@
 
 | 序 | id | 页名 | 实现 |
 |---|---|---|---|
-| 0 | console | **终端** | 真实 `ConsolePage`（R6 控制台：裸命令/结果流/输入行）+ debug 面板（3 按钮，仅 debug） |
+| 0 | me | **主页** | TemplatePage |
 | 1 | chat | **聊天** | 真实 `ChatPage`：会话列表、左滑操作、未读绿点 |
 | 2 | notes | **笔记** | **真实日记模块**（见下节；2026-10-10 起替换纯模板页） |
-| 3 | me | **主页** | TemplatePage |
+| 3 | console | **终端** | 真实 `ConsolePage`（R6 控制台：裸命令/结果流/输入行）+ debug 面板（3 按钮，仅 debug） |
+
+（2026-10-26 主页与终端页位置对换，稳定 id 与调试面板归属不变。）
 
 - 主屏 `SmartNavScreen`（1353 行；2026-10-16 结构债务 A 项 G1 后：
   几何纯函数收敛至 `navigation/dock_layout.dart`，手势记录类/涟漪移出

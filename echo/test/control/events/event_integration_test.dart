@@ -293,7 +293,7 @@ void main() {
       nav.notifyListeners();
       events = await navEvents(lastSeq);
       expect((events.single['data'] as Map)['index'], 3);
-      expect((events.single['data'] as Map)['page'], 'me');
+      expect((events.single['data'] as Map)['page'], 'console');
 
       // dispose 后页再变化不发。
       bridge.dispose();
@@ -311,7 +311,7 @@ void main() {
       nav.notifyListeners();
       events = await navEvents(beforeReopen);
       expect((events.single['data'] as Map)['index'], 0);
-      expect((events.single['data'] as Map)['page'], 'console');
+      expect((events.single['data'] as Map)['page'], 'me');
       bridge.dispose();
     });
   });
