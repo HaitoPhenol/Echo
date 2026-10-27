@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/widgets.dart';
 
+import '../ai/ai_config_store.dart';
 import '../control/bootstrap.dart';
 import '../diary/data/diary_repository.dart';
 import '../diary/diary_module.dart';
@@ -11,6 +14,7 @@ import '../navigation/nav_destination_specs.dart';
 import '../pages/chat_page.dart';
 import '../pages/console_page.dart';
 import '../pages/debug_badge_controls.dart';
+import '../pages/settings_page.dart';
 import '../pages/template_page.dart';
 import '../services/chat_session_controller.dart';
 import '../services/chat_store.dart';
@@ -25,6 +29,7 @@ class AppServices {
     this.destinations,
     this.chatStore,
     this.chatSession,
+    this.aiConfigStore,
     this._diaryModule,
     this._diaryPageKey,
   );
@@ -38,6 +43,9 @@ class AppServices {
   /// 当前打开会话控制器（点按行与 chat.open 命令同源）。
   final ChatSessionController chatSession;
 
+  /// AI 模型配置存储（设置页读写；异步从私有目录载入）。
+  final AiConfigStore aiConfigStore;
+
   final GlobalKey<DiaryPageState> _diaryPageKey;
   final Future<DiaryModule> _diaryModule;
 
@@ -49,6 +57,10 @@ class AppServices {
   /// 只依赖 [DiaryPageHandle] 抽象，不认识具体页面实现。
   DiaryPageHandle? get diaryPage => _diaryPageKey.currentState;
 
+  /// 设置页构造器：导航屏只拿此闭包压栈，不 import 具体页面实现。
+  Widget settingsPage(BuildContext context) =>
+      SettingsPage(store: aiConfigStore);
+
   /// 按生产口径装配：日记模块异步开库（测试注入仓储时跳过文件 I/O），
   /// 聊天服务同步创建；两者都随 App 生命周期释放。
   static AppServices create({DiaryRepository? diaryRepository}) {
@@ -59,6 +71,10 @@ class AppServices {
     );
     final chatStore = ChatStore();
     final chatSession = ChatSessionController(chatStore);
+
+    // AI 配置：先在内存里可用，异步读取私有目录文件；读失败保持空配置。
+    final aiConfigStore = AiConfigStore();
+    unawaited(aiConfigStore.load());
 
     // (id, 标题) 唯一来源在 kNavDestinationSpecs（控制层共用）。
     final destinations = <NavDestination>[
@@ -99,6 +115,7 @@ class AppServices {
       destinations,
       chatStore,
       chatSession,
+      aiConfigStore,
       diaryModule,
       diaryPageKey,
     );
@@ -132,6 +149,7 @@ class AppServices {
 
     chatSession.dispose();
     chatStore.dispose();
+    aiConfigStore.dispose();
 
     try {
       final module = await _diaryModule;

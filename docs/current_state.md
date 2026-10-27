@@ -85,6 +85,11 @@
   `navigation/widgets/mechanical_*.dart`，token 在
   `theme/app_colors.dart` + `mechanical_style.dart`。
 - 浮层（竖单/AI 对话框/抽屉/搜索/快捷弧）同屏至多一个，返回键统一拦截。
+- **设置页（feat/ai-settings）**：抽屉内「设置」入口压栈 `SettingsPage`；
+  支持多条 OpenAI 兼容模型配置（默认项/推理强度/温度/maxTokens/超时）、
+  逐条连通性测试与 MCP 现状只读展示。API Key 只存应用私有目录
+  `ai_config.json`，界面仅显末 4 位；Android release 主清单已补
+  `INTERNET`。AI 对话框的消息流与发送链路仍未接。
 - debug 面板（模拟聊天新消息/模拟异常/处理异常）仅挂终端页，
   `kDebugMode` 守卫，release 树摇移除。
 
