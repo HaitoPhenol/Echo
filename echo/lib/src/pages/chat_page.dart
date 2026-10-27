@@ -58,8 +58,8 @@ class ChatPage extends StatefulWidget {
   /// 数值对齐 navigation 层的 `DockGeometry.bottomMargin + barHeight`。
   /// 页面层不反向依赖 navigation 层（依赖方向是导航持有页面），
   /// 故此处按页面自身所需的避让高度就近定义；停靠几何调整时需
-  /// 同步检查本常量。
-  static const double _dockReservedHeight = 26;
+  /// 同步检查本常量。整屏 AI 对话页复用同一避让高度。
+  static const double dockReservedHeight = 26;
 
   @override
   State<ChatPage> createState() => _ChatPageState();
@@ -123,7 +123,7 @@ class _ChatPageState extends State<ChatPage> {
         // 列表本身始终铺满全屏，滚动时内容可从停靠条下方穿过。
         padding: EdgeInsets.only(
           top: safePadding.top,
-          bottom: safePadding.bottom + ChatPage._dockReservedHeight,
+          bottom: safePadding.bottom + ChatPage.dockReservedHeight,
         ),
         itemBuilder: (context, index) {
           final conversation = store.conversations[index];

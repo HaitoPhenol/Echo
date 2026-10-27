@@ -13,15 +13,20 @@ import '../ai_chat_controller.dart';
 /// - 已完成消息来自 [ChatStore] 的 AI 会话（持久化、列表预览同源）；
 /// - 正在流入的正文来自 [AiChatController.draft]（尚未落库）。
 ///
-/// 顶部固定展示最近一次 token 用量（有数据时）。
+/// token 用量默认画在消息流顶部；整屏对话页把它放进标题栏右侧，
+/// 传 `showUsage: false` 交给外层渲染。
 class AiChatTranscript extends StatelessWidget {
   const AiChatTranscript({
     super.key,
     this.padding = const EdgeInsets.fromLTRB(14, 10, 14, 6),
+    this.showUsage = true,
   });
 
   /// 列表内边距（对话框与全屏页可按可用高度微调）。
   final EdgeInsets padding;
+
+  /// 是否在顶部渲染最近一次 token 用量。
+  final bool showUsage;
 
   @override
   Widget build(BuildContext context) {
@@ -41,7 +46,7 @@ class AiChatTranscript extends StatelessWidget {
 
     return Column(
       children: [
-        if (usage != null && !usage.isEmpty)
+        if (showUsage && usage != null && !usage.isEmpty)
           Padding(
             padding: const EdgeInsets.fromLTRB(14, 8, 14, 0),
             child: Align(
