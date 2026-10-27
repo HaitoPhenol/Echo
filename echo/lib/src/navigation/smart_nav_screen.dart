@@ -69,6 +69,7 @@ class SmartNavScreen extends StatefulWidget {
     required this.diaryPage,
     required this.chatStore,
     required this.chatSession,
+    required this.settingsPageBuilder,
   });
 
   /// 导航目的地配置（装配根提供，页面绑定不在本屏）。
@@ -82,6 +83,9 @@ class SmartNavScreen extends StatefulWidget {
 
   /// 当前打开会话控制器（由装配根持有与释放）。
   final ChatSessionController chatSession;
+
+  /// 设置页构造器（具体页面绑定在装配根，导航层不 import pages/）。
+  final WidgetBuilder settingsPageBuilder;
 
   @override
   State<SmartNavScreen> createState() => _SmartNavScreenState();
@@ -832,6 +836,14 @@ class _SmartNavScreenState extends State<SmartNavScreen>
     }
   }
 
+  /// 抽屉内「设置」入口：先收起抽屉，再压栈设置页。
+  void _openSettings() {
+    _settleDrawer(open: false, haptic: false);
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(builder: widget.settingsPageBuilder),
+    );
+  }
+
   /// 竖单各按钮的圆心（与 HandleMenu 内边距/间距规则一致，
   /// 供触发涟漪定位），条数按当前页的 [_currentPageActions] 长度而定。
   /// 纯计算收敛在 [DockLayout]。
@@ -1428,13 +1440,14 @@ class _SmartNavScreenState extends State<SmartNavScreen>
           child: SlashCommandLayer(controller: _slash!),
         ),
 
-      // -------- 侧边抽屉（空壳面板 + 遮罩，在胶囊/AI 条之上） --------
+      // -------- 侧边抽屉（设置入口 + 遮罩，在胶囊/AI 条之上） --------
       if (drawerK > 0.001)
         Positioned.fill(
           key: const ValueKey<String>('side-drawer'),
           child: SideDrawer(
             progress: _drawerAnim,
             onScrimTap: () => _settleDrawer(open: false),
+            onOpenSettings: _openSettings,
           ),
         ),
 

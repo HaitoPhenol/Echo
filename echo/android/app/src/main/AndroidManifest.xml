@@ -1,6 +1,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <!-- 直接驱动振动马达所需（系统触感开关关闭时仍可给出轻震反馈） -->
     <uses-permission android:name="android.permission.VIBRATE"/>
+    <!-- 模型 API 连通与聊天请求（OpenAI 兼容 HTTP） -->
+    <uses-permission android:name="android.permission.INTERNET"/>
     <!-- allowBackup=false（E5）：App 无需要系统云备份的用户状态——
          日记是「导出归档」模型（.sy.zip 自行外带）；同时杜绝
          echo_control/pin.json（PIN 的 PBKDF2 哈希）随备份导出。 -->

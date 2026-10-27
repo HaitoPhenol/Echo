@@ -11,6 +11,7 @@ import 'package:echo/src/navigation/widgets/side_drawer.dart';
 import 'package:echo/src/navigation/widgets/trigger_ripple.dart';
 import 'package:echo/src/pages/chat_page.dart';
 import 'package:echo/src/pages/console_page.dart';
+import 'package:echo/src/pages/settings_page.dart';
 import 'package:echo/src/pages/template_page.dart';
 import 'package:echo/src/navigation/widgets/search_capsule.dart';
 import 'package:echo/src/services/nav_badge_service.dart';
@@ -822,6 +823,34 @@ void main() {
     }
     expect(closed, isTrue, reason: '返回键应关闭抽屉');
     expect(find.byKey(const ValueKey<String>('handle-bar')), findsOneWidget);
+  });
+
+  testWidgets('抽屉内设置入口：关闭抽屉并压栈设置页，返回可退出', (tester) async {
+    await tester.pumpWidget(EchoApp(diaryRepository: diaryRepo));
+    await tester.pump();
+
+    // 拖开抽屉。
+    final g = await tester.createGesture();
+    await g.down(const Offset(62, 579));
+    await tester.pump();
+    await g.moveTo(const Offset(90, 579));
+    await g.moveTo(const Offset(160, 579));
+    await g.moveTo(const Offset(282, 579));
+    await g.up();
+    await pumpFramesMs(tester, 640);
+    expect(find.byType(SideDrawer), findsOneWidget);
+
+    // 点按设置入口：抽屉收起 + 设置页入栈。
+    await tester.tap(find.text('设置'));
+    await pumpFramesMs(tester, 500);
+    expect(find.byType(SettingsPage), findsOneWidget);
+    expect(find.text('尚未配置模型'), findsOneWidget);
+
+    // 返回键只退出设置页，回到导航屏。
+    await tester.binding.handlePopRoute();
+    await pumpFramesMs(tester, 500);
+    expect(find.byType(SettingsPage), findsNothing);
+    expect(find.byType(SideDrawer), findsNothing);
   });
 
   testWidgets('浮层互斥：竖单打开时在 AI 条上长按不弹对话框', (tester) async {

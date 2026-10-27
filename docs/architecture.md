@@ -35,7 +35,11 @@ echo/
 │   └── src/
 │       ├── app/
 │       │   ├── echo_app.dart              # MaterialApp、主题装配（持有 AppServices 生命周期）
-│       │   └── app_services.dart          # 装配根：DiaryModule/ChatStore/ChatSessionController + 导航页面绑定
+│       │   └── app_services.dart          # 装配根：DiaryModule/ChatStore/ChatSessionController/AiConfigStore + 导航页面绑定
+│       ├── ai/                            # AI 接入配置（不含推理本身）
+│       │   ├── ai_config.dart             # 模型配置模型：多配置/默认项/推理强度/端点归一/Key 掩码
+│       │   ├── ai_config_store.dart       # 私有目录 JSON 持久化（tmp+rename 原子写、串行化）
+│       │   └── ai_api_client.dart         # OpenAI 兼容连通测试（传输层可注入，当前仅 ping）
 │       ├── theme/
 │       │   ├── app_colors.dart            # 全局调色板（tone 四阶 + 机能风 mech 色组）
 │       │   ├── layout_metrics.dart        # 跨模块共享布局数值（底部三条避让）
@@ -45,6 +49,8 @@ echo/
 │       │   └── json_time.dart             # wire 时间格式（毫秒/ISO）共用工具
 │       ├── pages/
 │       │   ├── chat_page.dart             # 聊天页（数据驱动会话列表：左滑操作/未读绿点）
+│       │   ├── console_page.dart          # 终端页（slash 指令台第二消费者，裸命令）
+│       │   ├── settings_page.dart         # 设置页（模型 API / 连通测试 / MCP 现状）
 │       │   ├── template_page.dart         # 模板页（大标题 + SEC kicker，可挂 footer）
 │       │   └── debug_badge_controls.dart  # 锚点通知/异常的测试按钮（脚手架）
 │       ├── diary/                         # 日记模块（笔记页；模块文档 docs/diary/）
@@ -103,15 +109,18 @@ echo/
 │               ├── handle_menu.dart       # 本页操作竖单（生长动画）
 │               ├── ai_bar.dart            # AI 条（虹彩流动 + 光晕）
 │               ├── ai_dialog.dart         # AI 对话框（聊天面板）
-│               └── side_drawer.dart       # 侧边抽屉（毛玻璃空壳）
+│               └── side_drawer.dart       # 侧边抽屉（毛玻璃 + 设置入口）
 ├── test/
-│   ├── widget_test.dart                   # 导航/浮层 Widget 集成测试（12 个用例）
+│   ├── widget_test.dart                   # 导航/浮层 Widget 集成测试（15 个用例）
 │   ├── navigation/
 │   │   └── dock_geometry_test.dart        # 快捷弧布局纯函数测试
+│   ├── ai/                                # AI 配置模型/私有目录持久化/连通测试（3 个文件）
 │   ├── pages/
-│   │   └── chat_page_test.dart            # 会话列表交互测试
+│   │   ├── chat_page_test.dart            # 会话列表交互测试
+│   │   ├── console_page_test.dart         # 终端页裸命令/确认/PIN/历史
+│   │   └── settings_page_test.dart        # 设置页配置增删/掩码/连通测试/MCP 空态
 │   ├── diary/                             # 日记：sy 金标准/时钟/仓储/成稿/编辑器/导出/浏览 widget（15 个文件）
-│   └── control/                           # ECP：协议/鉴权/七域/slash/事件/作业/播种/MCP 适配器/手册一致性（614 总测试中的 control 部分）
+│   └── control/                           # ECP：协议/鉴权/七域/slash/事件/作业/播种/MCP 适配器/手册一致性（全量测试中的 control 部分）
 ├── assets/
 │   └── diary/templates/                   # 每日模板 JSON（daily-default.json 概述段 + 空正文段骨架）
 └── README.md                              # Flutter 默认工程说明
@@ -427,9 +436,10 @@ tone2、快捷弧选中按钮 = tone4**；**拇指滑块是特例**：使用不�
   锁定横拖，抽屉进度 0↔1 直接跟手；松手按进度/速度吸附开合
   （跟手不经过控制器；吸附时长开启 420ms、关闭 100ms，关闭非常干脆），
   把手条同步滑动到抽屉右缘外侧的停靠位。抽屉面板
-  右圆角 22、18px 毛玻璃 + `drawerSurface`，**当前是空壳**：面板
-  内容留空、`IgnorePointer` 不接事件；遮罩黑 α.44，点遮罩/返回键
-  关闭。
+  右圆角 22、18px 毛玻璃 + `drawerSurface`，面板内提供「设置」入口
+  （模型 API / MCP）：点按后抽屉先收起、再经装配根注入的
+  `settingsPageBuilder` 压栈设置页；面板空白不拦截点击（穿透到
+  遮罩关闭）。遮罩黑 α.44，点遮罩/返回键关闭。
 - **AI 条**：`AiBar` 是 7s 匀速循环的虹彩六色流动条（条外上下各
   溢 4px 同色模糊光晕）。流动只平移着色器起点、条体矩形固定不动；
   按压态整体 brightness ×1.3、光晕 α .55→.95，**把手条按压无外观
@@ -776,6 +786,35 @@ ui/（年/月/日浏览、编辑页）
   宿主经 `tools/call auth.unlock` 解锁 mcp 通道）、内置 agent 通道、
   审计 sqflite 落盘——见 ecp-design.md §5.2/§6/§7 与问题清单 §C。
 
+### 3.14 AI 模型配置与设置页（feat/ai-settings）
+
+- **范围**：只做 OpenAI 兼容 API（`POST {baseUrl}/chat/completions`）
+  的接入配置与连通性测试；不做本地推理，AI 对话框的消息流与发送
+  链路仍未接（见 3.9「AI 对话框」）。
+- **数据模型** `ai/ai_config.dart`：`AiModelProfile`（baseUrl、apiKey、
+  model、推理强度、温度、maxTokens、超时）与 `AiConfig`（多配置 +
+  默认项）。`resolveChatCompletionsUrl` 统一补全或保留完整路径；
+  `maskApiKey` 只保留末 4 位（空值显示「未设置」）。
+- **持久化** `ai/ai_config_store.dart`：写入应用私有目录
+  `ai_config.json`（path_provider 的 support 目录，不进用户文档、
+  不进日记导出、不写日志）；临时文件 + rename 原子替换，写操作
+  串行化；文件损坏时回落空配置，不阻塞启动。明文 Key 只存在于该
+  文件，界面任何位置只展示掩码；编辑页不回填明文，留空保存即沿用
+  原 Key。
+- **连通测试** `ai/ai_api_client.dart`：传输层抽象 `AiHttpTransport`
+  默认用 `dart:io HttpClient`，测试注入 fake；最小请求
+  `max_tokens: 1, stream: false`，成功只代表网络/鉴权/端点/模型名
+  可用；失败按 HTTP 状态、超时、网络不可达、TLS 分类给出中文说明。
+- **设置页** `pages/settings_page.dart`：侧边抽屉入口压栈进入；分
+  「模型 API」（卡片列表、默认项、编辑/删除、逐配置测试）与
+  「MCP」（挂载状态；仅挂载时列出工具清单，未挂载只提示等待挂载，
+  只展示现状，不提供运行时开关；工具清单来自
+  `McpServer(bus).exposedSpecs`，控制面未初始化时如实
+  提示）。导航层只接收装配根注入的 `settingsPageBuilder`，不 import
+  `pages/`。
+- **网络权限**：Android release 主清单已补 `INTERNET`；调试清单原有
+  权限保持不变。
+
 ---
 
 ## 4. 常见扩展操作
@@ -806,9 +845,10 @@ spec 绑定 `pageBuilder`（本文件不 import 具体页面实现）。
 `DockLayout.pageMenuPositionsFor(count)`），条数变化无需再改公式。
 
 ### 向侧边抽屉填充内容
-`SideDrawer` 面板当前为空壳（内容 `IgnorePointer`）。填充时在面板
-内放入真实内容节点、解除内容忽略，宽度与停靠位仍由 `DockGeometry`
-决定，不要在组件内另写尺寸。
+`SideDrawer` 面板当前只放「设置」入口，并已解除面板整体
+`IgnorePointer`；新增入口时把可交互节点放进面板，面板空白仍会
+穿透到遮罩关闭抽屉。宽度与停靠位仍由 `DockGeometry` 决定，
+不要在组件内另写尺寸。
 
 ### 新增一类搜索数据源（联系人、文件等）
 1. 新建一个类实现 `SearchProvider`；

@@ -37,7 +37,8 @@
 | **停靠位** | 抽屉完全打开时把手条停靠的位置（抽屉右缘 + 14px）；拖抽屉过程中把手与抽屉同步跟手 | `DockGeometry.dockedHandleLeftFor` |
 | **AI 条** | 把手右侧的虹彩六色流动条（7s 循环），带同色模糊光晕；单击无行为，长按 450ms 呼出 AI 对话框；按压时整体增亮、光晕加强 | `widgets/ai_bar.dart` 的 `AiBar` |
 | **AI 对话框** | 长按 AI 条升起的 22 圆角浮层面板：当前消息区为空、发送键恒禁用，只做到可唤起输入法打字；点遮罩/返回键关闭 | `widgets/ai_dialog.dart` 的 `AiDialog` |
-| **侧边抽屉 / 抽屉** | 右拖把手拉出的左侧面板（宽 78vw 封顶 340，右圆角 22，毛玻璃）；**当前是空壳**：内容留空不接事件；遮罩黑 α.44，点遮罩/返回键关闭 | `widgets/side_drawer.dart` 的 `SideDrawer` |
+| **侧边抽屉 / 抽屉** | 右拖把手拉出的左侧面板（宽 78vw 封顶 340，右圆角 22，毛玻璃）；面板内当前只有「设置」入口（点按开设置页），空白区不拦截点击；遮罩黑 α.44，点遮罩/返回键关闭 | `widgets/side_drawer.dart` 的 `SideDrawer` |
+| **设置页** | 抽屉入口压栈的独立页面：模型 API 多配置/默认项/连通测试 + MCP 现状说明；API Key 只显掩码 | `pages/settings_page.dart` 的 `SettingsPage`；配置层 `ai/` |
 
 ## 三、快捷操作
 

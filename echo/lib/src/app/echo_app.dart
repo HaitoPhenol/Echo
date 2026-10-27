@@ -65,6 +65,7 @@ class _EchoAppState extends State<EchoApp> {
         diaryPage: () => _services.diaryPage,
         chatStore: _services.chatStore,
         chatSession: _services.chatSession,
+        settingsPageBuilder: _services.settingsPage,
       ),
     );
   }
