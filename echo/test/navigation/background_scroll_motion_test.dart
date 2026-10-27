@@ -54,6 +54,30 @@ void main() {
     expect(motion.offsetY, lessThan(0));
   });
 
+  testWidgets('倒序列表（AI 消息流）手势语义与正序列表一致', (tester) async {
+    final motion = BackgroundScrollMotion();
+    await tester.pumpWidget(
+      Directionality(
+        textDirection: TextDirection.ltr,
+        child: BackgroundScrollListener(
+          motion: motion,
+          child: ListView.builder(
+            reverse: true,
+            itemCount: 100,
+            itemExtent: 50,
+            itemBuilder: (context, index) => Text('row $index'),
+          ),
+        ),
+      ),
+    );
+
+    // 倒序列表起点在最新消息（偏移 0），查看更早消息要往下拖：
+    // 原生 scrollDelta 与正序列表反号，归一化后内容下移 → 背景下移。
+    await tester.drag(find.byType(ListView), const Offset(0, 120));
+    await tester.pumpAndSettle();
+    expect(motion.offsetY, greaterThan(0));
+  });
+
   testWidgets('横向滚动不影响背景纵向位移', (tester) async {
     final motion = BackgroundScrollMotion();
     await tester.pumpWidget(
