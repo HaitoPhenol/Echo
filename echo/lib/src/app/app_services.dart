@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/widgets.dart';
 
+import '../ai/ai_chat_controller.dart';
 import '../ai/ai_config_store.dart';
 import '../control/bootstrap.dart';
 import '../diary/data/diary_repository.dart';
@@ -16,6 +17,7 @@ import '../pages/console_page.dart';
 import '../pages/debug_badge_controls.dart';
 import '../pages/settings_page.dart';
 import '../pages/template_page.dart';
+import '../services/chat_repository_file.dart';
 import '../services/chat_session_controller.dart';
 import '../services/chat_store.dart';
 
@@ -30,6 +32,9 @@ class AppServices {
     this.chatStore,
     this.chatSession,
     this.aiConfigStore,
+    this.aiChat,
+    this._chatRepository,
+    this._ownsChatRepository,
     this._diaryModule,
     this._diaryPageKey,
   );
@@ -45,6 +50,15 @@ class AppServices {
 
   /// AI 模型配置存储（设置页读写；异步从私有目录载入）。
   final AiConfigStore aiConfigStore;
+
+  /// AI 对话编排器（AI 对话框与聊天页全屏对话共用同一份状态）。
+  final AiChatController aiChat;
+
+  /// 聊天数据仓储（AI 会话与普通会话同源；生产为私有目录持久化）。
+  final ChatRepository _chatRepository;
+
+  /// 仓储是否由装配根创建（外部注入的实例不由本处释放）。
+  final bool _ownsChatRepository;
 
   final GlobalKey<DiaryPageState> _diaryPageKey;
   final Future<DiaryModule> _diaryModule;
@@ -62,19 +76,44 @@ class AppServices {
       SettingsPage(store: aiConfigStore);
 
   /// 按生产口径装配：日记模块异步开库（测试注入仓储时跳过文件 I/O），
-  /// 聊天服务同步创建；两者都随 App 生命周期释放。
-  static AppServices create({DiaryRepository? diaryRepository}) {
+  /// 聊天历史在生产环境落私有目录、测试环境留在内存；所有实例随
+  /// App 生命周期释放。
+  static AppServices create({
+    DiaryRepository? diaryRepository,
+    ChatRepository? chatRepository,
+  }) {
     final diaryPageKey = GlobalKey<DiaryPageState>();
     final diaryModule = DiaryModule.open(
       repository: diaryRepository,
       seedDebugData: kDebugMode,
     );
-    final chatStore = ChatStore();
+    // 测试注入日记仓储即为「无真实文件 I/O」的环境，聊天历史同步走
+    // 内存，避免 path_provider 在 fake-async 区卡住；生产用持久化仓储。
+    final ownedChatRepository = chatRepository == null;
+    final repository = chatRepository ??
+        (diaryRepository == null
+            ? FileChatRepository()
+            : InMemoryChatRepository());
+    final chatStore = ChatStore(repository: repository);
     final chatSession = ChatSessionController(chatStore);
 
     // AI 配置：先在内存里可用，异步读取私有目录文件；读失败保持空配置。
     final aiConfigStore = AiConfigStore();
     unawaited(aiConfigStore.load());
+
+    // 内置 AI 会话：等历史读盘完成后确保存在（已有则不重复插入）。
+    unawaited(
+      chatStore.ensureAiConversation(
+        id: AiConversation.id,
+        nickname: AiConversation.nickname,
+        preview: AiConversation.idlePreview,
+      ),
+    );
+
+    final aiChat = AiChatController(
+      chatStore: chatStore,
+      configStore: aiConfigStore,
+    );
 
     // (id, 标题) 唯一来源在 kNavDestinationSpecs（控制层共用）。
     final destinations = <NavDestination>[
@@ -116,6 +155,9 @@ class AppServices {
       chatStore,
       chatSession,
       aiConfigStore,
+      aiChat,
+      repository,
+      ownedChatRepository,
       diaryModule,
       diaryPageKey,
     );
@@ -148,7 +190,9 @@ class AppServices {
       ..unset<ChatSessionController>();
 
     chatSession.dispose();
+    aiChat.dispose();
     chatStore.dispose();
+    if (_ownsChatRepository) _chatRepository.dispose();
     aiConfigStore.dispose();
 
     try {

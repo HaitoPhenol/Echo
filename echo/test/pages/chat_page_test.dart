@@ -2,7 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:echo/src/ai/ai_chat_controller.dart';
+import 'package:echo/src/ai/ai_config_store.dart';
+import 'package:echo/src/pages/ai_chat_page.dart';
 import 'package:echo/src/pages/chat_page.dart';
+import 'package:echo/src/services/chat_session_controller.dart';
 import 'package:echo/src/services/chat_store.dart';
 import 'package:echo/src/theme/app_colors.dart';
 
@@ -436,6 +440,77 @@ void main() {
     expect(
       find.descendant(of: row0, matching: find.text('删除')).hitTestable(),
       findsNothing,
+    );
+  });
+
+  testWidgets('AI 助手行点按：标记已读并在页内展开整屏对话', (tester) async {
+    tester.view
+      ..devicePixelRatio = 1.0
+      ..physicalSize = const Size(800, 1200);
+    addTearDown(tester.view.reset);
+    mockHaptics(tester);
+
+    final store = ChatStore();
+    store.ensureConversation(
+      id: AiConversation.id,
+      nickname: AiConversation.nickname,
+      preview: AiConversation.idlePreview,
+    );
+    final session = ChatSessionController(store);
+    final configStore = AiConfigStore();
+    final aiChat = AiChatController(chatStore: store, configStore: configStore);
+    addTearDown(() {
+      aiChat.dispose();
+      session.dispose();
+      configStore.dispose();
+      store.dispose();
+    });
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ChatStoreScope(
+          store: store,
+          child: ChatSessionScope(
+            controller: session,
+            child: AiChatScope(
+              controller: aiChat,
+              child: const ChatPage(),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text(AiConversation.nickname), findsOneWidget);
+    expect(find.text(AiConversation.idlePreview), findsOneWidget);
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('chat-row-ai-assistant')),
+    );
+    await tester.pump();
+    await pumpSnap(tester);
+
+    expect(find.byType(AiChatPage), findsOneWidget);
+    expect(find.text(AiChatPage.title), findsOneWidget);
+    expect(session.openSessionId, AiConversation.id);
+    // 对话在页内展开：列表不再挂载（背景由导航屏承托）。
+    expect(
+      find.byKey(const ValueKey<String>('chat-page-list')),
+      findsNothing,
+    );
+
+    // 返回：切回列表并关闭会话标记。
+    await tester.tap(find.byTooltip('返回'));
+    await tester.pump();
+    await pumpSnap(tester);
+
+    expect(find.byType(AiChatPage), findsNothing);
+    expect(session.openSessionId, isNull);
+    // 回到列表，AI 行仍在。
+    expect(
+      find.byKey(const ValueKey<String>('chat-row-ai-assistant')),
+      findsOneWidget,
     );
   });
 }

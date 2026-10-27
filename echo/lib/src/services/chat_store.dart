@@ -16,14 +16,27 @@ export 'chat_repository.dart';
 class ChatStore extends ChangeNotifier implements ChatRepository {
   ChatStore({DateTime Function()? now, ChatRepository? repository})
     : _owned = repository == null,
-      _repository = repository ?? InMemoryChatRepository(now: now);
+      _repository = repository ?? InMemoryChatRepository(now: now) {
+    // 持久化仓储在异步读盘完成后会发通知；本 Store 转成一次重建，
+    // 让列表在载入后自动出现历史会话。
+    final repo = _repository;
+    if (repo is Listenable) {
+      (repo as Listenable).addListener(_handleRepositoryChanged);
+    }
+  }
 
   final ChatRepository _repository;
 
   /// 仓储是否由本 Store 创建（注入的外部实例不由本类释放）。
   final bool _owned;
 
+  bool _disposed = false;
+
   ChatRepository get _repo => _repository;
+
+  void _handleRepositoryChanged() {
+    if (!_disposed) notifyListeners();
+  }
 
   @override
   List<ChatConversation> get conversations => _repo.conversations;
@@ -35,7 +48,44 @@ class ChatStore extends ChangeNotifier implements ChatRepository {
   Stream<ChatIncomingPayload> get incoming => _repo.incoming;
 
   @override
+  Future<void> get ready => _repo.ready;
+
+  @override
   ChatConversation? conversationOf(String id) => _repo.conversationOf(id);
+
+  @override
+  bool ensureConversation({
+    required String id,
+    required String nickname,
+    String preview = '',
+  }) {
+    final changed = _repo.ensureConversation(
+      id: id,
+      nickname: nickname,
+      preview: preview,
+    );
+    if (changed) notifyListeners();
+    return changed;
+  }
+
+  /// 确保内置 AI 会话存在：等仓储读盘完成后再判断，避免历史数据
+  /// 尚未载入时重复插入或错过已有会话。
+  Future<void> ensureAiConversation({
+    required String id,
+    required String nickname,
+    String preview = '',
+  }) async {
+    await ready;
+    if (_disposed) return;
+    ensureConversation(id: id, nickname: nickname, preview: preview);
+  }
+
+  @override
+  ChatMessage appendIncoming(String conversationId, String text) {
+    final message = _repo.appendIncoming(conversationId, text);
+    notifyListeners();
+    return message;
+  }
 
   @override
   void addIncoming({String? text}) {
@@ -80,6 +130,11 @@ class ChatStore extends ChangeNotifier implements ChatRepository {
 
   @override
   void dispose() {
+    _disposed = true;
+    final repo = _repository;
+    if (repo is Listenable) {
+      (repo as Listenable).removeListener(_handleRepositoryChanged);
+    }
     if (_owned) _repo.dispose();
     super.dispose();
   }

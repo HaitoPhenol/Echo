@@ -45,6 +45,41 @@ const _profile = AiModelProfile(
   timeoutSeconds: 30,
 );
 
+/// 记录请求并按块吐出预设 SSE 文本的假流式传输层。
+class _FakeStreamTransport implements AiStreamTransport {
+  _FakeStreamTransport({
+    this.chunks = const <String>[],
+    this.statusCode = 200,
+    this.stream,
+  });
+
+  final List<String> chunks;
+  final int statusCode;
+
+  /// 需要自己控制节奏时直接给流（优先级高于 [chunks]）。
+  final Stream<String>? stream;
+
+  Uri? lastUri;
+  Map<String, String>? lastHeaders;
+  String? lastBody;
+
+  @override
+  Future<AiStreamResponse> postStream({
+    required Uri uri,
+    required Map<String, String> headers,
+    required String body,
+    required Duration timeout,
+  }) async {
+    lastUri = uri;
+    lastHeaders = headers;
+    lastBody = body;
+    return AiStreamResponse(
+      statusCode: statusCode,
+      chunks: stream ?? Stream<String>.fromIterable(chunks),
+    );
+  }
+}
+
 void main() {
   test('成功响应返回延迟与成功说明', () async {
     final transport = _FakeTransport(
@@ -158,5 +193,140 @@ void main() {
       transport.lastUri?.toString(),
       'https://api.example.com/v1/chat/completions',
     );
+  });
+
+  group('streamChat', () {
+    test('SSE 增量拼接正文并解析用量与模型名', () async {
+      final transport = _FakeStreamTransport(
+        chunks: const [
+          'data: {"model":"gpt-4o-mini","choices":[{"delta":{"content":"你"}}]}\n',
+          '\ndata: {"choices":[{"delta":{"content":"好"}}]}\n\n',
+          'data: {"choices":[{"delta":{"content":"！"}}]}\n\n',
+          'data: {"choices":[],"usage":{"prompt_tokens":12,'
+              '"completion_tokens":3,"total_tokens":15}}\n\n',
+          'data: [DONE]\n\n',
+        ],
+      );
+      final deltas = <String>[];
+      final result = await AiApiClient(
+        streamTransport: transport,
+      ).streamChat(
+        profile: _profile,
+        messages: const [
+          AiPromptMessage(role: 'user', content: '你好'),
+        ],
+        onDelta: deltas.add,
+      );
+
+      expect(result.text, '你好！');
+      expect(deltas, ['你', '好', '！']);
+      expect(result.model, 'gpt-4o-mini');
+      expect(result.promptTokens, 12);
+      expect(result.completionTokens, 3);
+      expect(result.totalTokens, 15);
+
+      // 请求口径：/chat/completions、Bearer、stream + 推理强度。
+      expect(
+        transport.lastUri?.toString(),
+        'https://api.example.com/v1/chat/completions',
+      );
+      expect(
+        transport.lastHeaders?['Authorization'],
+        'Bearer sk-1234567890abcd',
+      );
+      final body = jsonDecode(transport.lastBody!) as Map<String, dynamic>;
+      expect(body['stream'], isTrue);
+      expect(body['reasoning_effort'], 'medium');
+      expect(body['temperature'], 0.7);
+      expect(body['max_tokens'], 1024);
+      expect((body['messages'] as List).single, {
+        'role': 'user',
+        'content': '你好',
+      });
+    });
+
+    test('非 2xx 时抛出带服务端说明的异常', () async {
+      final transport = _FakeStreamTransport(
+        statusCode: 401,
+        chunks: const [
+          '{"error":{"message":"Invalid API key"}}',
+        ],
+      );
+      await expectLater(
+        AiApiClient(streamTransport: transport).streamChat(
+          profile: _profile,
+          messages: const [
+            AiPromptMessage(role: 'user', content: 'ping'),
+          ],
+        ),
+        throwsA(
+          isA<AiChatException>().having(
+            (e) => e.message,
+            'message',
+            allOf(contains('HTTP 401'), contains('Invalid API key')),
+          ),
+        ),
+      );
+    });
+
+    test('兼容服务忽略 stream 直接回整段 JSON 时走兜底解析', () async {
+      final transport = _FakeStreamTransport(
+        chunks: const [
+          '{"model":"m","choices":[{"message":{"role":"assistant",'
+              '"content":"整段回复"}}],"usage":{"total_tokens":7}}',
+        ],
+      );
+      final result = await AiApiClient(
+        streamTransport: transport,
+      ).streamChat(
+        profile: _profile,
+        messages: const [
+          AiPromptMessage(role: 'user', content: 'hi'),
+        ],
+      );
+      expect(result.text, '整段回复');
+      expect(result.totalTokens, 7);
+    });
+
+    test('[DONE] 之后对端不断流也立即收尾，不误判为超时', () async {
+      final source = StreamController<String>();
+      addTearDown(source.close);
+      final transport = _FakeStreamTransport(stream: source.stream);
+
+      final future = AiApiClient(
+        streamTransport: transport,
+      ).streamChat(
+        profile: _profile,
+        messages: const [
+          AiPromptMessage(role: 'user', content: 'hi'),
+        ],
+      );
+      source
+        ..add('data: {"choices":[{"delta":{"content":"好"}}]}\n\n')
+        ..add('data: [DONE]\n\n');
+
+      // 对端发完 [DONE] 后既不关流也不再发数据：正常实现应立即返回。
+      final result = await future.timeout(const Duration(seconds: 2));
+      expect(result.text, '好');
+
+      // 主动退出订阅后不挂在源流上（否则连接泄漏）。
+      await Future<void>.delayed(Duration.zero);
+      expect(source.hasListener, isFalse);
+    });
+
+    test('未配置模型时不发请求', () async {
+      final transport = _FakeStreamTransport();
+      final client = AiApiClient(streamTransport: transport);
+      await expectLater(
+        client.streamChat(
+          profile: _profile.copyWith(model: ' '),
+          messages: const [
+            AiPromptMessage(role: 'user', content: 'hi'),
+          ],
+        ),
+        throwsA(isA<AiChatException>()),
+      );
+      expect(transport.lastUri, isNull);
+    });
   });
 }

@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 
+import '../ai/ai_chat_controller.dart';
 import '../services/chat_session_controller.dart';
 import '../services/chat_store.dart';
 import '../services/haptics.dart';
 import '../theme/app_colors.dart';
+import 'ai_chat_page.dart';
 
 /// 聊天页（会话列表）。
 ///
@@ -68,12 +70,33 @@ class _ChatPageState extends State<ChatPage> {
   /// 通过 open 标记驱动旧行动画收回）。
   String? _openRowId;
 
+  /// 是否在页内展开 AI 对话（true 时本页整屏显示对话，不压路由，
+  /// 背景纹理照常透出）。
+  bool _aiOpen = false;
+
   ChatStore get _store => ChatStoreScope.of(context);
+
+  /// 退出 AI 对话：回到会话列表，并清掉会话控制器的当前会话标记。
+  void _closeAi() {
+    ChatSessionScope.maybeOf(context)?.close();
+    setState(() => _aiOpen = false);
+  }
 
   @override
   Widget build(BuildContext context) {
     final store = _store;
     final safePadding = MediaQuery.paddingOf(context);
+
+    // AI 对话：页内整屏切换，返回键先回列表而不是退出 App。
+    if (_aiOpen) {
+      return PopScope(
+        canPop: false,
+        onPopInvokedWithResult: (didPop, _) {
+          if (!didPop) _closeAi();
+        },
+        child: AiChatPage(onBack: _closeAi),
+      );
+    }
 
     // 空态：没有会话时整页居中展示小字提示（无标题栏、无列表）。
     if (store.conversations.isEmpty) {
@@ -111,6 +134,7 @@ class _ChatPageState extends State<ChatPage> {
             onOpenChanged: (open) {
               setState(() => _openRowId = open ? conversation.id : null);
             },
+            onOpenAi: () => setState(() => _aiOpen = true),
           );
         },
       ),
@@ -149,6 +173,7 @@ class ChatListRow extends StatelessWidget {
     required this.conversation,
     required this.open,
     required this.onOpenChanged,
+    this.onOpenAi,
   });
 
   final ChatConversation conversation;
@@ -158,6 +183,9 @@ class ChatListRow extends StatelessWidget {
 
   /// 开合状态变化通知（吸附到展开/收起时回调）。
   final ValueChanged<bool> onOpenChanged;
+
+  /// 点按 AI 助手行时展开页内对话（由列表页持有展开状态）。
+  final VoidCallback? onOpenAi;
 
   @override
   Widget build(BuildContext context) {
@@ -204,6 +232,7 @@ class ChatListRow extends StatelessWidget {
       // 与 adb chat.open 命令同路径，内部仍只调 store.markRead。
       // 独立组件测试只包 ChatStoreScope 时回退直调 markRead，
       // 外部可观察行为（绿点/锚点）完全等价。
+      // AI 助手行额外在本页内展开整屏对话（与 AI 对话框共享同一份状态）。
       onTap: () {
         Haptics.tick();
         final controller = ChatSessionScope.maybeOf(context);
@@ -211,6 +240,11 @@ class ChatListRow extends StatelessWidget {
           controller.open(conversation.id);
         } else {
           store.markRead(conversation.id);
+        }
+        // 没有 AiChatScope（独立组件测试）时不展开，避免缺实例崩溃。
+        if (conversation.id == AiConversation.id &&
+            AiChatScope.maybeOf(context) != null) {
+          onOpenAi?.call();
         }
       },
       // 整行一个按钮语义；行内昵称/预览文字不再单独播报，避免重复。

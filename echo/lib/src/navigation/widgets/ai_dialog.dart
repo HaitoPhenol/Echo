@@ -1,17 +1,18 @@
 import 'package:flutter/material.dart';
 
+import '../../ai/ui/ai_chat_panel.dart';
 import '../../theme/app_colors.dart';
 
-/// 长按 AI 条后从底部升起的 **AI 对话框**（当前为输入壳）。
+/// 长按 AI 条后从底部升起的 **AI 对话框**。
 ///
 /// 对齐原型 another_two_lines.html 的形态：左右各留 14px、底部距
 /// 停靠条 38px、高 min(52vh,360)、22px 圆角的深色面板，不自动收起，
 /// 点外部（父级 scrim）才关闭。入场 320ms（曲线 (.3,1.2,.4,1)）
 /// 从下方 20px、scale .96 弹入，不透明度 240ms。
 ///
-/// **当前阶段只做到「能唤起输入法打字」**：消息区留空、发送按钮
-/// 恒为占位禁用态、提交无行为。AI 能力接入时再在消息区与发送链路上
-/// 做扩展，位置与外观已在此定型。
+/// 消息流与发送链路与聊天页全屏对话共用 [AiChatController]：
+/// 消息来自聊天仓储的 AI 会话，流入中的正文来自控制器草稿，
+/// 已完成的轮次两处入口同时可见。
 ///
 /// 键盘避让由父级定位承载：根 Scaffold 不开自动避让，父级读到
 /// `viewInsets.bottom` 后把本组件整体上移，并按键盘上方可用高度
@@ -48,7 +49,7 @@ class AiDialogState extends State<AiDialog>
     curve: const Cubic(0.3, 1.2, 0.4, 1),
   );
 
-  /// 输入框自管焦点与文本（当前无对外逻辑需要；组件卸载即清空）。
+  /// 输入框自管焦点与文本（面板卸载即清空；发送由共用 composer 负责）。
   final FocusNode _focusNode = FocusNode();
   final TextEditingController _textController = TextEditingController();
 
@@ -109,81 +110,27 @@ class AiDialogState extends State<AiDialog>
             borderRadius: radius,
             child: Column(
               children: [
-                // 消息区：当前留空，AI 能力接入后在此铺消息流。
-                const Expanded(child: SizedBox.expand()),
+                // 消息流：与聊天页全屏对话同源（仓储消息 + 流入草稿）。
+                const Expanded(
+                  child: AiChatTranscript(
+                    padding: EdgeInsets.fromLTRB(12, 8, 12, 4),
+                  ),
+                ),
 
                 // 输入行。
                 Container(
                   decoration: const BoxDecoration(
                     border: Border(top: BorderSide(color: AppColors.tone1)),
                   ),
-                  padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
-                  child: Row(
-                    children: [
-                      Expanded(child: _inputPill()),
-                      const SizedBox(width: 10),
-                      _sendButton(),
-                    ],
+                  child: AiChatComposer(
+                    hintText: '问点什么…',
+                    focusNode: _focusNode,
+                    textController: _textController,
+                    padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
                   ),
                 ),
               ],
             ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  /// 40px 高的全圆角输入框。
-  Widget _inputPill() {
-    return Container(
-      height: 40,
-      alignment: Alignment.center,
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      decoration: BoxDecoration(
-        color: AppColors.tone1,
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: TextField(
-        controller: _textController,
-        focusNode: _focusNode,
-        style: const TextStyle(color: AppColors.textPrimary, fontSize: 15),
-        cursorColor: AppColors.accentBlue,
-        textInputAction: TextInputAction.send,
-        onSubmitted: (_) {
-          // 占位阶段：发送链路未接入，无行为。
-        },
-        decoration: const InputDecoration(
-          isCollapsed: true,
-          border: InputBorder.none,
-          hintText: '问点什么…',
-          hintStyle: TextStyle(color: Color(0xFF5A646E)),
-        ),
-      ),
-    );
-  }
-
-  /// 发送按钮：白色圆形 + 深色上箭头。
-  ///
-  /// 当前**恒为禁用占位**（透明度 .3、不响应点击）——AI 行为未接入，
-  /// 不做一个会响应却没有结果的死按钮；接入发送链路后恢复可点态。
-  Widget _sendButton() {
-    return IgnorePointer(
-      child: Opacity(
-        opacity: 0.3,
-        child: Container(
-          width: 36,
-          height: 36,
-          alignment: Alignment.center,
-          decoration: const BoxDecoration(
-            shape: BoxShape.circle,
-            color: AppColors.tone4,
-            boxShadow: [BoxShadow(color: Color(0x66FFFFFF), blurRadius: 18)],
-          ),
-          child: const Icon(
-            Icons.arrow_upward,
-            size: 16,
-            color: AppColors.inverse,
           ),
         ),
       ),

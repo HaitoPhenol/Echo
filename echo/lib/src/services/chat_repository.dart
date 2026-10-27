@@ -141,11 +141,29 @@ abstract class ChatRepository {
   /// 新 incoming 消息到达流。
   Stream<ChatIncomingPayload> get incoming;
 
+  /// 首次数据载入完成的信号（内存实现立即完成，持久化实现待读盘）。
+  Future<void> get ready;
+
   /// 按 id 取会话；不存在返回 null。
   ChatConversation? conversationOf(String id);
 
+  /// 确保指定会话存在（不存在则插到列表最前）；返回是否新建。
+  ///
+  /// 用于固定 id 的内置会话（如 AI 助手），避免首次进入时无行可点。
+  bool ensureConversation({
+    required String id,
+    required String nickname,
+    String preview = '',
+  });
+
   /// 收到一条新消息（可选首条正文）。
   void addIncoming({String? text});
+
+  /// 向已有会话追加一条对方消息（AI 回复等）；不改变未读标记。
+  ///
+  /// 与 [addIncoming] 的区别：后者新建会话，本方法只往已有会话里追加，
+  /// 并同步预览与更新时间。空白文本与未知会话抛 ArgumentError/StateError。
+  ChatMessage appendIncoming(String conversationId, String text);
 
   /// 删除指定会话（消息正文一并清除）；返回是否有变化。
   bool remove(String id);
@@ -175,7 +193,22 @@ abstract class ChatRepository {
 /// 行为与重构前的 ChatStore 完全一致：id 序列器、分页游标、
 /// 空白文本/未知会话的异常口径都不变。
 class InMemoryChatRepository implements ChatRepository {
-  InMemoryChatRepository({DateTime Function()? now}) : _now = now ?? DateTime.now;
+  InMemoryChatRepository({
+    DateTime Function()? now,
+    List<ChatConversation>? conversations,
+    Map<String, List<ChatMessage>>? messages,
+  }) : _now = now ?? DateTime.now {
+    if (conversations != null) {
+      _items.addAll(conversations);
+      _restoreSequences(conversations);
+    }
+    if (messages != null) {
+      for (final entry in messages.entries) {
+        _messages[entry.key] = List<ChatMessage>.of(entry.value);
+        _restoreMessageSequence(entry.value);
+      }
+    }
+  }
 
   /// 墙钟来源（生产 [DateTime.now]；命令/单测注入固定时钟）。
   /// 注意：聊天时间戳与日记日界无关，不经 DiaryClock。
@@ -210,11 +243,79 @@ class InMemoryChatRepository implements ChatRepository {
   bool get hasUnread => _items.any((c) => c.unread);
 
   @override
+  Future<void> get ready => Future<void>.value();
+
+  @override
   ChatConversation? conversationOf(String id) {
     for (final c in _items) {
       if (c.id == id) return c;
     }
     return null;
+  }
+
+  @override
+  bool ensureConversation({
+    required String id,
+    required String nickname,
+    String preview = '',
+  }) {
+    if (conversationOf(id) != null) return false;
+    _items.insert(
+      0,
+      ChatConversation(
+        id: id,
+        nickname: nickname,
+        preview: preview,
+        updatedAt: _now(),
+      ),
+    );
+    _messages.putIfAbsent(id, () => <ChatMessage>[]);
+    return true;
+  }
+
+  @override
+  ChatMessage appendIncoming(String conversationId, String text) {
+    final body = text.trim();
+    if (body.isEmpty) {
+      throw ArgumentError.value(text, 'text', '消息文本不能为空');
+    }
+    final index = _items.indexWhere((c) => c.id == conversationId);
+    if (index < 0) {
+      throw StateError('会话不存在：$conversationId');
+    }
+    final message = ChatMessage(
+      id: 'msg-${++_messageSeq}',
+      conversationId: conversationId,
+      text: body,
+      direction: ChatDirection.incoming,
+      createdAt: _now(),
+    );
+    _messages.putIfAbsent(conversationId, () => <ChatMessage>[]).add(message);
+    _items[index] = _items[index].copyWith(
+      preview: body,
+      updatedAt: message.createdAt,
+    );
+    return message;
+  }
+
+  /// 从已恢复的会话 id 还原 incoming 序号（`incoming-<n>` 的最大值）。
+  void _restoreSequences(List<ChatConversation> conversations) {
+    for (final c in conversations) {
+      final match = RegExp(r'^incoming-(\d+)$').firstMatch(c.id);
+      if (match == null) continue;
+      final n = int.tryParse(match.group(1)!) ?? 0;
+      if (n > _incomingSeq) _incomingSeq = n;
+    }
+  }
+
+  /// 从已恢复的消息 id 还原全局消息序号（`msg-<n>` 的最大值）。
+  void _restoreMessageSequence(List<ChatMessage> messages) {
+    for (final message in messages) {
+      final match = RegExp(r'^msg-(\d+)$').firstMatch(message.id);
+      if (match == null) continue;
+      final n = int.tryParse(match.group(1)!) ?? 0;
+      if (n > _messageSeq) _messageSeq = n;
+    }
   }
 
   @override

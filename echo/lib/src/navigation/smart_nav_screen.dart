@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../ai/ai_chat_controller.dart';
 import '../control/bootstrap.dart';
 import '../control/control_event_bridge.dart';
 import '../control/slash_ui/slash_ui.dart';
@@ -69,6 +70,7 @@ class SmartNavScreen extends StatefulWidget {
     required this.diaryPage,
     required this.chatStore,
     required this.chatSession,
+    required this.aiChat,
     required this.settingsPageBuilder,
   });
 
@@ -83,6 +85,9 @@ class SmartNavScreen extends StatefulWidget {
 
   /// 当前打开会话控制器（由装配根持有与释放）。
   final ChatSessionController chatSession;
+
+  /// AI 对话编排器（AI 对话框与聊天页共用；由装配根持有与释放）。
+  final AiChatController aiChat;
 
   /// 设置页构造器（具体页面绑定在装配根，导航层不 import pages/）。
   final WidgetBuilder settingsPageBuilder;
@@ -1149,17 +1154,20 @@ class _SmartNavScreenState extends State<SmartNavScreen>
       store: _chatStore,
       child: ChatSessionScope(
         controller: _chatSession,
-        child: NavBadgeScope(
-          service: _badges,
-          child: PopScope(
-            canPop:
-                !_nav.isSearching &&
-                !_quickArcShown &&
-                !_menuShown &&
-                !_aiShown &&
-                _drawerAnim.value == 0,
-            onPopInvokedWithResult: _handlePopInvoked,
-            child: scaffold,
+        child: AiChatScope(
+          controller: widget.aiChat,
+          child: NavBadgeScope(
+            service: _badges,
+            child: PopScope(
+              canPop:
+                  !_nav.isSearching &&
+                  !_quickArcShown &&
+                  !_menuShown &&
+                  !_aiShown &&
+                  _drawerAnim.value == 0,
+              onPopInvokedWithResult: _handlePopInvoked,
+              child: scaffold,
+            ),
           ),
         ),
       ),

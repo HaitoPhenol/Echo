@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../diary/data/diary_repository.dart';
+import '../services/chat_store.dart';
 import '../navigation/smart_nav_screen.dart';
 import '../theme/app_colors.dart';
 import 'app_services.dart';
@@ -12,10 +13,13 @@ import 'app_services.dart';
 /// 负责全局主题配置、装配根生命周期与首页挂载。当前为开发期深色主题，
 /// 首页是智能导航实验屏 [SmartNavScreen]。
 class EchoApp extends StatefulWidget {
-  const EchoApp({super.key, this.diaryRepository});
+  const EchoApp({super.key, this.diaryRepository, this.chatRepository});
 
   /// 测试注入缝：装配根打开日记模块时使用的仓储；生产环境为 null。
   final DiaryRepository? diaryRepository;
+
+  /// 测试注入缝：聊天历史仓储；生产环境为 null（装配根用持久化仓储）。
+  final ChatRepository? chatRepository;
 
   @override
   State<EchoApp> createState() => _EchoAppState();
@@ -28,7 +32,10 @@ class _EchoAppState extends State<EchoApp> {
   @override
   void initState() {
     super.initState();
-    _services = AppServices.create(diaryRepository: widget.diaryRepository);
+    _services = AppServices.create(
+      diaryRepository: widget.diaryRepository,
+      chatRepository: widget.chatRepository,
+    );
   }
 
   @override
@@ -65,6 +72,7 @@ class _EchoAppState extends State<EchoApp> {
         diaryPage: () => _services.diaryPage,
         chatStore: _services.chatStore,
         chatSession: _services.chatSession,
+        aiChat: _services.aiChat,
         settingsPageBuilder: _services.settingsPage,
       ),
     );
