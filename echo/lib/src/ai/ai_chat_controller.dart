@@ -92,6 +92,9 @@ class AiChatController extends ChangeNotifier {
 
   bool _streaming = false;
   String _draft = '';
+  String _reasoningDraft = '';
+  int? _reasoningMs;
+  DateTime? _reasoningStartedAt;
   String? _lastError;
   AiChatUsage? _lastUsage;
   bool _disposed = false;
@@ -101,6 +104,12 @@ class AiChatController extends ChangeNotifier {
 
   /// 正在流入的助手正文（尚未落库）；空闲时为空串。
   String get draft => _draft;
+
+  /// 正在流入的思考正文（推理模型）；空闲或模型不支持时为空串。
+  String get reasoningDraft => _reasoningDraft;
+
+  /// 本轮思考耗时（毫秒）：首个思考增量到首个正文增量；未结算时为 null。
+  int? get reasoningMs => _reasoningMs;
 
   /// 最近一次失败的可读说明；发送成功或下次发送时清空。
   String? get lastError => _lastError;
@@ -138,6 +147,9 @@ class AiChatController extends ChangeNotifier {
     chatStore.send(AiConversation.id, text);
     _streaming = true;
     _draft = '';
+    _reasoningDraft = '';
+    _reasoningMs = null;
+    _reasoningStartedAt = null;
     _lastError = null;
     _lastUsage = null;
     notifyListeners();
@@ -149,7 +161,22 @@ class AiChatController extends ChangeNotifier {
         messages: history,
         onDelta: (delta) {
           if (_disposed) return;
+          // 正文一开始到达即视为思考结束：只结算一次，否则正文流多久，
+          // 思考耗时就跟着涨多久。
+          final startedAt = _reasoningStartedAt;
+          if (startedAt != null) {
+            _reasoningMs = DateTime.now()
+                .difference(startedAt)
+                .inMilliseconds;
+            _reasoningStartedAt = null;
+          }
           _draft += delta;
+          notifyListeners();
+        },
+        onReasoning: (delta) {
+          if (_disposed) return;
+          _reasoningStartedAt ??= DateTime.now();
+          _reasoningDraft += delta;
           notifyListeners();
         },
       );
@@ -158,7 +185,7 @@ class AiChatController extends ChangeNotifier {
       if (reply.isEmpty) {
         _lastError = '模型没有返回内容';
       } else {
-        _appendReply(reply);
+        _appendReply(reply, reasoning: result.reasoning);
         final usage = AiChatUsage(
           promptTokens: result.promptTokens,
           completionTokens: result.completionTokens,
@@ -170,16 +197,17 @@ class AiChatController extends ChangeNotifier {
     } on AiChatException catch (error) {
       if (_disposed) return;
       // 已收到的半段正文保留落库，避免用户看着它消失。
-      _appendReply(_draft);
+      _appendReply(_draft, reasoning: _reasoningDraft);
       _lastError = error.message;
     } catch (error) {
       if (_disposed) return;
-      _appendReply(_draft);
+      _appendReply(_draft, reasoning: _reasoningDraft);
       _lastError = '请求失败：$error';
     } finally {
       if (!_disposed) {
         _streaming = false;
         _draft = '';
+        _reasoningDraft = '';
         notifyListeners();
       }
     }
@@ -189,11 +217,17 @@ class AiChatController extends ChangeNotifier {
   ///
   /// 流式期间用户可能把 AI 会话删掉：此时无处可落，直接丢弃，
   /// 也不重新创建——删掉的行不该被一条迟到的回复拉回来。
-  void _appendReply(String text) {
+  void _appendReply(String text, {String? reasoning}) {
     final body = text.trim();
     if (body.isEmpty) return;
     if (chatStore.conversationOf(AiConversation.id) == null) return;
-    chatStore.appendIncoming(AiConversation.id, body);
+    final thought = reasoning?.trim();
+    chatStore.appendIncoming(
+      AiConversation.id,
+      body,
+      reasoning: (thought == null || thought.isEmpty) ? null : thought,
+      reasoningMs: (thought == null || thought.isEmpty) ? null : _reasoningMs,
+    );
   }
 
   /// 用会话内最近 [AiConversation.historyLimit] 条消息拼请求上下文。

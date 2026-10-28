@@ -41,8 +41,10 @@ class AiChatTranscript extends StatelessWidget {
               .items;
 
     final hasDraft = chat.draft.isNotEmpty;
+    final hasReasoningDraft = chat.reasoningDraft.isNotEmpty;
     final error = chat.lastError;
-    final empty = messages.isEmpty && !hasDraft && error == null;
+    final empty =
+        messages.isEmpty && !hasDraft && !hasReasoningDraft && error == null;
 
     return Column(
       children: [
@@ -66,14 +68,26 @@ class AiChatTranscript extends StatelessWidget {
                   itemCount:
                       messages.length +
                       (hasDraft ? 1 : 0) +
+                      (hasReasoningDraft ? 1 : 0) +
                       (error != null ? 1 : 0),
                   itemBuilder: (context, index) {
-                    // 索引 0 是最新内容：流入中的草稿在最下，其次错误。
+                    // 索引 0 是最新内容：流入中的正文在最下，思考块在其上方，
+                    // 再往上才是错误与已落库消息。
                     if (hasDraft && index == 0) {
                       return _AssistantBubble(text: '${chat.draft}▍');
                     }
-                    final errorIndex = hasDraft ? 1 : 0;
-                    if (error != null && index == errorIndex) {
+                    if (hasReasoningDraft && index == (hasDraft ? 1 : 0)) {
+                      // 正文一到，思考就收成一行「已思考 12.3s」，不再铺满灰字。
+                      return hasDraft
+                          ? _StreamingReasoning(
+                              text: chat.reasoningDraft,
+                              reasoningMs: chat.reasoningMs,
+                            )
+                          : _ReasoningBubble(text: chat.reasoningDraft);
+                    }
+                    final streamingCount =
+                        (hasDraft ? 1 : 0) + (hasReasoningDraft ? 1 : 0);
+                    if (error != null && index == streamingCount) {
                       return Padding(
                         padding: const EdgeInsets.only(bottom: 8),
                         child: Align(
@@ -83,11 +97,16 @@ class AiChatTranscript extends StatelessWidget {
                       );
                     }
                     final messageIndex =
-                        index - (hasDraft ? 1 : 0) - (error != null ? 1 : 0);
+                        index - streamingCount - (error != null ? 1 : 0);
                     final message = messages[messageIndex];
                     return message.direction == ChatDirection.outgoing
                         ? _UserBubble(text: message.text)
-                        : _AssistantBubble(text: message.text);
+                        : _AssistantBubble(
+                            key: ValueKey<String>(message.id),
+                            text: message.text,
+                            reasoning: message.reasoning,
+                            reasoningMs: message.reasoningMs,
+                          );
                   },
                 ),
         ),
@@ -251,27 +270,194 @@ class _UserBubble extends StatelessWidget {
 }
 
 /// AI 消息：左对齐、tone1 底气泡。
-class _AssistantBubble extends StatelessWidget {
-  const _AssistantBubble({required this.text});
+///
+/// 带思考内容时，气泡上方先显示一行「已思考 12.3s」，点按展开/收起
+/// 思考正文（默认收起，避免淹没回答）。
+class _AssistantBubble extends StatefulWidget {
+  const _AssistantBubble({
+    super.key,
+    required this.text,
+    this.reasoning,
+    this.reasoningMs,
+  });
+
+  final String text;
+  final String? reasoning;
+  final int? reasoningMs;
+
+  @override
+  State<_AssistantBubble> createState() => _AssistantBubbleState();
+}
+
+class _AssistantBubbleState extends State<_AssistantBubble> {
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final reasoning = widget.reasoning;
+    if (reasoning == null || reasoning.isEmpty) {
+      return _bubble(
+        context,
+        text: widget.text,
+        alignment: Alignment.centerLeft,
+        color: AppColors.tone1,
+        radius: _assistantRadius,
+      );
+    }
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _ReasoningHeader(
+            label: _reasoningLabel(widget.reasoningMs),
+            expanded: _expanded,
+            onTap: () => setState(() => _expanded = !_expanded),
+          ),
+          if (_expanded)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: MediaQuery.sizeOf(context).width * 0.82,
+                ),
+                child: Text(reasoning, style: _reasoningTextStyle),
+              ),
+            ),
+          _bubble(
+            context,
+            text: widget.text,
+            alignment: Alignment.centerLeft,
+            color: AppColors.tone1,
+            radius: _assistantRadius,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 流式过程中的思考块：正文还没到 → 实时灰字；正文一到 → 收成一行耗时并可点开。
+class _StreamingReasoning extends StatefulWidget {
+  const _StreamingReasoning({required this.text, this.reasoningMs});
+
+  final String text;
+  final int? reasoningMs;
+
+  @override
+  State<_StreamingReasoning> createState() => _StreamingReasoningState();
+}
+
+class _StreamingReasoningState extends State<_StreamingReasoning> {
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _ReasoningHeader(
+            label: _reasoningLabel(widget.reasoningMs),
+            expanded: _expanded,
+            onTap: () => setState(() => _expanded = !_expanded),
+          ),
+          if (_expanded)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: MediaQuery.sizeOf(context).width * 0.82,
+                ),
+                child: Text(widget.text, style: _reasoningTextStyle),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 「已思考 12.3s」折叠行：图标 + 文案 + 展开箭头。
+class _ReasoningHeader extends StatelessWidget {
+  const _ReasoningHeader({
+    required this.label,
+    required this.expanded,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool expanded;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.only(bottom: 6),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(
+              Icons.psychology_outlined,
+              size: 13,
+              color: AppColors.textMuted,
+            ),
+            const SizedBox(width: 4),
+            Text(label, style: _reasoningLabelStyle),
+            Icon(
+              expanded ? Icons.expand_less : Icons.expand_more,
+              size: 14,
+              color: AppColors.textMuted,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+String _reasoningLabel(int? ms) {
+  // 思考与正文落在同一个分片里时耗时可能为 0，此时不显示时长。
+  if (ms == null || ms == 0) return '已思考';
+  if (ms < 1000) return '已思考 ${ms}ms';
+  return '已思考 ${(ms / 1000).toStringAsFixed(1)}s';
+}
+
+/// 流式过程中的思考块：实时灰色小字，正文到达后由气泡折叠态接管。
+class _ReasoningBubble extends StatelessWidget {
+  const _ReasoningBubble({required this.text});
 
   final String text;
 
   @override
   Widget build(BuildContext context) {
-    return _bubble(
-      context,
-      text: text,
-      alignment: Alignment.centerLeft,
-      color: AppColors.tone1,
-      radius: const BorderRadius.only(
-        topLeft: Radius.circular(14),
-        topRight: Radius.circular(14),
-        bottomLeft: Radius.circular(4),
-        bottomRight: Radius.circular(14),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: MediaQuery.sizeOf(context).width * 0.82,
+          ),
+          child: Text(text, style: _reasoningTextStyle),
+        ),
       ),
     );
   }
 }
+
+const BorderRadius _assistantRadius = BorderRadius.only(
+  topLeft: Radius.circular(14),
+  topRight: Radius.circular(14),
+  bottomLeft: Radius.circular(4),
+  bottomRight: Radius.circular(14),
+);
 
 Widget _bubble(
   BuildContext context, {
@@ -307,6 +493,19 @@ Widget _bubble(
 
 const TextStyle _usageStyle = TextStyle(
   fontSize: 11,
+  color: AppColors.textMuted,
+);
+
+/// 「已思考 12.3s」折叠行的文字样式。
+const TextStyle _reasoningLabelStyle = TextStyle(
+  fontSize: 12,
+  color: AppColors.textMuted,
+);
+
+/// 思考正文样式：灰色小字，与正式回答拉开层级。
+const TextStyle _reasoningTextStyle = TextStyle(
+  fontSize: 13,
+  height: 1.45,
   color: AppColors.textMuted,
 );
 

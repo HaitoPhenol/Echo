@@ -183,6 +183,7 @@ class AiChatCompletion {
     this.completionTokens,
     this.totalTokens,
     this.cachedTokens,
+    this.reasoning = '',
   });
 
   final String text;
@@ -193,6 +194,9 @@ class AiChatCompletion {
 
   /// 命中缓存（prompt cache）的输入 token 数；服务端未返回时为 null。
   final int? cachedTokens;
+
+  /// 思考正文（推理模型）；无思考时为空串。
+  final String reasoning;
 }
 
 /// 对话链路上的可读异常（网络/鉴权/协议错误统一收口）。
@@ -286,11 +290,13 @@ class AiApiClient {
   ///
   /// 协议：SSE，每行 `data: {json}`，最后一行为 `data: [DONE]`；
   /// 用量可能在末尾的空 choices 块里（`include_usage`）。
+  /// 推理模型的思考增量经 [onReasoning] 单独回调（不并入正文）。
   /// 非 SSE 的 JSON 响应（部分兼容服务忽略 stream）作整段兜底解析。
   Future<AiChatCompletion> streamChat({
     required AiModelProfile profile,
     required List<AiPromptMessage> messages,
     void Function(String delta)? onDelta,
+    void Function(String delta)? onReasoning,
   }) async {
     final baseUrl = profile.baseUrl.trim();
     if (!baseUrl.startsWith('http://') && !baseUrl.startsWith('https://')) {
@@ -344,6 +350,7 @@ class AiApiClient {
       return await _consumeSse(
         response.chunks.timeout(timeout),
         onDelta: onDelta,
+        onReasoning: onReasoning,
       );
     } on AiChatException {
       rethrow;
@@ -364,8 +371,10 @@ class AiApiClient {
   Future<AiChatCompletion> _consumeSse(
     Stream<String> chunks, {
     void Function(String delta)? onDelta,
+    void Function(String delta)? onReasoning,
   }) async {
     final text = StringBuffer();
+    final reasoningText = StringBuffer();
     final raw = StringBuffer();
     var model = '';
     int? promptTokens;
@@ -400,10 +409,20 @@ class AiApiClient {
         final first = choices.first;
         if (first is Map) {
           final delta = first['delta'];
-          final content = (delta is Map ? delta['content'] : null) ??
-              (first['message'] is Map
-                  ? (first['message'] as Map)['content']
+          final message = first['message'] is Map ? first['message'] as Map : null;
+          // 思考增量：DeepSeek 用 reasoning_content，OpenRouter/vLLM 用 reasoning。
+          final reasoning = (delta is Map
+                  ? (delta['reasoning_content'] ?? delta['reasoning'])
+                  : null) ??
+              (message != null
+                  ? (message['reasoning_content'] ?? message['reasoning'])
                   : null);
+          if (reasoning is String && reasoning.isNotEmpty) {
+            reasoningText.write(reasoning);
+            onReasoning?.call(reasoning);
+          }
+          final content = (delta is Map ? delta['content'] : null) ??
+              (message != null ? message['content'] : null);
           if (content is String && content.isNotEmpty) {
             text.write(content);
             onDelta?.call(content);
@@ -457,6 +476,13 @@ class AiApiClient {
                 text.write(content);
                 if (content.isNotEmpty) onDelta?.call(content);
               }
+              final reasoning = message is Map
+                  ? (message['reasoning_content'] ?? message['reasoning'])
+                  : null;
+              if (reasoning is String && reasoning.isNotEmpty) {
+                reasoningText.write(reasoning);
+                onReasoning?.call(reasoning);
+              }
               final usage = parsed['usage'];
               if (usage is Map) {
                 promptTokens = _intOrNull(usage['prompt_tokens']);
@@ -479,6 +505,7 @@ class AiApiClient {
       completionTokens: completionTokens,
       totalTokens: totalTokens,
       cachedTokens: cachedTokens,
+      reasoning: reasoningText.toString(),
     );
   }
 

@@ -73,8 +73,18 @@ class FileChatRepository extends ChangeNotifier implements ChatRepository {
   }
 
   @override
-  ChatMessage appendIncoming(String conversationId, String text) {
-    final message = _memory.appendIncoming(conversationId, text);
+  ChatMessage appendIncoming(
+    String conversationId,
+    String text, {
+    String? reasoning,
+    int? reasoningMs,
+  }) {
+    final message = _memory.appendIncoming(
+      conversationId,
+      text,
+      reasoning: reasoning,
+      reasoningMs: reasoningMs,
+    );
     _scheduleSave();
     return message;
   }
@@ -248,6 +258,8 @@ class _ChatSnapshot {
               'text': m.text,
               'direction': m.direction.wire,
               'createdAt': m.createdAt.millisecondsSinceEpoch,
+              if (m.reasoning != null) 'reasoning': m.reasoning,
+              if (m.reasoningMs != null) 'reasoningMs': m.reasoningMs,
             },
         ],
     },
@@ -299,6 +311,12 @@ class _ChatSnapshot {
                   ? ChatDirection.incoming
                   : ChatDirection.outgoing,
               createdAt: _time(item['createdAt']),
+              reasoning: item['reasoning'] is String
+                  ? item['reasoning'] as String
+                  : null,
+              reasoningMs: item['reasoningMs'] is num
+                  ? (item['reasoningMs'] as num).toInt()
+                  : null,
             ),
           );
         }

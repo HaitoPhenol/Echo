@@ -81,8 +81,18 @@ class ChatStore extends ChangeNotifier implements ChatRepository {
   }
 
   @override
-  ChatMessage appendIncoming(String conversationId, String text) {
-    final message = _repo.appendIncoming(conversationId, text);
+  ChatMessage appendIncoming(
+    String conversationId,
+    String text, {
+    String? reasoning,
+    int? reasoningMs,
+  }) {
+    final message = _repo.appendIncoming(
+      conversationId,
+      text,
+      reasoning: reasoning,
+      reasoningMs: reasoningMs,
+    );
     notifyListeners();
     return message;
   }

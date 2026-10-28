@@ -248,6 +248,34 @@ void main() {
       });
     });
 
+    test('思考增量单独回调，不混入正文', () async {
+      final transport = _FakeStreamTransport(
+        chunks: const [
+          'data: {"choices":[{"delta":{"reasoning_content":"先想"}}]}\n\n',
+          'data: {"choices":[{"delta":{"reasoning":"再想"}}]}\n\n',
+          'data: {"choices":[{"delta":{"content":"答案"}}]}\n\n',
+          'data: [DONE]\n\n',
+        ],
+      );
+      final deltas = <String>[];
+      final thoughts = <String>[];
+      final result = await AiApiClient(
+        streamTransport: transport,
+      ).streamChat(
+        profile: _profile,
+        messages: const [
+          AiPromptMessage(role: 'user', content: 'hi'),
+        ],
+        onDelta: deltas.add,
+        onReasoning: thoughts.add,
+      );
+
+      expect(deltas, ['答案']);
+      expect(thoughts, ['先想', '再想']);
+      expect(result.text, '答案');
+      expect(result.reasoning, '先想再想');
+    });
+
     test('DeepSeek 口径的 prompt_cache_hit_tokens 也能解析', () async {
       final transport = _FakeStreamTransport(
         chunks: const [
@@ -310,6 +338,30 @@ void main() {
       );
       expect(result.text, '整段回复');
       expect(result.totalTokens, 7);
+    });
+
+    test('兜底整段 JSON 也解析思考内容并回调', () async {
+      final transport = _FakeStreamTransport(
+        chunks: const [
+          '{"choices":[{"message":{"role":"assistant",'
+              '"reasoning_content":"整段思考","content":"整段回复"}}]}',
+        ],
+      );
+      final thoughts = <String>[];
+      final deltas = <String>[];
+      final result = await AiApiClient(
+        streamTransport: transport,
+      ).streamChat(
+        profile: _profile,
+        messages: const [
+          AiPromptMessage(role: 'user', content: 'hi'),
+        ],
+        onDelta: deltas.add,
+        onReasoning: thoughts.add,
+      );
+      expect(deltas, ['整段回复']);
+      expect(thoughts, ['整段思考']);
+      expect(result.reasoning, '整段思考');
     });
 
     test('[DONE] 之后对端不断流也立即收尾，不误判为超时', () async {

@@ -30,7 +30,12 @@ void main() {
       isTrue,
     );
     repo.send('ai-assistant', '你好');
-    repo.appendIncoming('ai-assistant', '你好呀');
+    repo.appendIncoming(
+      'ai-assistant',
+      '你好呀',
+      reasoning: '先判断问候语气',
+      reasoningMs: 1200,
+    );
     await repo.pendingWrites;
 
     expect(File('${dir.path}/${FileChatRepository.fileName}').existsSync(), isTrue);
@@ -49,6 +54,9 @@ void main() {
     expect(page.items.map((m) => m.text).toList(), ['你好呀', '你好']);
     expect(page.items.first.direction, ChatDirection.incoming);
     expect(page.items.last.direction, ChatDirection.outgoing);
+    // 思考内容与耗时随消息一起持久化。
+    expect(page.items.first.reasoning, '先判断问候语气');
+    expect(page.items.first.reasoningMs, 1200);
 
     // 恢复后继续追加：消息 id 接着最大值往后排，不覆盖历史。
     final next = restored.appendIncoming('ai-assistant', '第三句');

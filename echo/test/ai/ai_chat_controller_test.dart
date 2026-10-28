@@ -202,6 +202,65 @@ void main() {
     expect(chatStore.conversationOf(AiConversation.id), isNull);
   });
 
+  test('思考流：增量单独暴露为 reasoningDraft，正文到达后随回复一起落库', () async {
+    final transport = _ControlledStreamTransport();
+    controller = build(_configuredStore(), transport: transport);
+
+    final sending = controller.send('想想');
+    transport.controller
+      ..add(
+        'data: {"choices":[{"delta":{"reasoning_content":"先分析"}}]}\n\n',
+      )
+      ..add(
+        'data: {"choices":[{"delta":{"reasoning_content":"再作答"}}]}\n\n',
+      );
+    await Future<void>.delayed(Duration.zero);
+
+    expect(controller.reasoningDraft, '先分析再作答');
+    // 思考与正文分开累积，互不污染。
+    expect(controller.draft, isEmpty);
+
+    transport.controller
+      ..add(_sse('答案'))
+      ..add('data: [DONE]\n\n');
+    await transport.controller.close();
+    await sending;
+
+    expect(controller.reasoningDraft, isEmpty);
+    final messages = chatStore.messagesOf(AiConversation.id).items;
+    expect(messages.first.text, '答案');
+    expect(messages.first.reasoning, '先分析再作答');
+    // 耗时只结算一次：思考到正文的间隔，不应随正文流长度膨胀。
+    expect(messages.first.reasoningMs, isNotNull);
+    expect(messages.first.reasoningMs, lessThan(1000));
+  });
+
+  test('思考耗时只在正文首个增量时结算一次，后续正文不再累加', () async {
+    final transport = _ControlledStreamTransport();
+    controller = build(_configuredStore(), transport: transport);
+
+    final sending = controller.send('想想');
+    transport.controller.add(
+      'data: {"choices":[{"delta":{"reasoning_content":"先分析"}}]}\n\n',
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+    transport.controller.add(_sse('第一段'));
+    await Future<void>.delayed(Duration.zero);
+
+    final settled = controller.reasoningMs;
+    expect(settled, isNotNull);
+
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+    transport.controller
+      ..add(_sse('第二段'))
+      ..add('data: [DONE]\n\n');
+    await transport.controller.close();
+    await sending;
+
+    // 正文继续流不会把思考耗时越算越长。
+    expect(controller.reasoningMs, settled);
+  });
+
   test('回复为空：提示模型没有返回内容且不落助手消息', () async {
     final transport = _ControlledStreamTransport();
     controller = build(_configuredStore(), transport: transport);

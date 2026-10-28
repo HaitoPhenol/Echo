@@ -93,6 +93,8 @@ class ChatMessage {
     required this.text,
     required this.direction,
     required this.createdAt,
+    this.reasoning,
+    this.reasoningMs,
   });
 
   /// 消息稳定标识（仓储内全局序列器生成，同会话内按存储位置分页，
@@ -110,6 +112,12 @@ class ChatMessage {
 
   /// 创建时间（墙钟；由仓储统一注入的时钟产生）。
   final DateTime createdAt;
+
+  /// 推理模型的思考正文（仅 AI 助手回复可能带）；无思考时为 null。
+  final String? reasoning;
+
+  /// 产生 [reasoning] 花掉的毫秒数；无思考时为 null。
+  final int? reasoningMs;
 }
 
 /// 一次消息分页读取的结果（新 → 旧）。
@@ -163,7 +171,13 @@ abstract class ChatRepository {
   ///
   /// 与 [addIncoming] 的区别：后者新建会话，本方法只往已有会话里追加，
   /// 并同步预览与更新时间。空白文本与未知会话抛 ArgumentError/StateError。
-  ChatMessage appendIncoming(String conversationId, String text);
+  /// [reasoning]/[reasoningMs] 携带推理模型的思考内容，仅 AI 助手使用。
+  ChatMessage appendIncoming(
+    String conversationId,
+    String text, {
+    String? reasoning,
+    int? reasoningMs,
+  });
 
   /// 删除指定会话（消息正文一并清除）；返回是否有变化。
   bool remove(String id);
@@ -274,7 +288,12 @@ class InMemoryChatRepository implements ChatRepository {
   }
 
   @override
-  ChatMessage appendIncoming(String conversationId, String text) {
+  ChatMessage appendIncoming(
+    String conversationId,
+    String text, {
+    String? reasoning,
+    int? reasoningMs,
+  }) {
     final body = text.trim();
     if (body.isEmpty) {
       throw ArgumentError.value(text, 'text', '消息文本不能为空');
@@ -289,6 +308,8 @@ class InMemoryChatRepository implements ChatRepository {
       text: body,
       direction: ChatDirection.incoming,
       createdAt: _now(),
+      reasoning: reasoning,
+      reasoningMs: reasoningMs,
     );
     _messages.putIfAbsent(conversationId, () => <ChatMessage>[]).add(message);
     _items[index] = _items[index].copyWith(
