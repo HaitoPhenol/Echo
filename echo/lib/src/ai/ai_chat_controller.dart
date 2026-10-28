@@ -32,21 +32,38 @@ class AiChatUsage {
     this.promptTokens,
     this.completionTokens,
     this.totalTokens,
+    this.cachedTokens,
   });
 
   final int? promptTokens;
   final int? completionTokens;
   final int? totalTokens;
 
-  bool get isEmpty =>
-      promptTokens == null && completionTokens == null && totalTokens == null;
+  /// 命中缓存的输入 token 数（服务端未返回时为 null）。
+  final int? cachedTokens;
 
-  /// 展示文案：`↑ 12 · ↓ 34 · Σ 46`（缺项省略）。
+  bool get isEmpty =>
+      promptTokens == null &&
+      completionTokens == null &&
+      totalTokens == null &&
+      cachedTokens == null;
+
+  /// 缓存命中率（0~1）；缺任一数据时为 null。
+  double? get cacheHitRate {
+    final cached = cachedTokens;
+    final prompt = promptTokens;
+    if (cached == null || prompt == null || prompt <= 0) return null;
+    return cached / prompt;
+  }
+
+  /// 展示文案：`↑12 · ↓34 · Σ46 · ⚡44%`（缺项省略）。
   String get label {
+    final rate = cacheHitRate;
     final parts = <String>[
       if (promptTokens != null) '↑$promptTokens',
       if (completionTokens != null) '↓$completionTokens',
       if (totalTokens != null) 'Σ$totalTokens',
+      if (rate != null) '⚡${(rate * 100).round()}%',
     ];
     return parts.join(' · ');
   }
@@ -146,6 +163,7 @@ class AiChatController extends ChangeNotifier {
           promptTokens: result.promptTokens,
           completionTokens: result.completionTokens,
           totalTokens: result.totalTokens,
+          cachedTokens: result.cachedTokens,
         );
         if (!usage.isEmpty) _lastUsage = usage;
       }

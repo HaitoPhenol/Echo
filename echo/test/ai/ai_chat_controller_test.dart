@@ -107,7 +107,8 @@ void main() {
     transport.controller
       ..add(
         'data: {"choices":[],"usage":{"prompt_tokens":9,'
-        '"completion_tokens":4,"total_tokens":13}}\n\n',
+        '"completion_tokens":4,"total_tokens":13,'
+        '"prompt_tokens_details":{"cached_tokens":6}}}\n\n',
       )
       ..add('data: [DONE]\n\n');
     await transport.controller.close();
@@ -117,7 +118,9 @@ void main() {
     expect(controller.draft, isEmpty);
     expect(controller.lastError, isNull);
     expect(controller.lastUsage?.totalTokens, 13);
-    expect(controller.lastUsage?.label, '↑9 · ↓4 · Σ13');
+    // 缓存命中率 = 6 / 9 ≈ 67%。
+    expect(controller.lastUsage?.cacheHitRate, closeTo(2 / 3, 1e-9));
+    expect(controller.lastUsage?.label, '↑9 · ↓4 · Σ13 · ⚡67%');
 
     final messages = chatStore.messagesOf(AiConversation.id).items;
     // 新 → 旧：助手回复在前，用户消息在后。

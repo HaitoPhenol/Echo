@@ -182,6 +182,7 @@ class AiChatCompletion {
     this.promptTokens,
     this.completionTokens,
     this.totalTokens,
+    this.cachedTokens,
   });
 
   final String text;
@@ -189,6 +190,9 @@ class AiChatCompletion {
   final int? promptTokens;
   final int? completionTokens;
   final int? totalTokens;
+
+  /// 命中缓存（prompt cache）的输入 token 数；服务端未返回时为 null。
+  final int? cachedTokens;
 }
 
 /// 对话链路上的可读异常（网络/鉴权/协议错误统一收口）。
@@ -367,6 +371,7 @@ class AiApiClient {
     int? promptTokens;
     int? completionTokens;
     int? totalTokens;
+    int? cachedTokens;
     var sawData = false;
     var pending = '';
 
@@ -412,6 +417,7 @@ class AiApiClient {
         completionTokens =
             _intOrNull(usage['completion_tokens']) ?? completionTokens;
         totalTokens = _intOrNull(usage['total_tokens']) ?? totalTokens;
+        cachedTokens = _cachedTokensOf(usage) ?? cachedTokens;
       }
       return false;
     }
@@ -456,6 +462,7 @@ class AiApiClient {
                 promptTokens = _intOrNull(usage['prompt_tokens']);
                 completionTokens = _intOrNull(usage['completion_tokens']);
                 totalTokens = _intOrNull(usage['total_tokens']);
+                cachedTokens = _cachedTokensOf(usage);
               }
             }
           }
@@ -471,7 +478,20 @@ class AiApiClient {
       promptTokens: promptTokens,
       completionTokens: completionTokens,
       totalTokens: totalTokens,
+      cachedTokens: cachedTokens,
     );
+  }
+
+  /// 缓存命中数兼容两种口径：
+  /// - OpenAI：`usage.prompt_tokens_details.cached_tokens`
+  /// - DeepSeek：`usage.prompt_cache_hit_tokens`
+  static int? _cachedTokensOf(Map usage) {
+    final details = usage['prompt_tokens_details'];
+    if (details is Map) {
+      final cached = _intOrNull(details['cached_tokens']);
+      if (cached != null) return cached;
+    }
+    return _intOrNull(usage['prompt_cache_hit_tokens']);
   }
 
   static int? _intOrNull(Object? value) =>

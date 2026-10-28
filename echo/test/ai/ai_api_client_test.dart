@@ -203,7 +203,8 @@ void main() {
           '\ndata: {"choices":[{"delta":{"content":"好"}}]}\n\n',
           'data: {"choices":[{"delta":{"content":"！"}}]}\n\n',
           'data: {"choices":[],"usage":{"prompt_tokens":12,'
-              '"completion_tokens":3,"total_tokens":15}}\n\n',
+              '"completion_tokens":3,"total_tokens":15,'
+              '"prompt_tokens_details":{"cached_tokens":5}}}\n\n',
           'data: [DONE]\n\n',
         ],
       );
@@ -224,6 +225,8 @@ void main() {
       expect(result.promptTokens, 12);
       expect(result.completionTokens, 3);
       expect(result.totalTokens, 15);
+      // OpenAI 口径的缓存命中数（prompt_tokens_details.cached_tokens）。
+      expect(result.cachedTokens, 5);
 
       // 请求口径：/chat/completions、Bearer、stream + 推理强度。
       expect(
@@ -243,6 +246,27 @@ void main() {
         'role': 'user',
         'content': '你好',
       });
+    });
+
+    test('DeepSeek 口径的 prompt_cache_hit_tokens 也能解析', () async {
+      final transport = _FakeStreamTransport(
+        chunks: const [
+          'data: {"choices":[{"delta":{"content":"好"}}]}\n\n',
+          'data: {"choices":[],"usage":{"prompt_tokens":20,'
+              '"completion_tokens":2,"total_tokens":22,'
+              '"prompt_cache_hit_tokens":16}}\n\n',
+          'data: [DONE]\n\n',
+        ],
+      );
+      final result = await AiApiClient(
+        streamTransport: transport,
+      ).streamChat(
+        profile: _profile,
+        messages: const [
+          AiPromptMessage(role: 'user', content: 'hi'),
+        ],
+      );
+      expect(result.cachedTokens, 16);
     });
 
     test('非 2xx 时抛出带服务端说明的异常', () async {
