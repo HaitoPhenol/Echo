@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../common/markdown_view.dart';
 import '../../services/chat_store.dart';
 import '../../theme/app_colors.dart';
 import '../ai_chat_controller.dart';
@@ -259,6 +260,7 @@ class _UserBubble extends StatelessWidget {
       text: text,
       alignment: Alignment.centerRight,
       color: AppColors.accentBlue.withValues(alpha: 0.20),
+      markdown: false,
       radius: const BorderRadius.only(
         topLeft: Radius.circular(14),
         topRight: Radius.circular(14),
@@ -465,6 +467,8 @@ Widget _bubble(
   required Alignment alignment,
   required Color color,
   required BorderRadius radius,
+  // 用户输入按原样展示：`# 标题`、`- 项` 这类字面内容不该被改写。
+  bool markdown = true,
 }) {
   return Padding(
     padding: const EdgeInsets.only(bottom: 10),
@@ -477,14 +481,23 @@ Widget _bubble(
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           decoration: BoxDecoration(color: color, borderRadius: radius),
-          child: Text(
-            text,
-            style: const TextStyle(
-              color: AppColors.textPrimary,
-              fontSize: 15,
-              height: 1.35,
-            ),
-          ),
+          child: markdown
+              ? MarkdownView(
+                  text: text,
+                  style: const TextStyle(
+                    color: AppColors.textPrimary,
+                    fontSize: 15,
+                    height: 1.35,
+                  ),
+                )
+              : Text(
+                  text,
+                  style: const TextStyle(
+                    color: AppColors.textPrimary,
+                    fontSize: 15,
+                    height: 1.35,
+                  ),
+                ),
         ),
       ),
     ),
