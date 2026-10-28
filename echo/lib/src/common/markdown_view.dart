@@ -1,4 +1,5 @@
-import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../theme/app_colors.dart';
 
@@ -17,6 +18,7 @@ class MarkdownView extends StatelessWidget {
     required this.text,
     this.style,
     this.spacing = 8,
+    this.selectable = false,
   });
 
   final String text;
@@ -26,6 +28,9 @@ class MarkdownView extends StatelessWidget {
 
   /// 块与块之间的竖向间距。
   final double spacing;
+
+  /// 长按可选取文字（聊天气泡里需要复制时打开）。
+  final bool selectable;
 
   static const TextStyle _defaultStyle = TextStyle(
     color: AppColors.textPrimary,
@@ -38,7 +43,7 @@ class MarkdownView extends StatelessWidget {
     final base = style ?? _defaultStyle;
     final blocks = parseMarkdown(text);
     if (blocks.isEmpty) return const SizedBox.shrink();
-    return Column(
+    final content = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -51,6 +56,14 @@ class MarkdownView extends StatelessWidget {
           ),
       ],
     );
+    // 用 SelectionArea 包整块，才能跨段/跨行连续选取。
+    return selectable
+        ? SourceSelectionArea(
+            resolveCopy: (selected) =>
+                resolveMarkdownSelection(text, selected) ?? text,
+            child: content,
+          )
+        : content;
   }
 
   Widget _buildBlock(MarkdownBlock block, TextStyle base) {
@@ -116,11 +129,208 @@ class MarkdownView extends StatelessWidget {
     }
   }
 
-  Widget _rich(String source, TextStyle base) =>
-      Text.rich(TextSpan(children: parseInline(source, base)));
+  Widget _rich(String source, TextStyle base) {
+    final span = TextSpan(children: parseInline(source, base));
+    return Text.rich(span);
+  }
 }
 
-/// 围栏代码块：等宽字体 + 底色，长行横向滚动不折行。
+/// 可跨段选取的区域，复制时把选区还原成**原文**（含 Markdown 标记与换行）。
+class SourceSelectionArea extends StatefulWidget {
+  const SourceSelectionArea({
+    super.key,
+    required this.resolveCopy,
+    required this.child,
+  });
+
+  /// 把选区里的渲染文本还原成源文本；拿不到匹配时由调用方给兜底。
+  final String Function(String selectedPlainText) resolveCopy;
+  final Widget child;
+
+  @override
+  State<SourceSelectionArea> createState() => _SourceSelectionAreaState();
+}
+
+class _SourceSelectionAreaState extends State<SourceSelectionArea> {
+  String _selected = '';
+
+  @override
+  Widget build(BuildContext context) {
+    return SelectionArea(
+      onSelectionChanged: (content) {
+        _selected = content?.plainText ?? '';
+      },
+      contextMenuBuilder: (context, state) {
+        // 只替换「复制」的行为，全选/分享等系统项照旧保留。
+        final items = [
+          for (final item in state.contextMenuButtonItems)
+            if (item.type == ContextMenuButtonType.copy)
+              ContextMenuButtonItem(
+                label: '复制',
+                onPressed: () {
+                  Clipboard.setData(
+                    ClipboardData(text: widget.resolveCopy(_selected)),
+                  );
+                  state.hideToolbar();
+                },
+              )
+            else
+              item,
+        ];
+        if (items.isEmpty) {
+          items.add(
+            ContextMenuButtonItem(
+              label: '复制',
+              onPressed: () {
+                Clipboard.setData(
+                  ClipboardData(text: widget.resolveCopy(_selected)),
+                );
+                state.hideToolbar();
+              },
+            ),
+          );
+        }
+        return AdaptiveTextSelectionToolbar.buttonItems(
+          anchors: state.contextMenuAnchors,
+          buttonItems: items,
+        );
+      },
+      child: widget.child,
+    );
+  }
+}
+
+/// 纯文本气泡：把选区扩展到整行，复制这些行的原文；找不到时返回 null。
+String? resolvePlainSelection(String source, String selected) {
+  final sel = selected.trim();
+  if (sel.isEmpty) return null;
+  final normalized = source.replaceAll('\r\n', '\n');
+  final idx = normalized.indexOf(sel);
+  if (idx < 0) return null;
+  final startLine = '\n'.allMatches(normalized.substring(0, idx)).length;
+  final endOffset = idx + sel.length;
+  final endLine =
+      '\n'.allMatches(normalized.substring(0, endOffset - 1)).length + 1;
+  final lines = normalized.split('\n');
+  final end = endLine.clamp(0, lines.length);
+  final begin = startLine.clamp(0, end);
+  return lines.sublist(begin, end).join('\n');
+}
+
+/// Markdown 气泡：按渲染单元（标题/段落一行/列表项/代码行）定位选区，
+/// 再复制这些单元对应的源文本行。
+String? resolveMarkdownSelection(String source, String selected) {
+  final sel = selected.trim();
+  if (sel.isEmpty) return null;
+  final normalized = source.replaceAll('\r\n', '\n');
+  final blocks = parseMarkdown(normalized);
+  if (blocks.isEmpty) return null;
+
+  // 各单元渲染后的纯文本按出现顺序拼接，与选区文本对齐；块内换行保留。
+  final units = <_RenderedUnit>[];
+  final joined = StringBuffer();
+  for (final block in blocks) {
+    final lineUnits = _renderedUnits(block);
+    for (var i = 0; i < lineUnits.length; i++) {
+      final unit = lineUnits[i];
+      // 同一块内的多行在渲染时是一个 Text，选区里带 `\n`。
+      final text = i == lineUnits.length - 1 ? unit.text : '${unit.text}\n';
+      units.add(
+        _RenderedUnit(
+          start: joined.length,
+          end: joined.length + text.length,
+          line: unit.line,
+        ),
+      );
+      joined.write(text);
+    }
+  }
+  final haystack = joined.toString();
+  final matches = sel.allMatches(haystack).toList(growable: false);
+  if (matches.isEmpty) return null;
+
+  final lines = normalized.split('\n');
+  String? result;
+  (int, int)? resultRange;
+  for (final match in matches) {
+    final hits = units
+        .where((unit) => unit.start < match.end && unit.end > match.start)
+        .toList(growable: false);
+    if (hits.isEmpty) return null;
+    final begin = hits.first.line.clamp(0, lines.length);
+    final finish = (hits.last.line + 1).clamp(begin, lines.length);
+    // 选区文本在消息里出现多次且指向不同行时，宁可退回兜底也不复制错行。
+    if (resultRange != null && resultRange != (begin, finish)) return null;
+    resultRange = (begin, finish);
+    result = lines.sublist(begin, finish).join('\n');
+  }
+  return result;
+}
+
+class _RenderedUnit {
+  const _RenderedUnit({
+    required this.start,
+    required this.end,
+    required this.line,
+  });
+
+  final int start;
+  final int end;
+  final int line;
+}
+
+class _TextUnit {
+  const _TextUnit(this.text, this.line);
+
+  final String text;
+  final int line;
+}
+
+/// 一个块拆成可按行定位的渲染单元。
+List<_TextUnit> _renderedUnits(MarkdownBlock block) {
+  String plain(String text) => parseInline(text, _plainBaseStyle)
+      .map((span) => span is TextSpan ? span.toPlainText() : '')
+      .join();
+
+  switch (block) {
+    case MarkdownParagraph(:final text, :final startLine):
+      final parts = plain(text).split('\n');
+      return [
+        for (var i = 0; i < parts.length; i++) _TextUnit(parts[i], startLine + i),
+      ];
+    case MarkdownHeading(:final text, :final startLine):
+      return [_TextUnit(plain(text), startLine)];
+    case MarkdownQuote(:final text, :final startLine):
+      final parts = plain(text).split('\n');
+      return [
+        for (var i = 0; i < parts.length; i++) _TextUnit(parts[i], startLine + i),
+      ];
+    case MarkdownCodeBlock(:final code, :final startLine):
+      final parts = code.split('\n');
+      return [
+        // 代码内容从围栏下一行开始。
+        for (var i = 0; i < parts.length; i++)
+          _TextUnit(parts[i], startLine + 1 + i),
+      ];
+    case MarkdownListBlock(
+        :final items,
+        :final ordered,
+        :final start,
+        :final startLine,
+      ):
+      return [
+        for (var i = 0; i < items.length; i++)
+          _TextUnit(
+            '${ordered ? '${start + i}.' : '•'}${plain(items[i])}',
+            startLine + i,
+          ),
+      ];
+    case MarkdownDivider():
+      return const [];
+  }
+}
+
+/// 围栏代码块：等宽字体 + 底色，长行软换行。
 class _CodeBlock extends StatelessWidget {
   const _CodeBlock({required this.code, required this.base});
 
@@ -129,6 +339,13 @@ class _CodeBlock extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final style = base.copyWith(
+      fontFamily: 'monospace',
+      fontFamilyFallback: const ['Menlo', 'Courier New'],
+      fontSize: (base.fontSize ?? 15) - 2,
+      height: 1.45,
+      color: AppColors.textPrimary,
+    );
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
@@ -136,19 +353,7 @@ class _CodeBlock extends StatelessWidget {
         color: AppColors.tone1,
         borderRadius: BorderRadius.circular(8),
       ),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Text(
-          code,
-          style: base.copyWith(
-            fontFamily: 'monospace',
-            fontFamilyFallback: const ['Menlo', 'Courier New'],
-            fontSize: (base.fontSize ?? 15) - 2,
-            height: 1.45,
-            color: AppColors.textPrimary,
-          ),
-        ),
-      ),
+      child: Text(code, style: style),
     );
   }
 }
@@ -157,32 +362,48 @@ class _CodeBlock extends StatelessWidget {
 // 块级解析
 // ---------------------------------------------------------------------------
 
+/// 选区还原时算渲染纯文本用的基准样式（样式不影响文字内容）。
+const TextStyle _plainBaseStyle = TextStyle(fontSize: 15, height: 1.35);
+
 /// Markdown 块。
 sealed class MarkdownBlock {
-  const MarkdownBlock();
+  const MarkdownBlock({this.startLine = 0, this.endLine = 0});
+
+  /// 块在源文本里占的行范围（`[startLine, endLine)`），复制原文时用。
+  final int startLine;
+  final int endLine;
 }
 
 class MarkdownParagraph extends MarkdownBlock {
-  const MarkdownParagraph(this.text);
+  const MarkdownParagraph(
+    this.text, {
+    super.startLine,
+    super.endLine,
+  });
 
   final String text;
 }
 
 class MarkdownHeading extends MarkdownBlock {
-  const MarkdownHeading(this.level, this.text);
+  const MarkdownHeading(
+    this.level,
+    this.text, {
+    super.startLine,
+    super.endLine,
+  });
 
   final int level;
   final String text;
 }
 
 class MarkdownCodeBlock extends MarkdownBlock {
-  const MarkdownCodeBlock(this.code);
+  const MarkdownCodeBlock(this.code, {super.startLine, super.endLine});
 
   final String code;
 }
 
 class MarkdownQuote extends MarkdownBlock {
-  const MarkdownQuote(this.text);
+  const MarkdownQuote(this.text, {super.startLine, super.endLine});
 
   final String text;
 }
@@ -192,6 +413,8 @@ class MarkdownListBlock extends MarkdownBlock {
     required this.items,
     required this.ordered,
     this.start = 1,
+    super.startLine,
+    super.endLine,
   });
 
   final List<String> items;
@@ -200,7 +423,7 @@ class MarkdownListBlock extends MarkdownBlock {
 }
 
 class MarkdownDivider extends MarkdownBlock {
-  const MarkdownDivider();
+  const MarkdownDivider({super.startLine, super.endLine});
 }
 
 final RegExp _headingPattern = RegExp(r'^(#{1,6})\s+(.*)$');
@@ -229,6 +452,7 @@ List<MarkdownBlock> parseMarkdown(String source) {
     // 闭合行必须同字符、长度不短于开启围栏，且整行只有围栏。
     final fence = _fenceOpenPattern.firstMatch(trimmed);
     if (fence != null) {
+      final startLine = i;
       final marker = fence.group(1)!;
       final closer = RegExp(
         '^\\s*${RegExp.escape(marker[0])}{${marker.length},}\\s*\$',
@@ -240,39 +464,58 @@ List<MarkdownBlock> parseMarkdown(String source) {
         i++;
       }
       if (i < lines.length) i++;
-      blocks.add(MarkdownCodeBlock(code.join('\n')));
+      blocks.add(
+        MarkdownCodeBlock(
+          code.join('\n'),
+          startLine: startLine,
+          endLine: i,
+        ),
+      );
       continue;
     }
 
     final heading = _headingPattern.firstMatch(trimmed);
     if (heading != null) {
       blocks.add(
-        MarkdownHeading(heading.group(1)!.length, heading.group(2)!.trim()),
+        MarkdownHeading(
+          heading.group(1)!.length,
+          heading.group(2)!.trim(),
+          startLine: i,
+          endLine: i + 1,
+        ),
       );
       i++;
       continue;
     }
 
     if (_dividerPattern.hasMatch(trimmed)) {
-      blocks.add(const MarkdownDivider());
+      blocks.add(MarkdownDivider(startLine: i, endLine: i + 1));
       i++;
       continue;
     }
 
     if (trimmed.startsWith('>')) {
+      final startLine = i;
       final quoted = <String>[];
       while (i < lines.length && lines[i].trim().startsWith('>')) {
         final content = lines[i].trim();
         quoted.add(content.substring(1).trimLeft());
         i++;
       }
-      blocks.add(MarkdownQuote(quoted.join('\n')));
+      blocks.add(
+        MarkdownQuote(
+          quoted.join('\n'),
+          startLine: startLine,
+          endLine: i,
+        ),
+      );
       continue;
     }
 
     final ordered = _orderedItemPattern.firstMatch(line);
     final bullet = ordered == null ? _bulletItemPattern.firstMatch(line) : null;
     if (ordered != null || bullet != null) {
+      final startLine = i;
       final items = <String>[];
       final isOrdered = ordered != null;
       var start = 1;
@@ -298,12 +541,19 @@ List<MarkdownBlock> parseMarkdown(String source) {
         i++;
       }
       blocks.add(
-        MarkdownListBlock(items: items, ordered: isOrdered, start: start),
+        MarkdownListBlock(
+          items: items,
+          ordered: isOrdered,
+          start: start,
+          startLine: startLine,
+          endLine: i,
+        ),
       );
       continue;
     }
 
     // 普通段落：连续非空行合成一段，行间保留换行。
+    final startLine = i;
     final paragraph = <String>[];
     while (i < lines.length) {
       final current = lines[i];
@@ -320,7 +570,13 @@ List<MarkdownBlock> parseMarkdown(String source) {
       paragraph.add(currentTrimmed);
       i++;
     }
-    blocks.add(MarkdownParagraph(paragraph.join('\n')));
+    blocks.add(
+      MarkdownParagraph(
+        paragraph.join('\n'),
+        startLine: startLine,
+        endLine: i,
+      ),
+    );
   }
 
   return blocks;

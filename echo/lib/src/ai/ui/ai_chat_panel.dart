@@ -75,7 +75,12 @@ class AiChatTranscript extends StatelessWidget {
                     // 索引 0 是最新内容：流入中的正文在最下，思考块在其上方，
                     // 再往上才是错误与已落库消息。
                     if (hasDraft && index == 0) {
-                      return _AssistantBubble(text: '${chat.draft}▍');
+                      // 流式期间每来一个 token 都会重建文本，选取会被反复
+                      // 清空，所以草稿气泡先不开选取，落库后再选。
+                      return _AssistantBubble(
+                        text: '${chat.draft}▍',
+                        selectable: false,
+                      );
                     }
                     if (hasReasoningDraft && index == (hasDraft ? 1 : 0)) {
                       // 正文一到，思考就收成一行「已思考 12.3s」，不再铺满灰字。
@@ -281,11 +286,15 @@ class _AssistantBubble extends StatefulWidget {
     required this.text,
     this.reasoning,
     this.reasoningMs,
+    this.selectable = true,
   });
 
   final String text;
   final String? reasoning;
   final int? reasoningMs;
+
+  /// 已落库的消息可长按选取；流式草稿关闭。
+  final bool selectable;
 
   @override
   State<_AssistantBubble> createState() => _AssistantBubbleState();
@@ -304,6 +313,43 @@ class _AssistantBubbleState extends State<_AssistantBubble> {
         alignment: Alignment.centerLeft,
         color: AppColors.tone1,
         radius: _assistantRadius,
+        selectable: widget.selectable,
+      );
+    }
+    // 思考正文与回复正文包在同一个 SelectionArea 里，可跨段连续选取。
+    Widget body = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (_expanded)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxWidth: MediaQuery.sizeOf(context).width * 0.82,
+              ),
+              child: Text(reasoning, style: _reasoningTextStyle),
+            ),
+          ),
+        _bubble(
+          context,
+          text: widget.text,
+          alignment: Alignment.centerLeft,
+          color: AppColors.tone1,
+          radius: _assistantRadius,
+          selectable: false,
+        ),
+      ],
+    );
+    if (widget.selectable) {
+      // 复制时把选区还原成原文：优先按回复正文的 Markdown 块定位，
+      // 选到思考区时按行定位，都对不上才退回整条消息。
+      body = SourceSelectionArea(
+        resolveCopy: (selected) =>
+            resolveMarkdownSelection(widget.text, selected) ??
+            (_expanded ? resolvePlainSelection(reasoning, selected) : null) ??
+            (_expanded ? '$reasoning\n\n${widget.text}' : widget.text),
+        child: body,
       );
     }
     return Align(
@@ -317,23 +363,7 @@ class _AssistantBubbleState extends State<_AssistantBubble> {
             expanded: _expanded,
             onTap: () => setState(() => _expanded = !_expanded),
           ),
-          if (_expanded)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: ConstrainedBox(
-                constraints: BoxConstraints(
-                  maxWidth: MediaQuery.sizeOf(context).width * 0.82,
-                ),
-                child: Text(reasoning, style: _reasoningTextStyle),
-              ),
-            ),
-          _bubble(
-            context,
-            text: widget.text,
-            alignment: Alignment.centerLeft,
-            color: AppColors.tone1,
-            radius: _assistantRadius,
-          ),
+          body,
         ],
       ),
     );
@@ -469,6 +499,7 @@ Widget _bubble(
   required BorderRadius radius,
   // 用户输入按原样展示：`# 标题`、`- 项` 这类字面内容不该被改写。
   bool markdown = true,
+  bool selectable = true,
 }) {
   return Padding(
     padding: const EdgeInsets.only(bottom: 10),
@@ -484,25 +515,27 @@ Widget _bubble(
           child: markdown
               ? MarkdownView(
                   text: text,
-                  style: const TextStyle(
-                    color: AppColors.textPrimary,
-                    fontSize: 15,
-                    height: 1.35,
-                  ),
+                  selectable: selectable,
+                  style: _bubbleTextStyle,
                 )
-              : Text(
-                  text,
-                  style: const TextStyle(
-                    color: AppColors.textPrimary,
-                    fontSize: 15,
-                    height: 1.35,
-                  ),
-                ),
+              : (selectable
+                    ? SourceSelectionArea(
+                        resolveCopy: (selected) =>
+                            resolvePlainSelection(text, selected) ?? text,
+                        child: Text(text, style: _bubbleTextStyle),
+                      )
+                    : Text(text, style: _bubbleTextStyle)),
         ),
       ),
     ),
   );
 }
+
+const TextStyle _bubbleTextStyle = TextStyle(
+  color: AppColors.textPrimary,
+  fontSize: 15,
+  height: 1.35,
+);
 
 const TextStyle _usageStyle = TextStyle(
   fontSize: 11,
